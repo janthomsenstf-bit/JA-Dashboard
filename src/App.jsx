@@ -659,7 +659,6 @@ export default function App() {
           </span>
           {/* ── Auto-Backup Controls ── */}
           {fsSupported ? (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
               <button
                 className="btn btn-ghost btn-sm"
@@ -689,17 +688,22 @@ export default function App() {
                   📁 Ordner wählen
                 </button>
               )}
-            </div>
-            {/* Zeitstempel-Zeile */}
-            <div style={{ display: 'flex', gap: '10px', fontSize: '10px', color: 'rgba(255,255,255,0.45)', fontFamily: 'var(--font-mono)' }}>
-              <span title="Wann wurden die Daten zuletzt gespeichert?">Stand: {fmtZeit(lastSaveAt)}</span>
-              {lastBackupAt && <span title="Wann wurde zuletzt eine Sicherungsdatei erstellt?">💾 {fmtZeit(lastBackupAt)}</span>}
-            </div>
+              <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.45)', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap' }}
+                title="Wann wurden die Daten zuletzt gespeichert?">
+                Stand: {fmtZeit(lastSaveAt)}
+              </span>
             </div>
           ) : (
-            <button className="btn btn-ghost btn-sm" onClick={handleBackup} title="Alle Daten als JSON-Datei sichern" style={{ fontSize: '12px' }}>
-              💾 Backup
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <button className="btn btn-ghost btn-sm" onClick={handleBackup} title="Alle Daten als JSON-Datei sichern" style={{ fontSize: '12px' }}>
+                💾 Backup
+              </button>
+              {lastSaveAt && (
+                <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.45)', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap' }}>
+                  Stand: {fmtZeit(lastSaveAt)}
+                </span>
+              )}
+            </div>
           )}
           <button className="btn btn-ghost btn-sm" onClick={() => importRef.current?.click()} title="Daten aus Backup-Datei wiederherstellen" style={{ fontSize: '12px' }}>
             📂 Import
