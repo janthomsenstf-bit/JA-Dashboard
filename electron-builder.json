@@ -1,0 +1,23 @@
+{
+  "appId": "de.jan-spielbuch",
+  "productName": "Jan's Spielbuch",
+  "copyright": "Copyright © 2024",
+  "directories": {
+    "output": "dist-electron"
+  },
+  "files": [
+    "dist/**",
+    "electron/**",
+    "package.json"
+  ],
+  "win": {
+    "target": [{ "target": "nsis", "arch": ["x64"] }],
+    "icon": "public/vite.svg"
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "installerLanguages": ["de_DE"],
+    "language": "1031"
+  }
+}
