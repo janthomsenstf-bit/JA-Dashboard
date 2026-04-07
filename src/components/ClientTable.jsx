@@ -9,11 +9,22 @@ const FILTERS = [
   { key: 'open_questions',    label: 'Offene RQ' },
 ]
 
+const MANDATSTYP_FILTERS = [
+  { key: 'all',    label: 'Alle Typen' },
+  { key: 'extern', label: 'Extern' },
+  { key: 'intern', label: 'Intern' },
+]
+
+const MANDATSTYP_CONFIG = {
+  intern: { label: 'Intern', color: '#7c3aed', bg: 'rgba(124,58,237,0.12)', border: 'rgba(124,58,237,0.3)' },
+  extern: { label: 'Extern', color: '#0891b2', bg: 'rgba(8,145,178,0.12)', border: 'rgba(8,145,178,0.3)' },
+}
+
 const SORT_COLS = ['mandantennummer', 'name', 'veranlagungsjahr', 'status']
 
 export default function ClientTable({
-  clients, selectedId, filter, search, sortCol, sortDir,
-  onSelect, onFilterChange, onSearchChange, onSort,
+  clients, selectedId, filter, mandatsTypFilter = 'all', search, sortCol, sortDir,
+  onSelect, onFilterChange, onMandatsTypFilterChange, onSearchChange, onSort,
 }) {
   // Filter + search
   const active   = clients.filter(c => !c.archiviert)
@@ -25,6 +36,9 @@ export default function ClientTable({
       if (openQ === 0) return false
     } else if (filter !== 'all') {
       if (getMandantStatus(c) !== filter) return false
+    }
+    if (mandatsTypFilter !== 'all') {
+      if ((c.mandatstyp ?? 'extern') !== mandatsTypFilter) return false
     }
     if (search.trim()) {
       const q = search.toLowerCase()
@@ -74,6 +88,7 @@ export default function ClientTable({
     const cfg     = MANDANT_STATUS_CONFIG[status]
     const openQ   = c.rueckfragen.filter(r => !r.beantwortet).length
     const isSelected = c.id === selectedId
+    const mtCfg  = MANDATSTYP_CONFIG[c.mandatstyp ?? 'extern']
 
     // Check FA overdue
     let faFaellig = false
@@ -92,6 +107,12 @@ export default function ClientTable({
         <div className="client-row-name">
           <span className="client-row-name-main">{c.name}</span>
           <div className="client-row-badges">
+            <span style={{
+              fontSize: '9px', fontWeight: 700, padding: '1px 6px', borderRadius: '10px',
+              background: mtCfg.bg, color: mtCfg.color, border: `1px solid ${mtCfg.border}`,
+            }}>
+              {mtCfg.label.toUpperCase()}
+            </span>
             {openQ > 0 && (
               <span className="badge badge-red">{openQ} RQ offen</span>
             )}
@@ -141,6 +162,26 @@ export default function ClientTable({
               {f.label}
             </button>
           ))}
+        </div>
+        <div className="filter-tabs" style={{ marginTop: '4px' }}>
+          {MANDATSTYP_FILTERS.map(f => {
+            const mtCfg = f.key !== 'all' ? MANDATSTYP_CONFIG[f.key] : null
+            const isActive = mandatsTypFilter === f.key
+            return (
+              <button
+                key={f.key}
+                className={`filter-tab${isActive ? ' active' : ''}`}
+                onClick={() => onMandatsTypFilterChange?.(f.key)}
+                style={isActive && mtCfg ? {
+                  background: mtCfg.bg,
+                  color: mtCfg.color,
+                  borderColor: mtCfg.color,
+                } : undefined}
+              >
+                {f.label}
+              </button>
+            )
+          })}
         </div>
       </div>
 

@@ -427,8 +427,15 @@ function KontaktpersonenSection({ client, onUpdate }) {
             </div>
             <div>
               <label style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Rolle / Funktion</label>
-              <input className="input" value={newForm.rolle} onChange={e => setNewForm(p => ({ ...p, rolle: e.target.value }))}
-                placeholder="Geschäftsführer" style={{ width: '100%', fontSize: '12px' }} />
+              <select className="input" value={newForm.rolle} onChange={e => setNewForm(p => ({ ...p, rolle: e.target.value }))}
+                style={{ width: '100%', fontSize: '12px' }}>
+                <option value="">– bitte wählen –</option>
+                <option value="Geschäftsführer">Geschäftsführer</option>
+                <option value="Buchhaltung">Buchhaltung</option>
+                <option value="Assistenz">Assistenz</option>
+                <option value="Privat">Privat</option>
+                <option value="Sonstiges">Sonstiges</option>
+              </select>
             </div>
             <div>
               <label style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>E-Mail</label>
@@ -469,8 +476,15 @@ function KontaktpersonenSection({ client, onUpdate }) {
                 </div>
                 <div>
                   <label style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Rolle</label>
-                  <input className="input" value={editForm.rolle ?? k.rolle} onChange={e => setEditForm(p => ({ ...p, rolle: e.target.value }))}
-                    style={{ width: '100%', fontSize: '12px' }} />
+                  <select className="input" value={editForm.rolle ?? k.rolle ?? ''} onChange={e => setEditForm(p => ({ ...p, rolle: e.target.value }))}
+                    style={{ width: '100%', fontSize: '12px' }}>
+                    <option value="">– bitte wählen –</option>
+                    <option value="Geschäftsführer">Geschäftsführer</option>
+                    <option value="Buchhaltung">Buchhaltung</option>
+                    <option value="Assistenz">Assistenz</option>
+                    <option value="Privat">Privat</option>
+                    <option value="Sonstiges">Sonstiges</option>
+                  </select>
                 </div>
                 <div>
                   <label style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>E-Mail</label>
@@ -577,6 +591,14 @@ export default function AuftragTab({ client, onUpdate }) {
             </span>
           )}
         </div>
+
+        {/* Mandatstyp */}
+        <SetupRow label="Mandatstyp">
+          <Chip label="Extern" active={(client.mandatstyp ?? 'extern') === 'extern'} color="#0891b2"
+            onClick={() => onUpdate({ mandatstyp: 'extern' })} />
+          <Chip label="Intern" active={(client.mandatstyp ?? 'extern') === 'intern'} color="#7c3aed"
+            onClick={() => onUpdate({ mandatstyp: 'intern' })} />
+        </SetupRow>
 
         {/* Rechtsform */}
         <SetupRow label="Rechtsform">

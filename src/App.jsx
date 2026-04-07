@@ -113,6 +113,7 @@ function migrateClient(c) {
     zusatzaufgaben:              Array.isArray(c.zusatzaufgaben) ? c.zusatzaufgaben : [],
     rechner:                     Array.isArray(c.rechner)        ? c.rechner        : [],
     kontakte:                    Array.isArray(c.kontakte)       ? c.kontakte       : [],
+    mandatstyp:                  c.mandatstyp                   ?? 'extern',
   }
 }
 
@@ -161,6 +162,7 @@ export default function App() {
   const [clients, setClients]             = useState([])
   const [selectedId, setSelectedId]       = useState(null)
   const [filter, setFilter]               = useState('all')
+  const [mandatsTypFilter, setMandatsTypFilter] = useState('all')
   const [search, setSearch]               = useState('')
   const [sortCol, setSortCol]             = useState('mandantennummer')
   const [sortDir, setSortDir]             = useState('asc')
@@ -1008,11 +1010,13 @@ export default function App() {
               clients={clients}
               selectedId={selectedId}
               filter={filter}
+              mandatsTypFilter={mandatsTypFilter}
               search={search}
               sortCol={sortCol}
               sortDir={sortDir}
               onSelect={setSelectedId}
               onFilterChange={setFilter}
+              onMandatsTypFilterChange={setMandatsTypFilter}
               onSearchChange={setSearch}
               onSort={(col) => {
                 if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
