@@ -322,7 +322,8 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
   const [showBCC,     setShowBCC]     = useState(false)
 
   // Anhänge State
-  const [attachments,    setAttachments]    = useState([])
+  const [attachments,  setAttachments]  = useState([])
+  const [isDragOver,   setIsDragOver]   = useState(false)
   const fileInputRef = useRef(null)
 
   // Vorlagen
@@ -485,9 +486,8 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
   }
 
   // ── Anhänge ──────────────────────────────────────────────────────────────────
-  function handleFileSelect(e) {
-    const files = Array.from(e.target.files ?? [])
-    files.forEach(file => {
+  function addFiles(fileList) {
+    Array.from(fileList).forEach(file => {
       const reader = new FileReader()
       reader.onload = (ev) => {
         const base64 = ev.target.result.split(',')[1]
@@ -498,7 +498,29 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
       }
       reader.readAsDataURL(file)
     })
+  }
+
+  function handleFileSelect(e) {
+    addFiles(e.target.files ?? [])
     e.target.value = ''
+  }
+
+  function handleDrop(e) {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragOver(false)
+    if (e.dataTransfer.files?.length) addFiles(e.dataTransfer.files)
+  }
+
+  function handleDragOver(e) {
+    e.preventDefault()
+    e.stopPropagation()
+    if (!isDragOver) setIsDragOver(true)
+  }
+
+  function handleDragLeave(e) {
+    // Nur auslösen wenn wirklich außerhalb (nicht bei Child-Elementen)
+    if (!e.currentTarget.contains(e.relatedTarget)) setIsDragOver(false)
   }
 
   function removeAttachment(id) {
@@ -692,10 +714,35 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
 
       {/* ── 2. E-Mail-Editor ── */}
       {editorOpen && (
-        <div style={{
-          background: 'var(--surface)', border: '1px solid var(--border)',
-          borderRadius: '12px', padding: '20px', marginBottom: '20px',
-        }}>
+        <div
+          style={{
+            position: 'relative',
+            background: 'var(--surface)',
+            border: `1px solid ${isDragOver ? '#3b82f6' : 'var(--border)'}`,
+            borderRadius: '12px', padding: '20px', marginBottom: '20px',
+            boxShadow: isDragOver ? '0 0 0 3px rgba(59,130,246,0.18)' : 'none',
+            transition: 'border-color 0.12s, box-shadow 0.12s',
+          }}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+        >
+          {/* Drag-Overlay */}
+          {isDragOver && (
+            <div style={{
+              position: 'absolute', inset: 0, borderRadius: '12px', zIndex: 50,
+              background: 'rgba(59,130,246,0.07)',
+              border: '2px dashed #3b82f6',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              pointerEvents: 'none',
+            }}>
+              <div style={{ textAlign: 'center', color: '#60a5fa' }}>
+                <div style={{ fontSize: '28px', marginBottom: '6px' }}>📎</div>
+                <div style={{ fontSize: '14px', fontWeight: 700 }}>Dateien hier ablegen</div>
+                <div style={{ fontSize: '11px', opacity: 0.7, marginTop: '2px' }}>Max. ~4 MB gesamt</div>
+              </div>
+            </div>
+          )}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
               {/* Typ-Badge + Schnellwechsel */}
@@ -957,6 +1004,9 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
               >
                 📎 Anhang hinzufügen
               </button>
+              <span style={{ fontSize: '10px', color: 'var(--text-muted)', opacity: 0.6 }}>
+                oder Dateien hierher ziehen
+              </span>
               {attachments.length > 0 && (
                 <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
                   {attachments.length} Anhang{attachments.length !== 1 ? 'hänge' : ''} ·{' '}
