@@ -111,6 +111,7 @@ function migrateClient(c) {
     jaMonat:                     c.jaMonat                     ?? null,
     zusatzaufgaben:              Array.isArray(c.zusatzaufgaben) ? c.zusatzaufgaben : [],
     rechner:                     Array.isArray(c.rechner)        ? c.rechner        : [],
+    kontakte:                    Array.isArray(c.kontakte)       ? c.kontakte       : [],
   }
 }
 

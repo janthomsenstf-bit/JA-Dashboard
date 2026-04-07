@@ -378,6 +378,142 @@ function VejCard({ auftrag, onToggle, setup }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Hauptkomponente
 // ─────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Kontaktpersonen-Komponente
+// ─────────────────────────────────────────────────────────────────────────────
+function KontaktpersonenSection({ client, onUpdate }) {
+  const kontakte = Array.isArray(client.kontakte) ? client.kontakte : []
+  const [editId,    setEditId]    = useState(null)
+  const [editForm,  setEditForm]  = useState({})
+  const [addOpen,   setAddOpen]   = useState(false)
+  const [newForm,   setNewForm]   = useState({ name: '', rolle: '', email: '', telefon: '' })
+
+  function saveKontakt(id, patch) {
+    onUpdate({ kontakte: kontakte.map(k => k.id === id ? { ...k, ...patch } : k) })
+    setEditId(null)
+  }
+
+  function deleteKontakt(id) {
+    onUpdate({ kontakte: kontakte.filter(k => k.id !== id) })
+  }
+
+  function addKontakt() {
+    if (!newForm.name && !newForm.email) return
+    const entry = { id: 'p' + Date.now().toString(36), ...newForm }
+    onUpdate({ kontakte: [...kontakte, entry] })
+    setNewForm({ name: '', rolle: '', email: '', telefon: '' })
+    setAddOpen(false)
+  }
+
+  return (
+    <div style={{ marginTop: '24px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+        <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+          Kontaktpersonen ({kontakte.length})
+        </div>
+        <button className="btn btn-ghost btn-sm" onClick={() => setAddOpen(p => !p)} style={{ fontSize: '11px' }}>
+          + Hinzufügen
+        </button>
+      </div>
+
+      {/* Neue Kontaktperson */}
+      {addOpen && (
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px', marginBottom: '8px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
+            <div>
+              <label style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Name *</label>
+              <input className="input" value={newForm.name} onChange={e => setNewForm(p => ({ ...p, name: e.target.value }))}
+                placeholder="Max Mustermann" style={{ width: '100%', fontSize: '12px' }} />
+            </div>
+            <div>
+              <label style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Rolle / Funktion</label>
+              <input className="input" value={newForm.rolle} onChange={e => setNewForm(p => ({ ...p, rolle: e.target.value }))}
+                placeholder="Geschäftsführer" style={{ width: '100%', fontSize: '12px' }} />
+            </div>
+            <div>
+              <label style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>E-Mail</label>
+              <input className="input" value={newForm.email} onChange={e => setNewForm(p => ({ ...p, email: e.target.value }))}
+                placeholder="max@firma.de" style={{ width: '100%', fontSize: '12px' }} />
+            </div>
+            <div>
+              <label style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Telefon</label>
+              <input className="input" value={newForm.telefon} onChange={e => setNewForm(p => ({ ...p, telefon: e.target.value }))}
+                placeholder="+49 40 ..." style={{ width: '100%', fontSize: '12px' }} />
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: '6px' }}>
+            <button className="btn btn-primary btn-sm" onClick={addKontakt} style={{ fontSize: '11px' }}>Speichern</button>
+            <button className="btn btn-ghost btn-sm" onClick={() => setAddOpen(false)} style={{ fontSize: '11px' }}>Abbrechen</button>
+          </div>
+        </div>
+      )}
+
+      {kontakte.length === 0 && !addOpen && (
+        <div style={{ fontSize: '12px', color: 'var(--text-muted)', padding: '8px 0' }}>
+          Noch keine Kontaktpersonen hinterlegt.
+        </div>
+      )}
+
+      {kontakte.map(k => (
+        <div key={k.id} style={{
+          background: 'var(--surface)', border: '1px solid var(--border)',
+          borderRadius: '8px', padding: '10px 12px', marginBottom: '6px',
+        }}>
+          {editId === k.id ? (
+            <div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
+                <div>
+                  <label style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Name</label>
+                  <input className="input" value={editForm.name ?? k.name} onChange={e => setEditForm(p => ({ ...p, name: e.target.value }))}
+                    style={{ width: '100%', fontSize: '12px' }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Rolle</label>
+                  <input className="input" value={editForm.rolle ?? k.rolle} onChange={e => setEditForm(p => ({ ...p, rolle: e.target.value }))}
+                    style={{ width: '100%', fontSize: '12px' }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>E-Mail</label>
+                  <input className="input" value={editForm.email ?? k.email} onChange={e => setEditForm(p => ({ ...p, email: e.target.value }))}
+                    style={{ width: '100%', fontSize: '12px' }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Telefon</label>
+                  <input className="input" value={editForm.telefon ?? k.telefon} onChange={e => setEditForm(p => ({ ...p, telefon: e.target.value }))}
+                    style={{ width: '100%', fontSize: '12px' }} />
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <button className="btn btn-primary btn-sm" onClick={() => saveKontakt(k.id, editForm)} style={{ fontSize: '11px' }}>Speichern</button>
+                <button className="btn btn-ghost btn-sm" onClick={() => { setEditId(null); setEditForm({}) }} style={{ fontSize: '11px' }}>Abbrechen</button>
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '13px', fontWeight: 600 }}>{k.name || '–'}</span>
+                  {k.rolle && <span style={{ fontSize: '10px', color: 'var(--text-muted)', background: 'var(--surface-2, rgba(255,255,255,0.05))', padding: '1px 7px', borderRadius: '10px' }}>{k.rolle}</span>}
+                </div>
+                <div style={{ display: 'flex', gap: '12px', marginTop: '2px', flexWrap: 'wrap' }}>
+                  {k.email && <span style={{ fontSize: '11px', color: 'var(--accent)' }}>✉ {k.email}</span>}
+                  {k.telefon && <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>📞 {k.telefon}</span>}
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
+                <button className="btn btn-ghost btn-sm" onClick={() => { setEditId(k.id); setEditForm({ name: k.name, rolle: k.rolle, email: k.email, telefon: k.telefon }) }}
+                  style={{ fontSize: '11px' }}>✏️</button>
+                <button className="btn btn-ghost btn-sm" onClick={() => deleteKontakt(k.id)}
+                  style={{ fontSize: '11px', color: 'var(--red)' }}>🗑</button>
+              </div>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export default function AuftragTab({ client, onUpdate }) {
   const auftrag = client.auftrag ?? {}
 
@@ -584,6 +720,9 @@ export default function AuftragTab({ client, onUpdate }) {
         {/* Veranlagung / Einkünfte (ER/SIE) */}
         <VejCard auftrag={auftrag} onToggle={toggleKey} setup={setup} />
       </div>
+
+      {/* ══════════════════ 4. KONTAKTPERSONEN ══════════════════ */}
+      <KontaktpersonenSection client={client} onUpdate={onUpdate} />
 
     </div>
   )

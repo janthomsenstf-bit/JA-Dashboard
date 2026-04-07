@@ -17,6 +17,28 @@ function saveAbsender(list) {
   try { localStorage.setItem(ABSENDER_KEY, JSON.stringify(list)) } catch {}
 }
 
+// ── SMTP Senden ───────────────────────────────────────────────────────────────
+async function sendViaSMTP({ to, from, subject, text, cc, bcc, account }) {
+  const res = await fetch('/api/send-email', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ to, from, subject, text, cc, bcc, account }),
+  })
+  const data = await res.json()
+  if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`)
+  return data
+}
+
+// ── IMAP Abrufen ──────────────────────────────────────────────────────────────
+async function fetchEmails(account, since) {
+  const params = new URLSearchParams({ account })
+  if (since) params.set('since', since)
+  const res = await fetch(`/api/fetch-emails?${params}`)
+  const data = await res.json()
+  if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`)
+  return data.emails ?? []
+}
+
 // ── Typ-Konfiguration ─────────────────────────────────────────────────────────
 const TYP_CONFIG = {
   rueckfragen:  { label: 'Rückfragen',        icon: '📤', color: '#2563eb', bg: 'rgba(37,99,235,0.08)'  },
@@ -25,6 +47,7 @@ const TYP_CONFIG = {
   unterlagen:   { label: 'Unterlagen anfordern', icon: '📎', color: '#7c3aed', bg: 'rgba(124,58,237,0.08)' },
   termin:       { label: 'Termin abstimmen',   icon: '📅', color: '#0891b2', bg: 'rgba(8,145,178,0.08)'  },
   frei:         { label: 'Freie Nachricht',    icon: '✉️', color: '#64748b', bg: 'rgba(100,116,139,0.08)' },
+  eingehend:    { label: 'Eingehend',          icon: '📨', color: '#16a34a', bg: 'rgba(22,163,74,0.08)'  },
 }
 
 const STATUS_BADGES = {
@@ -169,14 +192,16 @@ function AbsenderModal({ onClose }) {
   const [list, setList] = useState(() => loadAbsender())
   const [newName, setNewName]   = useState('')
   const [newEmail, setNewEmail] = useState('')
+  const [newKonto, setNewKonto] = useState('hostinger')
 
   function add() {
     if (!newEmail.trim()) return
-    const updated = [...list, { name: newName.trim(), email: newEmail.trim(), isDefault: list.length === 0 }]
+    const updated = [...list, { name: newName.trim(), email: newEmail.trim(), konto: newKonto, isDefault: list.length === 0 }]
     setList(updated)
     saveAbsender(updated)
     setNewName('')
     setNewEmail('')
+    setNewKonto('hostinger')
   }
 
   function remove(i) {
@@ -247,6 +272,11 @@ function AbsenderModal({ onClose }) {
             style={{ flex: '2 1 180px', fontSize: '12px', padding: '6px 10px' }}
             onKeyDown={e => e.key === 'Enter' && add()}
           />
+          <select className="input" value={newKonto} onChange={e => setNewKonto(e.target.value)}
+            style={{ fontSize: '12px', padding: '6px 10px' }}>
+            <option value="hostinger">Hostinger</option>
+            <option value="strato">Strato</option>
+          </select>
           <button className="btn btn-primary btn-sm" onClick={add}>+ Hinzufügen</button>
         </div>
 
@@ -278,9 +308,18 @@ export default function KommunikationTab({ client, onUpdate }) {
   // UI State
   const [aiLoading,   setAiLoading]   = useState(false)
   const [aiError,     setAiError]     = useState('')
+  const [sendLoading, setSendLoading] = useState(false)
+  const [sendError,   setSendError]   = useState('')
   const [filter,      setFilter]      = useState('alle')
-  const [expanded,    setExpanded]    = useState(null)   // id des expandierten Eintrags
+  const [expanded,    setExpanded]    = useState(null)
   const [showAbsenderModal, setShowAbsenderModal] = useState(false)
+
+  // Posteingang State
+  const [posteingangOpen,   setPosteingangOpen]   = useState(false)
+  const [posteingangEmails, setPosteingangEmails] = useState([])
+  const [posteingangLoad,   setPosteingangLoad]   = useState(false)
+  const [posteingangError,  setPosteingangError]  = useState('')
+  const [unbekannt,         setUnbekannt]         = useState([]) // nicht zugeordnete E-Mails
 
   function saveKomm(patch) {
     onUpdate({ kommunikation: { ...komm, ...patch } })
@@ -310,12 +349,40 @@ export default function KommunikationTab({ client, onUpdate }) {
     resetEditor()
   }
 
-  // Als gesendet markieren (+ mailto öffnen optional)
-  function markGesendet(openMail = true) {
-    if (!betreff && !text) return
-    if (openMail) {
-      openMailto({ empfaenger, betreff, text, cc, bcc })
+  // SMTP Senden
+  async function handleSendSMTP() {
+    if (!empfaenger || !betreff || !text) {
+      setSendError('Bitte Empfänger, Betreff und Text ausfüllen.')
+      return
     }
+    setSendLoading(true)
+    setSendError('')
+    const selectedAbsender = absender.find(a => a.email === absenderVal)
+    const account = selectedAbsender?.konto || 'hostinger'
+    try {
+      await sendViaSMTP({ to: empfaenger, from: absenderVal, subject: betreff, text, cc, bcc, account })
+      const now = new Date().toISOString()
+      const entry = {
+        id: 'k' + Date.now().toString(36),
+        typ: activTyp,
+        empfaenger, absender: absenderVal, betreff, text, cc, bcc,
+        status: 'gesendet',
+        erstelltAm: now,
+        gesendetAm: now,
+      }
+      saveKomm({ events: [entry, ...events] })
+      applyStatusUpdates(activTyp, now)
+      resetEditor()
+    } catch (e) {
+      setSendError(e.message)
+    } finally {
+      setSendLoading(false)
+    }
+  }
+
+  // Als gesendet markieren (manuell, ohne SMTP)
+  function markGesendetManuell() {
+    if (!betreff && !text) return
     const now = new Date().toISOString()
     const entry = {
       id: 'k' + Date.now().toString(36),
@@ -374,17 +441,24 @@ export default function KommunikationTab({ client, onUpdate }) {
     onUpdate(patch)
   }
 
-  // Entwurf aus Historie nachträglich senden
-  function sendFromHistory(entry) {
-    openMailto({ empfaenger: entry.empfaenger, betreff: entry.betreff, text: entry.text, cc: entry.cc, bcc: entry.bcc })
-    const now = new Date().toISOString()
-    saveKomm({
-      events: events.map(e => e.id === entry.id
-        ? { ...e, status: 'gesendet', gesendetAm: now }
-        : e
-      ),
-    })
-    applyStatusUpdates(entry.typ, now)
+  // Entwurf aus Historie nachträglich senden (SMTP)
+  async function sendFromHistory(entry) {
+    const selectedAbsender = absender.find(a => a.email === entry.absender)
+    const account = selectedAbsender?.konto || 'hostinger'
+    try {
+      await sendViaSMTP({ to: entry.empfaenger, from: entry.absender, subject: entry.betreff, text: entry.text, cc: entry.cc, bcc: entry.bcc, account })
+      const now = new Date().toISOString()
+      saveKomm({
+        events: events.map(e => e.id === entry.id
+          ? { ...e, status: 'gesendet', gesendetAm: now }
+          : e
+        ),
+      })
+      applyStatusUpdates(entry.typ, now)
+    } catch (e) {
+      // Fallback: mailto öffnen
+      openMailto({ empfaenger: entry.empfaenger, betreff: entry.betreff, text: entry.text, cc: entry.cc, bcc: entry.bcc })
+    }
   }
 
   // KI-Entwurf erzeugen
@@ -416,6 +490,43 @@ export default function KommunikationTab({ client, onUpdate }) {
     } finally {
       setAiLoading(false)
     }
+  }
+
+  // Posteingang abrufen
+  async function handleFetchEmails() {
+    setPosteingangLoad(true)
+    setPosteingangError('')
+    try {
+      const [h, s] = await Promise.all([
+        fetchEmails('hostinger').catch(e => { console.warn('Hostinger IMAP:', e.message); return [] }),
+        fetchEmails('strato').catch(e => { console.warn('Strato IMAP:', e.message); return [] }),
+      ])
+      const all = [...h, ...s].sort((a, b) => new Date(b.datum) - new Date(a.datum))
+      setPosteingangEmails(all)
+      setPosteingangOpen(true)
+    } catch (e) {
+      setPosteingangError(e.message)
+    } finally {
+      setPosteingangLoad(false)
+    }
+  }
+
+  // Eingehende E-Mail einem Mandanten zuordnen (direkt diesem hier)
+  function assignToThisClient(email) {
+    const entry = {
+      id: 'k' + Date.now().toString(36),
+      typ: 'eingehend',
+      empfaenger: email.an,
+      absender: email.von,
+      betreff: email.betreff,
+      text: `Von: ${email.vonName ? email.vonName + ' <' + email.von + '>' : email.von}\nBetreff: ${email.betreff}\nDatum: ${fmtDatum(email.datum)}\n\n(E-Mail-Text nicht geladen — bitte im E-Mail-Client öffnen)`,
+      cc: '', bcc: '',
+      status: 'gesendet',
+      erstelltAm: email.datum,
+      gesendetAm: email.datum,
+    }
+    saveKomm({ events: [entry, ...events] })
+    setPosteingangEmails(prev => prev.filter(e => e.uid !== email.uid || e.account !== email.account))
   }
 
   // Gefilterte Events
@@ -488,8 +599,20 @@ export default function KommunikationTab({ client, onUpdate }) {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
             <div>
               <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>An (Empfänger)</label>
-              <input className="input" value={empfaenger} onChange={e => setEmpfaenger(e.target.value)}
-                placeholder="mandant@firma.de" style={{ width: '100%', fontSize: '13px' }} />
+              {(client.kontakte ?? []).length > 0 ? (
+                <select className="input" value={empfaenger} onChange={e => setEmpfaenger(e.target.value)} style={{ width: '100%', fontSize: '13px' }}>
+                  <option value="">– Kontaktperson wählen –</option>
+                  {(client.kontakte ?? []).map(k => (
+                    <option key={k.id} value={k.email}>{k.name}{k.rolle ? ` (${k.rolle})` : ''}{k.email ? ` – ${k.email}` : ''}</option>
+                  ))}
+                  <option value="__frei__">Andere E-Mail-Adresse eingeben...</option>
+                </select>
+              ) : null}
+              {((client.kontakte ?? []).length === 0 || empfaenger === '__frei__') && (
+                <input className="input" value={empfaenger === '__frei__' ? '' : empfaenger}
+                  onChange={e => setEmpfaenger(e.target.value)}
+                  placeholder="mandant@firma.de" style={{ width: '100%', fontSize: '13px', marginTop: (client.kontakte ?? []).length > 0 ? '4px' : '0' }} />
+              )}
             </div>
             <div>
               <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
@@ -566,7 +689,13 @@ export default function KommunikationTab({ client, onUpdate }) {
 
           {aiError && (
             <div style={{ fontSize: '11px', color: '#dc2626', marginBottom: '10px', padding: '6px 10px', background: 'rgba(220,38,38,0.06)', borderRadius: '6px' }}>
-              ⚠️ {aiError}
+              ⚠️ KI: {aiError}
+            </div>
+          )}
+
+          {sendError && (
+            <div style={{ fontSize: '11px', color: '#dc2626', marginBottom: '10px', padding: '6px 10px', background: 'rgba(220,38,38,0.06)', borderRadius: '6px' }}>
+              ⚠️ Senden fehlgeschlagen: {sendError}
             </div>
           )}
 
@@ -574,18 +703,12 @@ export default function KommunikationTab({ client, onUpdate }) {
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
             <button
               className="btn btn-primary btn-sm"
-              onClick={() => markGesendet(true)}
+              onClick={handleSendSMTP}
+              disabled={sendLoading}
               style={{ fontSize: '12px' }}
-              title="E-Mail-Client öffnen und als gesendet markieren"
+              title="E-Mail direkt über SMTP senden"
             >
-              📤 mailto: öffnen + als gesendet markieren
-            </button>
-            <button
-              className="btn btn-ghost btn-sm"
-              onClick={handleMailto}
-              style={{ fontSize: '12px' }}
-            >
-              📧 mailto: öffnen (ohne Speichern)
+              {sendLoading ? '⏳ Wird gesendet...' : '📤 Senden'}
             </button>
             <button
               className="btn btn-ghost btn-sm"
@@ -596,10 +719,17 @@ export default function KommunikationTab({ client, onUpdate }) {
             </button>
             <button
               className="btn btn-ghost btn-sm"
-              onClick={() => markGesendet(false)}
+              onClick={handleMailto}
+              style={{ fontSize: '12px' }}
+            >
+              📧 mailto: öffnen
+            </button>
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={markGesendetManuell}
               style={{ fontSize: '12px', color: '#16a34a' }}
             >
-              ✓ Nur als gesendet markieren
+              ✓ Manuell als gesendet markieren
             </button>
           </div>
         </div>
@@ -615,6 +745,54 @@ export default function KommunikationTab({ client, onUpdate }) {
           ✏️ Neue E-Mail verfassen
         </button>
       )}
+
+      {/* ── Posteingang abrufen ── */}
+      <div style={{ marginBottom: '20px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={handleFetchEmails}
+            disabled={posteingangLoad}
+            style={{ fontSize: '12px' }}
+          >
+            {posteingangLoad ? '⏳ Wird abgerufen...' : '📥 E-Mails abrufen (Posteingang)'}
+          </button>
+          {posteingangError && (
+            <span style={{ fontSize: '11px', color: '#dc2626' }}>⚠️ {posteingangError}</span>
+          )}
+        </div>
+
+        {posteingangOpen && posteingangEmails.length > 0 && (
+          <div style={{ marginTop: '12px', border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden' }}>
+            <div style={{ padding: '8px 12px', background: 'rgba(8,145,178,0.06)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '11px', fontWeight: 700, color: '#0891b2' }}>📥 Posteingang — {posteingangEmails.length} E-Mails</span>
+              <button className="btn btn-ghost btn-sm" onClick={() => setPosteingangOpen(false)} style={{ fontSize: '10px' }}>✕</button>
+            </div>
+            {posteingangEmails.map((email, i) => (
+              <div key={i} style={{ padding: '10px 12px', borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: '12px', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{email.betreff}</div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                    Von: {email.vonName ? `${email.vonName} <${email.von}>` : email.von} · {fmtDatum(email.datum)}
+                    <span style={{ marginLeft: '8px', fontSize: '10px', color: '#0891b2' }}>{email.account}</span>
+                  </div>
+                </div>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => assignToThisClient(email)}
+                  style={{ fontSize: '10px', whiteSpace: 'nowrap', color: '#16a34a' }}
+                >
+                  + Diesem Mandanten zuordnen
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {posteingangOpen && posteingangEmails.length === 0 && !posteingangLoad && (
+          <div style={{ marginTop: '8px', fontSize: '12px', color: 'var(--text-muted)' }}>Keine neuen E-Mails gefunden.</div>
+        )}
+      </div>
 
       {/* ── 3. E-Mail-Historie ── */}
       <div>
