@@ -12,6 +12,7 @@ import ArchiveModal from './components/ArchiveModal.jsx'
 import ChecklistenEditor from './components/ChecklistenEditor.jsx'
 import KalenderSection from './components/KalenderSection.jsx'
 import GlobalTodoView  from './components/GlobalTodoView.jsx'
+import PosteingangUngeklaert from './components/PosteingangUngeklaert.jsx'
 import { supabase } from './utils/supabaseClient.js'
 import { cloudLoadAll, cloudSave, cloudSaveNow, cloudSnapshot, migrateLocalStorageToCloud } from './utils/cloudStorage.js'
 import LoginPage from './components/LoginPage.jsx'
@@ -173,6 +174,10 @@ export default function App() {
   const [vorlagen, setVorlagen]                         = useState(() => loadVorlagen())           // Fallback: lokal
   const importRef                         = useRef(null)
 
+  // ── Posteingang / E-Mail-Auto-Abruf ──────────────────────────────────────────
+  const [unbekannteEmails,  setUnbekannteEmails]  = useState([])
+  const [posteingangOpen,   setPosteingangOpen]   = useState(false)
+
   // ── Termine ───────────────────────────────────────────────────────────────────
   const [termine, setTermine] = useState([])
 
@@ -187,9 +192,12 @@ export default function App() {
   const [backupToast, setBackupToast]       = useState('')            // Erfolgs-/Fehlertext
   const [backupLoading, setBackupLoading]   = useState(false)
   const clientsRef                          = useRef(clients)
+  const unbekannteEmailsRef                 = useRef([])
+  const lastEmailFetchRef                   = useRef(localStorage.getItem('email-last-fetch-at') || null)
 
   // clientsRef immer aktuell halten (für den Interval-Callback)
   useEffect(() => { clientsRef.current = clients }, [clients])
+  useEffect(() => { unbekannteEmailsRef.current = unbekannteEmails }, [unbekannteEmails])
 
   // ── Supabase Auth ─────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -213,6 +221,7 @@ export default function App() {
         if (Array.isArray(cloudData['sdb-termine'])) setTermine(cloudData['sdb-termine'])
         if (cloudData['spielbuch-checklisten-v1'])    setChecklistenTypen(cloudData['spielbuch-checklisten-v1'])
         if (cloudData['spielbuch-vorlagen-v1'])       setVorlagen(cloudData['spielbuch-vorlagen-v1'])
+        if (Array.isArray(cloudData['unbekannte-emails'])) setUnbekannteEmails(cloudData['unbekannte-emails'])
       } else {
         // Noch keine Cloud-Daten – lokale Daten prüfen
         try {
@@ -254,6 +263,10 @@ export default function App() {
     if (!authUser || dataLoading) return
     cloudSave('sdb-termine', termine)
   }, [termine])
+  useEffect(() => {
+    if (!authUser || dataLoading) return
+    cloudSave('unbekannte-emails', unbekannteEmails)
+  }, [unbekannteEmails])
 
   // ── Auto-Snapshot alle 30 Minuten ────────────────────────────────────────────
   useEffect(() => {
@@ -265,6 +278,126 @@ export default function App() {
     }, BACKUP_INTERVAL_MS)
     return () => clearInterval(id)
   }, [authUser])
+
+  // ── E-Mail Auto-Polling ───────────────────────────────────────────────────────
+  function buildIncomingEvent(email) {
+    return {
+      id: 'k' + Date.now().toString(36) + Math.random().toString(36).slice(2, 4),
+      typ: 'eingehend',
+      empfaenger: email.an,
+      absender: email.von,
+      betreff: email.betreff,
+      text: `Von: ${email.vonName || email.von}\nBetreff: ${email.betreff}\nDatum: ${email.datum}`,
+      cc: '', bcc: '',
+      status: 'gesendet',
+      erstelltAm: email.datum,
+      gesendetAm: email.datum,
+      sourceUid: String(email.uid),
+      sourceAccount: email.account,
+    }
+  }
+
+  async function pollEmails() {
+    const since = lastEmailFetchRef.current
+    const sinceParam = since ? '&since=' + encodeURIComponent(since) : ''
+    const [h, s] = await Promise.all([
+      fetch(`/api/fetch-emails?account=hostinger${sinceParam}`).then(r => r.json()).catch(() => ({ emails: [] })),
+      fetch(`/api/fetch-emails?account=strato${sinceParam}`).then(r => r.json()).catch(() => ({ emails: [] })),
+    ])
+    const newEmails = [...(h.emails ?? []), ...(s.emails ?? [])]
+    if (!newEmails.length) return
+
+    // Deduplication: bekannte UIDs aus Mandanten-Events + unbekannte Liste
+    const knownUids = new Set()
+    clientsRef.current.forEach(c =>
+      (c.kommunikation?.events ?? []).forEach(e => {
+        if (e.sourceUid) knownUids.add(`${e.sourceAccount}:${e.sourceUid}`)
+      })
+    )
+    unbekannteEmailsRef.current.forEach(e => knownUids.add(`${e.account}:${e.uid}`))
+
+    const fresh = newEmails.filter(e => !knownUids.has(`${e.account}:${e.uid}`))
+    if (!fresh.length) {
+      const now = new Date().toISOString()
+      lastEmailFetchRef.current = now
+      localStorage.setItem('email-last-fetch-at', now)
+      return
+    }
+
+    // E-Mail-Adress-Index: email.toLowerCase() → clientId
+    const emailIndex = {}
+    clientsRef.current.forEach(c =>
+      (c.kontakte ?? []).forEach(k => {
+        if (k.email) emailIndex[k.email.toLowerCase()] = c.id
+      })
+    )
+
+    const toAssign = []
+    const toUnbekannt = []
+    fresh.forEach(email => {
+      const clientId = emailIndex[email.von?.toLowerCase()]
+      if (clientId) toAssign.push({ clientId, email })
+      else toUnbekannt.push({ ...email, empfangenAm: new Date().toISOString() })
+    })
+
+    if (toAssign.length) {
+      setClients(prev => prev.map(c => {
+        const matching = toAssign.filter(a => a.clientId === c.id)
+        if (!matching.length) return c
+        const newEvents = matching.map(({ email }) => buildIncomingEvent(email))
+        const komm = c.kommunikation ?? { events: [] }
+        return { ...c, kommunikation: { ...komm, events: [...newEvents, ...komm.events] } }
+      }))
+    }
+
+    if (toUnbekannt.length) {
+      setUnbekannteEmails(prev => [...toUnbekannt, ...prev])
+    }
+
+    const now = new Date().toISOString()
+    lastEmailFetchRef.current = now
+    localStorage.setItem('email-last-fetch-at', now)
+  }
+
+  useEffect(() => {
+    if (!authUser) return
+    // Erster Abruf nach kurzer Verzögerung (damit Daten geladen sind)
+    const initTimer = setTimeout(() => pollEmails().catch(() => {}), 5000)
+    const id = setInterval(() => pollEmails().catch(() => {}), 15 * 60 * 1000)
+    return () => { clearTimeout(initTimer); clearInterval(id) }
+  }, [authUser])
+
+  // ── E-Mail einem Mandanten manuell zuordnen ───────────────────────────────────
+  function assignEmail(emailUid, emailAccount, clientId, saveContact) {
+    const email = unbekannteEmailsRef.current.find(e => e.uid === emailUid && e.account === emailAccount)
+    if (!email) return
+    const event = buildIncomingEvent(email)
+    setClients(prev => prev.map(c => {
+      if (c.id !== clientId) return c
+      const komm = c.kommunikation ?? { events: [] }
+      const newKontakte = saveContact && !( c.kontakte ?? []).some(k => k.email?.toLowerCase() === email.von?.toLowerCase())
+        ? [...(c.kontakte ?? []), { id: 'p' + Date.now().toString(36), name: email.vonName || '', rolle: '', email: email.von, telefon: '' }]
+        : c.kontakte ?? []
+      return { ...c, kommunikation: { ...komm, events: [event, ...komm.events] }, kontakte: newKontakte }
+    }))
+    setUnbekannteEmails(prev => prev.filter(e => !(e.uid === emailUid && e.account === emailAccount)))
+  }
+
+  function assignAllFromAddress(vonAddress, clientId, saveContact) {
+    const matching = unbekannteEmailsRef.current.filter(e => e.von?.toLowerCase() === vonAddress.toLowerCase())
+    if (!matching.length) return
+    const newEvents = matching.map(email => buildIncomingEvent(email))
+    setClients(prev => prev.map(c => {
+      if (c.id !== clientId) return c
+      const komm = c.kommunikation ?? { events: [] }
+      const firstMatch = matching[0]
+      const newKontakte = saveContact && !(c.kontakte ?? []).some(k => k.email?.toLowerCase() === vonAddress.toLowerCase())
+        ? [...(c.kontakte ?? []), { id: 'p' + Date.now().toString(36), name: firstMatch.vonName || '', rolle: '', email: firstMatch.von, telefon: '' }]
+        : c.kontakte ?? []
+      return { ...c, kommunikation: { ...komm, events: [...newEvents, ...komm.events] }, kontakte: newKontakte }
+    }))
+    setUnbekannteEmails(prev => prev.filter(e => e.von?.toLowerCase() !== vonAddress.toLowerCase()))
+  }
 
   // ── Backup-Erinnerung alle 30 Minuten ─────────────────────────────────────────
   useEffect(() => {
@@ -709,6 +842,16 @@ export default function App() {
               )}
             </div>
           )}
+          {unbekannteEmails.length > 0 && (
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => setPosteingangOpen(true)}
+              title={`${unbekannteEmails.length} nicht zugeordnete E-Mail(s)`}
+              style={{ fontSize: '12px', color: '#f97316', fontWeight: 700 }}
+            >
+              📥 {unbekannteEmails.length}
+            </button>
+          )}
           <button className="btn btn-ghost btn-sm" onClick={() => importRef.current?.click()} title="Daten aus Backup-Datei wiederherstellen" style={{ fontSize: '12px' }}>
             📂 Import
           </button>
@@ -780,6 +923,16 @@ export default function App() {
 
       {overdueClients.length > 0 && (
         <AlertBanner clients={overdueClients} onSelect={id => setSelectedId(id)} />
+      )}
+
+      {posteingangOpen && (
+        <PosteingangUngeklaert
+          unbekannteEmails={unbekannteEmails}
+          clients={clients}
+          onAssign={assignEmail}
+          onAssignAll={assignAllFromAddress}
+          onClose={() => setPosteingangOpen(false)}
+        />
       )}
 
       {/* Backup-Erinnerung nach 30 Minuten (nur wenn kein Auto-Backup-Ordner gesetzt) */}

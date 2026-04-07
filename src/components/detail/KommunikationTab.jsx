@@ -524,6 +524,8 @@ export default function KommunikationTab({ client, onUpdate }) {
       status: 'gesendet',
       erstelltAm: email.datum,
       gesendetAm: email.datum,
+      sourceUid: String(email.uid),
+      sourceAccount: email.account,
     }
     saveKomm({ events: [entry, ...events] })
     setPosteingangEmails(prev => prev.filter(e => e.uid !== email.uid || e.account !== email.account))
