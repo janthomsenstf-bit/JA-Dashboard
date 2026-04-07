@@ -88,8 +88,6 @@ export default function ClientTable({
     const cfg     = MANDANT_STATUS_CONFIG[status]
     const openQ   = c.rueckfragen.filter(r => !r.beantwortet).length
     const isSelected = c.id === selectedId
-    const mtCfg  = MANDATSTYP_CONFIG[c.mandatstyp ?? 'extern']
-
     // Check FA overdue
     let faFaellig = false
     if (c.faGeplantDatum && !c.faUebermittelt) {
@@ -107,12 +105,14 @@ export default function ClientTable({
         <div className="client-row-name">
           <span className="client-row-name-main">{c.name}</span>
           <div className="client-row-badges">
-            <span style={{
-              fontSize: '9px', fontWeight: 700, padding: '1px 6px', borderRadius: '10px',
-              background: mtCfg.bg, color: mtCfg.color, border: `1px solid ${mtCfg.border}`,
-            }}>
-              {mtCfg.label.toUpperCase()}
-            </span>
+            {c.mandatstyp === 'intern' && (
+              <span style={{
+                fontSize: '9px', fontWeight: 700, padding: '1px 6px', borderRadius: '10px',
+                background: 'rgba(124,58,237,0.12)', color: '#7c3aed', border: '1px solid rgba(124,58,237,0.3)',
+              }}>
+                INTERN
+              </span>
+            )}
             {openQ > 0 && (
               <span className="badge badge-red">{openQ} RQ offen</span>
             )}

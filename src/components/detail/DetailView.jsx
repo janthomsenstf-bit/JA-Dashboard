@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { getMandantStatus, MANDANT_STATUS_CONFIG } from '../../utils/progress.js'
 import StandDerArbeitTab    from './StandDerArbeitTab.jsx'
 import AufgabenTab          from './AufgabenTab.jsx'
 import AuftragTab           from './AuftragTab.jsx'
@@ -119,6 +120,68 @@ export default function DetailView({
             </button>
           ))}
         </div>
+
+        {/* ── Status-Strip ── */}
+        {(() => {
+          const status = getMandantStatus(client)
+          const cfg    = MANDANT_STATUS_CONFIG[status]
+          const openQ  = (client.rueckfragen ?? []).filter(r => !r.beantwortet).length
+          const rqGesendet = (client.rueckfragenSendungen ?? []).find(d => d)
+          const faDatum    = client.faGeplantDatum
+          const steDatum   = client.steGesendetDatum
+
+          function fmtShort(iso) {
+            if (!iso) return null
+            const d = new Date(iso)
+            return `${d.getDate().toString().padStart(2,'0')}.${(d.getMonth()+1).toString().padStart(2,'0')}.${d.getFullYear()}`
+          }
+
+          const datumItems = [
+            rqGesendet ? `RQ gesendet ${fmtShort(rqGesendet)}` : null,
+            steDatum   ? `STE ${fmtShort(steDatum)}` : null,
+            faDatum    ? `FA ${fmtShort(faDatum)}` : null,
+          ].filter(Boolean)
+
+          return (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap',
+              padding: '5px 16px',
+              borderTop: '1px solid var(--border)',
+              background: 'rgba(0,0,0,0.15)',
+              fontSize: '11px',
+            }}>
+              <span style={{
+                display: 'inline-flex', alignItems: 'center', gap: '4px',
+                padding: '2px 9px', borderRadius: '20px', fontWeight: 700,
+                background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.border}`,
+                whiteSpace: 'nowrap',
+              }}>
+                {cfg.icon} {cfg.label}
+              </span>
+
+              {openQ > 0 && (
+                <span style={{ color: '#ef4444', fontWeight: 600 }}>● {openQ} RQ offen</span>
+              )}
+              {openQ === 0 && (client.rueckfragen ?? []).length > 0 && (
+                <span style={{ color: '#16a34a', fontWeight: 600 }}>✓ Alle RQ beantwortet</span>
+              )}
+
+              {datumItems.map((item, i) => (
+                <span key={i} style={{ color: 'var(--text-muted)' }}>· {item}</span>
+              ))}
+
+              {client.mandatstyp === 'intern' && (
+                <span style={{
+                  marginLeft: 'auto', fontSize: '10px', fontWeight: 700,
+                  padding: '1px 7px', borderRadius: '10px',
+                  background: 'rgba(124,58,237,0.12)', color: '#7c3aed', border: '1px solid rgba(124,58,237,0.3)',
+                }}>
+                  INTERN
+                </span>
+              )}
+            </div>
+          )
+        })()}
       </div>
 
       {/* Termine & Fristen – immer sichtbar, aufklappbar */}

@@ -548,6 +548,7 @@ export default function AuftragTab({ client, onUpdate }) {
   const istKleinunternehmer= ustSystem  === 'kleinunternehmer'
   const hatUSt             = steuerarten.ust === true || (ustIntervall !== 'keine')
   const setup = { rechtsform, gewinnermittlung: gewinnermittl, istGmbH, istPers, hatUSt, istKleinunternehmer, ustIntervall }
+  const [setupOpen, setSetupOpen] = useState(false)
 
   function toggleKey(key) {
     onUpdate({ auftrag: { ...auftrag, [key]: !auftrag[key] } })
@@ -577,132 +578,161 @@ export default function AuftragTab({ client, onUpdate }) {
   return (
     <div className="tab-content" style={{ display: 'flex', flexDirection: 'column', gap: '0', background: 'var(--bg)' }}>
 
-      {/* ══════════════════ 1. MANDATS-SETUP ══════════════════ */}
-      <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '14px 16px', marginBottom: '14px' }}>
+      {/* ══════════════════ 1. MANDATS-SETUP (Akkordeon) ══════════════════ */}
+      <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', marginBottom: '14px', overflow: 'hidden' }}>
 
-        {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
-          <span style={{ fontSize: '16px' }}>⚙️</span>
-          <span style={{ fontWeight: 800, fontSize: '14px', color: 'var(--text)' }}>Mandats-Setup</span>
-          <span style={{ fontSize: '11px', color: 'var(--text-muted)', flex: 1 }}>Steuert dynamische Filterung & Aufgaben-Übersicht automatisch</span>
-          {risikoLabel && (
-            <span style={{ fontSize: '11px', fontWeight: 700, color: risikoLabel.color, background: risikoLabel.bg, padding: '3px 10px', borderRadius: '20px' }}>
+        {/* Akkordeon-Header (immer sichtbar, klickbar) */}
+        <button
+          onClick={() => setSetupOpen(o => !o)}
+          style={{
+            width: '100%', padding: '11px 16px',
+            display: 'flex', alignItems: 'center', gap: '10px',
+            background: 'var(--surface)', border: 'none', cursor: 'pointer',
+            textAlign: 'left', borderBottom: setupOpen ? '1px solid var(--border)' : 'none',
+          }}
+        >
+          <span style={{ fontSize: '15px', flexShrink: 0 }}>⚙️</span>
+          <span style={{ fontWeight: 700, fontSize: '13px', color: 'var(--text)', flexShrink: 0 }}>Mandats-Setup</span>
+
+          {/* Zusammenfassung wenn eingeklappt */}
+          {!setupOpen && (
+            <span style={{ fontSize: '11px', color: 'var(--text-muted)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {[
+                client.mandatstyp === 'intern' ? 'Intern' : 'Extern',
+                rechtsform || null,
+                gewinnermittl || null,
+                Object.entries(steuerarten).filter(([, v]) => v).map(([k]) => k.toUpperCase()).join('+') || null,
+                lohnAktiv ? 'Lohn' : null,
+              ].filter(Boolean).join(' · ')}
+            </span>
+          )}
+
+          {/* Risikolabel wenn aufgeklappt */}
+          {setupOpen && risikoLabel && (
+            <span style={{ fontSize: '11px', fontWeight: 700, color: risikoLabel.color, background: risikoLabel.bg, padding: '2px 9px', borderRadius: '20px', marginLeft: 'auto', flexShrink: 0 }}>
               {risikoLabel.label}
             </span>
           )}
-        </div>
 
-        {/* Mandatstyp */}
-        <SetupRow label="Mandatstyp">
-          <Chip label="Extern" active={(client.mandatstyp ?? 'extern') === 'extern'} color="#0891b2"
-            onClick={() => onUpdate({ mandatstyp: 'extern' })} />
-          <Chip label="Intern" active={(client.mandatstyp ?? 'extern') === 'intern'} color="#7c3aed"
-            onClick={() => onUpdate({ mandatstyp: 'intern' })} />
-        </SetupRow>
+          <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginLeft: setupOpen && !risikoLabel ? 'auto' : '0', flexShrink: 0 }}>
+            {setupOpen ? '▲' : '▼'}
+          </span>
+        </button>
 
-        {/* Rechtsform */}
-        <SetupRow label="Rechtsform">
-          {RECHTSFORMEN.map(rf => (
-            <Chip key={rf.key} label={rf.label} active={rechtsform === rf.key} color="#1e3a5f"
-              onClick={() => onUpdate({ rechtsform: rf.key })} />
-          ))}
-        </SetupRow>
+        {/* Aufgeklappter Inhalt */}
+        {setupOpen && (
+          <div style={{ padding: '14px 16px' }}>
+            {/* Mandatstyp */}
+            <SetupRow label="Mandatstyp">
+              <Chip label="Extern" active={(client.mandatstyp ?? 'extern') === 'extern'} color="#0891b2"
+                onClick={() => onUpdate({ mandatstyp: 'extern' })} />
+              <Chip label="Intern" active={(client.mandatstyp ?? 'extern') === 'intern'} color="#7c3aed"
+                onClick={() => onUpdate({ mandatstyp: 'intern' })} />
+            </SetupRow>
 
-        {/* Gewinnermittlung */}
-        <SetupRow label="Gewinnermittlung">
-          {GEWINNERMITTLUNG_ARTEN.map(g => (
-            <Chip key={g.key} label={g.label} active={gewinnermittl === g.key} color="#1e3a5f"
-              onClick={() => onUpdate({ gewinnermittlung: g.key })} />
-          ))}
-        </SetupRow>
-
-        {/* Steuerarten */}
-        <SetupRow label="Steuerarten aktiv">
-          {STEUERARTEN.map(s => {
-            // KSt nur für GmbH anzeigen
-            if (s.key === 'kst' && rechtsform && rechtsform !== 'GmbH' && rechtsform !== 'Sonstige') return null
-            const active = steuerarten[s.key] ?? false
-            return (
-              <Chip key={s.key} label={s.label} active={active} color={s.color}
-                onClick={() => onUpdate({ steuerarten: { ...steuerarten, [s.key]: !active } })} />
-            )
-          })}
-        </SetupRow>
-
-        {/* USt-System (nur wenn USt aktiv) */}
-        {(steuerarten.ust || hatUSt) && (
-          <SetupRow label="USt-System">
-            {UST_SYSTEME.map(s => (
-              <Chip key={s.key} label={s.label} active={ustSystem === s.key} color="#b45309"
-                onClick={() => onUpdate({ ustSystem: s.key })} small />
-            ))}
-          </SetupRow>
-        )}
-
-        {/* USt-Voranmeldung (nicht bei Kleinunternehmer) */}
-        {(steuerarten.ust || hatUSt) && !istKleinunternehmer && (
-          <SetupRow label="USt-Intervall">
-            {UST_INTERVALLE.map(i => (
-              <Chip key={i.key} label={i.label} active={ustIntervall === i.key} color="#b45309"
-                onClick={() => onUpdate({ ustZahlerTyp: i.key })} small />
-            ))}
-          </SetupRow>
-        )}
-
-        {/* Lohn */}
-        <SetupRow label="Lohnabrechnung">
-          <Chip label="Vorhanden" active={lohnAktiv}  color="#7c3aed" onClick={() => onUpdate({ lohnAktiv: true  })} small />
-          <Chip label="Nicht vorhanden" active={!lohnAktiv} color="#64748b" onClick={() => onUpdate({ lohnAktiv: false })} small />
-          {lohnAktiv && (
-            <>
-              <span style={{ fontSize: '11px', color: 'var(--text-muted)', margin: '0 4px' }}>Intervall:</span>
-              {LOHN_INTERVALLE.map(i => (
-                <Chip key={i.key} label={i.label} active={lohnIntervall === i.key} color="#7c3aed"
-                  onClick={() => onUpdate({ lohnIntervall: i.key })} small />
+            {/* Rechtsform */}
+            <SetupRow label="Rechtsform">
+              {RECHTSFORMEN.map(rf => (
+                <Chip key={rf.key} label={rf.label} active={rechtsform === rf.key} color="#1e3a5f"
+                  onClick={() => onUpdate({ rechtsform: rf.key })} />
               ))}
-            </>
-          )}
-        </SetupRow>
+            </SetupRow>
 
-        {/* Jahresabschluss-Monat */}
-        <SetupRow label="JA-Aufgabe Monat">
-          <select
-            value={jaMonat ?? ''}
-            onChange={e => {
-              const v = e.target.value
-              onUpdate({ jaMonat: v === '' ? null : parseInt(v, 10) })
-            }}
-            style={{
-              padding: '4px 10px', borderRadius: '6px', fontSize: '12px', cursor: 'pointer',
-              border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text)',
-              outline: 'none',
-            }}
-          >
-            <option value="">— Monat nicht konfiguriert (zeige immer)</option>
-            <option value="0">Keine automatische Aufgabe</option>
-            {MONAT_NAMEN.map((m, i) => (
-              <option key={i + 1} value={i + 1}>{m}</option>
-            ))}
-          </select>
-          {jaMonat >= 1 && jaMonat <= 12 && (
-            <span style={{ fontSize: '11px', color: '#0f766e', marginLeft: '8px' }}>
-              📁 Aufgabe erscheint nur im {MONAT_NAMEN[jaMonat - 1]}
-            </span>
-          )}
-          {jaMonat === 0 && (
-            <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginLeft: '8px' }}>
-              Keine automatische JA-Aufgabe wird erzeugt
-            </span>
-          )}
-        </SetupRow>
+            {/* Gewinnermittlung */}
+            <SetupRow label="Gewinnermittlung">
+              {GEWINNERMITTLUNG_ARTEN.map(g => (
+                <Chip key={g.key} label={g.label} active={gewinnermittl === g.key} color="#1e3a5f"
+                  onClick={() => onUpdate({ gewinnermittlung: g.key })} />
+              ))}
+            </SetupRow>
 
-        {/* Info: Quartals-USt Hinweis */}
-        {ustIntervall === 'quartalsweise' && (
-          <div style={{ marginTop: '6px', padding: '6px 10px', borderRadius: '6px', background: 'rgba(180,83,9,0.06)', border: '1px solid rgba(180,83,9,0.15)', fontSize: '11px', color: '#b45309' }}>
-            ℹ️ Quartalsweise USt-Voranmeldungen werden nur in <strong>März · Juni · September · Dezember</strong> als Aufgabe angezeigt.
+            {/* Steuerarten */}
+            <SetupRow label="Steuerarten aktiv">
+              {STEUERARTEN.map(s => {
+                if (s.key === 'kst' && rechtsform && rechtsform !== 'GmbH' && rechtsform !== 'Sonstige') return null
+                const active = steuerarten[s.key] ?? false
+                return (
+                  <Chip key={s.key} label={s.label} active={active} color={s.color}
+                    onClick={() => onUpdate({ steuerarten: { ...steuerarten, [s.key]: !active } })} />
+                )
+              })}
+            </SetupRow>
+
+            {/* USt-System (nur wenn USt aktiv) */}
+            {(steuerarten.ust || hatUSt) && (
+              <SetupRow label="USt-System">
+                {UST_SYSTEME.map(s => (
+                  <Chip key={s.key} label={s.label} active={ustSystem === s.key} color="#b45309"
+                    onClick={() => onUpdate({ ustSystem: s.key })} small />
+                ))}
+              </SetupRow>
+            )}
+
+            {/* USt-Voranmeldung */}
+            {(steuerarten.ust || hatUSt) && !istKleinunternehmer && (
+              <SetupRow label="USt-Intervall">
+                {UST_INTERVALLE.map(i => (
+                  <Chip key={i.key} label={i.label} active={ustIntervall === i.key} color="#b45309"
+                    onClick={() => onUpdate({ ustZahlerTyp: i.key })} small />
+                ))}
+              </SetupRow>
+            )}
+
+            {/* Lohn */}
+            <SetupRow label="Lohnabrechnung">
+              <Chip label="Vorhanden" active={lohnAktiv} color="#7c3aed" onClick={() => onUpdate({ lohnAktiv: true })} small />
+              <Chip label="Nicht vorhanden" active={!lohnAktiv} color="#64748b" onClick={() => onUpdate({ lohnAktiv: false })} small />
+              {lohnAktiv && (
+                <>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)', margin: '0 4px' }}>Intervall:</span>
+                  {LOHN_INTERVALLE.map(i => (
+                    <Chip key={i.key} label={i.label} active={lohnIntervall === i.key} color="#7c3aed"
+                      onClick={() => onUpdate({ lohnIntervall: i.key })} small />
+                  ))}
+                </>
+              )}
+            </SetupRow>
+
+            {/* Jahresabschluss-Monat */}
+            <SetupRow label="JA-Aufgabe Monat">
+              <select
+                value={jaMonat ?? ''}
+                onChange={e => {
+                  const v = e.target.value
+                  onUpdate({ jaMonat: v === '' ? null : parseInt(v, 10) })
+                }}
+                style={{
+                  padding: '4px 10px', borderRadius: '6px', fontSize: '12px', cursor: 'pointer',
+                  border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text)',
+                  outline: 'none',
+                }}
+              >
+                <option value="">— Monat nicht konfiguriert (zeige immer)</option>
+                <option value="0">Keine automatische Aufgabe</option>
+                {MONAT_NAMEN.map((m, i) => (
+                  <option key={i + 1} value={i + 1}>{m}</option>
+                ))}
+              </select>
+              {jaMonat >= 1 && jaMonat <= 12 && (
+                <span style={{ fontSize: '11px', color: '#0f766e', marginLeft: '8px' }}>
+                  📁 Aufgabe erscheint nur im {MONAT_NAMEN[jaMonat - 1]}
+                </span>
+              )}
+              {jaMonat === 0 && (
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginLeft: '8px' }}>
+                  Keine automatische JA-Aufgabe wird erzeugt
+                </span>
+              )}
+            </SetupRow>
+
+            {/* Quartals-USt Hinweis */}
+            {ustIntervall === 'quartalsweise' && (
+              <div style={{ marginTop: '6px', padding: '6px 10px', borderRadius: '6px', background: 'rgba(180,83,9,0.06)', border: '1px solid rgba(180,83,9,0.15)', fontSize: '11px', color: '#b45309' }}>
+                ℹ️ Quartalsweise USt-Voranmeldungen werden nur in <strong>März · Juni · September · Dezember</strong> als Aufgabe angezeigt.
+              </div>
+            )}
           </div>
         )}
-
       </div>
 
       {/* ══════════════════ 2. AUTOMATISCHE HINWEISE ══════════════════ */}

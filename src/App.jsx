@@ -196,6 +196,8 @@ export default function App() {
   const clientsRef                          = useRef(clients)
   const unbekannteEmailsRef                 = useRef([])
   const lastEmailFetchRef                   = useRef(localStorage.getItem('email-last-fetch-at') || null)
+  const [headerMenuOpen,  setHeaderMenuOpen] = useState(false)
+  const headerMenuRef                        = useRef(null)
 
   // clientsRef immer aktuell halten (für den Interval-Callback)
   useEffect(() => { clientsRef.current = clients }, [clients])
@@ -269,6 +271,24 @@ export default function App() {
     if (!authUser || dataLoading) return
     cloudSave('unbekannte-emails', unbekannteEmails)
   }, [unbekannteEmails])
+
+  // Auto-dismiss Startup-Banner nach 6 Sekunden
+  useEffect(() => {
+    if (!startupBanner) return
+    const t = setTimeout(() => setStartupBanner(false), 6000)
+    return () => clearTimeout(t)
+  }, [startupBanner])
+
+  // Click-outside für Header-Menü
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (headerMenuRef.current && !headerMenuRef.current.contains(e.target)) {
+        setHeaderMenuOpen(false)
+      }
+    }
+    if (headerMenuOpen) document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [headerMenuOpen])
 
   // ── Auto-Snapshot alle 30 Minuten ────────────────────────────────────────────
   useEffect(() => {
@@ -783,7 +803,7 @@ export default function App() {
           </span>
         </div>
 
-        <div style={{display:'flex', alignItems:'center', gap:'8px'}}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           {importMsg && (
             <span style={{
               fontSize: '11px',
@@ -793,57 +813,14 @@ export default function App() {
               {importMsg}
             </span>
           )}
-          <span style={{fontFamily:'var(--font-mono)', fontSize:'11px', color:'var(--text-muted)'}}>
+
+          {/* Stand + Mandate-Zähler */}
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
             {clients.filter(c => !c.archiviert).length} Mandate
+            {lastSaveAt && <span style={{ marginLeft: '6px', opacity: 0.6 }}>· {fmtZeit(lastSaveAt)}</span>}
           </span>
-          {/* ── Auto-Backup Controls ── */}
-          {fsSupported ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <button
-                className="btn btn-ghost btn-sm"
-                onClick={handleManualBackup}
-                disabled={backupLoading}
-                title={backupDir ? `Jetzt sichern in: ${backupDirName}` : 'Sicherungsordner wählen & sichern'}
-                style={{ fontSize: '12px', color: backupDir ? 'var(--green)' : undefined }}
-              >
-                {backupLoading ? '⏳' : (backupDir ? '💾 ✓' : '💾 Backup')}
-              </button>
-              {backupDir ? (
-                <button
-                  className="btn btn-ghost btn-sm"
-                  onClick={handlePickBackupDir}
-                  title={`Ordner: ${backupDirName} – klicken zum Ändern`}
-                  style={{ fontSize: '11px', color: 'var(--text-muted)', maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                >
-                  📁 {backupDirName}
-                </button>
-              ) : (
-                <button
-                  className="btn btn-ghost btn-sm"
-                  onClick={handlePickBackupDir}
-                  title="Ordner für automatische Sicherungen wählen"
-                  style={{ fontSize: '11px', color: 'var(--orange)' }}
-                >
-                  📁 Ordner wählen
-                </button>
-              )}
-              <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.45)', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap' }}
-                title="Wann wurden die Daten zuletzt gespeichert?">
-                Stand: {fmtZeit(lastSaveAt)}
-              </span>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <button className="btn btn-ghost btn-sm" onClick={handleBackup} title="Alle Daten als JSON-Datei sichern" style={{ fontSize: '12px' }}>
-                💾 Backup
-              </button>
-              {lastSaveAt && (
-                <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.45)', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap' }}>
-                  Stand: {fmtZeit(lastSaveAt)}
-                </span>
-              )}
-            </div>
-          )}
+
+          {/* Posteingang-Badge */}
           {unbekannteEmails.length > 0 && (
             <button
               className="btn btn-ghost btn-sm"
@@ -854,29 +831,96 @@ export default function App() {
               📥 {unbekannteEmails.length}
             </button>
           )}
-          <button className="btn btn-ghost btn-sm" onClick={() => importRef.current?.click()} title="Daten aus Backup-Datei wiederherstellen" style={{ fontSize: '12px' }}>
-            📂 Import
-          </button>
-          <input ref={importRef} type="file" accept=".json" style={{ display: 'none' }} onChange={handleImportFile} />
-          <button
-            className="btn btn-ghost btn-sm"
-            onClick={() => setShowChecklistEditor(true)}
-            title="Checklisten-Typen verwalten"
-            style={{ fontSize: '12px' }}
-          >
-            ✅ Checklisten
-          </button>
+
+          {/* Primäre Aktion */}
           <button className="btn btn-primary btn-sm" onClick={() => setShowNewModal(true)}>
             + Neuer Fall
           </button>
-          <button
-            className="btn btn-ghost btn-sm"
-            onClick={handleLogout}
-            title={`Abmelden (${authUser?.email})`}
-            style={{ fontSize: '12px', color: 'var(--text-muted)' }}
-          >
-            🔒 Abmelden
-          </button>
+
+          {/* Kebab-Menü */}
+          <div ref={headerMenuRef} style={{ position: 'relative' }}>
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => setHeaderMenuOpen(o => !o)}
+              title="Weitere Optionen"
+              style={{ fontSize: '18px', padding: '2px 8px', lineHeight: 1, letterSpacing: '2px' }}
+            >
+              ···
+            </button>
+            {headerMenuOpen && (
+              <div style={{
+                position: 'absolute', top: 'calc(100% + 6px)', right: 0,
+                background: 'var(--surface)', border: '1px solid var(--border)',
+                borderRadius: '10px', boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+                minWidth: '230px', zIndex: 500,
+                padding: '6px',
+              }}>
+                {/* Backup-Sektion */}
+                <div style={{ padding: '4px 8px 6px', borderBottom: '1px solid var(--border)', marginBottom: '4px' }}>
+                  <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '6px' }}>
+                    Sicherung
+                  </div>
+                  {fsSupported ? (
+                    <>
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => { handleManualBackup(); setHeaderMenuOpen(false) }}
+                        disabled={backupLoading}
+                        style={{ width: '100%', textAlign: 'left', fontSize: '12px', color: backupDir ? 'var(--green)' : undefined, justifyContent: 'flex-start', marginBottom: '4px' }}
+                      >
+                        {backupLoading ? '⏳ Sichern…' : (backupDir ? '💾 Jetzt sichern ✓' : '💾 Backup erstellen')}
+                      </button>
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => { handlePickBackupDir(); setHeaderMenuOpen(false) }}
+                        style={{ width: '100%', textAlign: 'left', fontSize: '11px', color: 'var(--text-muted)', justifyContent: 'flex-start' }}
+                      >
+                        📁 {backupDir ? `Ordner: ${backupDirName}` : 'Auto-Backup-Ordner wählen'}
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => { handleBackup(); setHeaderMenuOpen(false) }}
+                      style={{ width: '100%', textAlign: 'left', fontSize: '12px', justifyContent: 'flex-start' }}
+                    >
+                      💾 Backup herunterladen
+                    </button>
+                  )}
+                </div>
+
+                {/* Import */}
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => { importRef.current?.click(); setHeaderMenuOpen(false) }}
+                  style={{ width: '100%', textAlign: 'left', fontSize: '12px', justifyContent: 'flex-start' }}
+                >
+                  📂 Import aus Backup
+                </button>
+                <input ref={importRef} type="file" accept=".json" style={{ display: 'none' }} onChange={handleImportFile} />
+
+                {/* Checklisten */}
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => { setShowChecklistEditor(true); setHeaderMenuOpen(false) }}
+                  style={{ width: '100%', textAlign: 'left', fontSize: '12px', justifyContent: 'flex-start' }}
+                >
+                  ✅ Checklisten verwalten
+                </button>
+
+                {/* Trennlinie + Abmelden */}
+                <div style={{ borderTop: '1px solid var(--border)', marginTop: '4px', paddingTop: '4px' }}>
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => { handleLogout(); setHeaderMenuOpen(false) }}
+                    style={{ width: '100%', textAlign: 'left', fontSize: '12px', color: 'var(--text-muted)', justifyContent: 'flex-start' }}
+                  >
+                    🔒 Abmelden ({authUser?.email})
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </header>
 
