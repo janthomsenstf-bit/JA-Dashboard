@@ -35,6 +35,8 @@ export default function DetailView({
   onUpdateVorlagen,
   emailVorlagen = [],
   onUpdateEmailVorlagen,
+  emailSignaturen = [],
+  onUpdateEmailSignaturen,
   termine = [],
   onAddTermin,
   onUpdateTermin,
@@ -219,7 +221,7 @@ export default function DetailView({
           <RechnerTab key={client.id} client={client} onUpdate={onUpdate} />
         )}
         {activeTab === 7 && (
-          <KommunikationTab key={client.id} client={client} onUpdate={onUpdate} emailVorlagen={emailVorlagen} onUpdateEmailVorlagen={onUpdateEmailVorlagen} />
+          <KommunikationTab key={client.id} client={client} onUpdate={onUpdate} emailVorlagen={emailVorlagen} onUpdateEmailVorlagen={onUpdateEmailVorlagen} emailSignaturen={emailSignaturen} onUpdateEmailSignaturen={onUpdateEmailSignaturen} />
         )}
       </div>
 

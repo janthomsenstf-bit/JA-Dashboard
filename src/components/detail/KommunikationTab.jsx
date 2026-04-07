@@ -1,5 +1,20 @@
 import { useState, useRef } from 'react'
-import EmailVorlagenModal from '../EmailVorlagenModal.jsx'
+import EmailVorlagenModal   from '../EmailVorlagenModal.jsx'
+import EmailSignaturenModal from '../EmailSignaturenModal.jsx'
+
+// ── Signatur-Helfer ───────────────────────────────────────────────────────────
+const SIG_SEP = '\n\n--\n'
+
+function insertSig(currentText, sigText) {
+  const idx = currentText.indexOf(SIG_SEP)
+  const base = idx >= 0 ? currentText.slice(0, idx) : currentText
+  return base + SIG_SEP + sigText
+}
+
+function removeSig(currentText) {
+  const idx = currentText.indexOf(SIG_SEP)
+  return idx >= 0 ? currentText.slice(0, idx) : currentText
+}
 
 // ── Persistence helpers ───────────────────────────────────────────────────────
 const APIKEY_STORAGE  = 'sda-claude-api-key'
@@ -290,7 +305,7 @@ function AbsenderModal({ onClose }) {
 }
 
 // ── Haupt-Komponente ──────────────────────────────────────────────────────────
-export default function KommunikationTab({ client, onUpdate, emailVorlagen = [], onUpdateEmailVorlagen }) {
+export default function KommunikationTab({ client, onUpdate, emailVorlagen = [], onUpdateEmailVorlagen, emailSignaturen = [], onUpdateEmailSignaturen }) {
   const komm    = client.kommunikation ?? { events: [], standardAbsender: '' }
   const events  = Array.isArray(komm.events) ? komm.events : []
   const absender = loadAbsender()
@@ -311,8 +326,13 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
   const fileInputRef = useRef(null)
 
   // Vorlagen
-  const [showVorlagenSelect, setShowVorlagenSelect] = useState(false)
-  const [showVorlagenModal,  setShowVorlagenModal]  = useState(false)
+  const [showVorlagenSelect,  setShowVorlagenSelect]  = useState(false)
+  const [showVorlagenModal,   setShowVorlagenModal]   = useState(false)
+
+  // Signaturen
+  const [activeSignaturId,    setActiveSignaturId]    = useState(null)
+  const [showSignaturSelect,  setShowSignaturSelect]  = useState(false)
+  const [showSignaturenModal, setShowSignaturenModal] = useState(false)
 
   // UI State
   const [aiLoading,   setAiLoading]   = useState(false)
@@ -334,12 +354,46 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
     onUpdate({ kommunikation: { ...komm, ...patch } })
   }
 
+  // Signatur in Text anwenden
+  function applySignatur(sigId) {
+    if (!sigId) {
+      setText(prev => removeSig(prev))
+      setActiveSignaturId(null)
+    } else {
+      const sig = emailSignaturen.find(s => s.id === sigId)
+      if (sig) {
+        setText(prev => insertSig(prev, sig.text))
+        setActiveSignaturId(sigId)
+      }
+    }
+    setShowSignaturSelect(false)
+  }
+
+  // Neuen Editor öffnen (mit Standard-Signatur)
+  function openNewEditor() {
+    const defaultSig = emailSignaturen.find(s => s.isDefault)
+    if (defaultSig) {
+      setText(SIG_SEP + defaultSig.text)
+      setActiveSignaturId(defaultSig.id)
+    } else {
+      setActiveSignaturId(null)
+    }
+    setEditorOpen(true)
+  }
+
   // Schnellaktion → Editor befüllen
   function openQuickAction(typ) {
     const tpl = buildTemplate(typ, client)
     setActivTyp(typ)
     setBetreff(tpl.betreff)
-    setText(tpl.text)
+    const defaultSig = emailSignaturen.find(s => s.isDefault)
+    if (defaultSig) {
+      setText(tpl.text + SIG_SEP + defaultSig.text)
+      setActiveSignaturId(defaultSig.id)
+    } else {
+      setText(tpl.text)
+      setActiveSignaturId(null)
+    }
     setEditorOpen(true)
   }
 
@@ -426,6 +480,8 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
     setAiError('')
     setAttachments([])
     setShowVorlagenSelect(false)
+    setActiveSignaturId(null)
+    setShowSignaturSelect(false)
   }
 
   // ── Anhänge ──────────────────────────────────────────────────────────────────
@@ -465,7 +521,10 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
       .replace(/\{\{vj\}\}/gi, vj)
       .replace(/\{\{monat\}\}/gi, monat)
     setBetreff(fill(vorlage.betreff))
-    setText(fill(vorlage.text))
+    // Aktive Signatur erhalten
+    const activeSig = emailSignaturen.find(s => s.id === activeSignaturId)
+    const filledText = fill(vorlage.text)
+    setText(activeSig ? filledText + SIG_SEP + activeSig.text : filledText)
     if (vorlage.cc) setCC(vorlage.cc)
     setShowVorlagenSelect(false)
   }
@@ -525,7 +584,10 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
     try {
       const result = await callClaude(buildKIEntwurfPrompt(activTyp, client), 'Erstelle den E-Mail-Entwurf.')
       if (result.betreff) setBetreff(result.betreff)
-      if (result.text)    setText(result.text)
+      if (result.text) {
+        const activeSig = emailSignaturen.find(s => s.id === activeSignaturId)
+        setText(activeSig ? result.text + SIG_SEP + activeSig.text : result.text)
+      }
     } catch (e) {
       setAiError(e.message)
     } finally {
@@ -761,7 +823,63 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
           </div>
 
           <div style={{ marginBottom: '10px' }}>
-            <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>Nachricht</label>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+              <label style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Nachricht</label>
+              {/* Signatur-Selektor */}
+              <div style={{ position: 'relative' }}>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => setShowSignaturSelect(p => !p)}
+                  style={{ fontSize: '10px', color: '#6ee7b7' }}
+                >
+                  ✍️ {activeSignaturId
+                    ? (emailSignaturen.find(s => s.id === activeSignaturId)?.name ?? 'Signatur')
+                    : 'Keine Signatur'}
+                </button>
+                {showSignaturSelect && (
+                  <div style={{
+                    position: 'absolute', top: 'calc(100% + 4px)', right: 0, zIndex: 200,
+                    background: 'var(--surface)', border: '1px solid var(--border)',
+                    borderRadius: '10px', boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+                    minWidth: '220px', padding: '6px',
+                  }}>
+                    <button
+                      onClick={() => applySignatur(null)}
+                      style={{
+                        display: 'block', width: '100%', textAlign: 'left',
+                        padding: '7px 10px', borderRadius: '6px', cursor: 'pointer',
+                        background: !activeSignaturId ? 'rgba(255,255,255,0.06)' : 'none',
+                        border: 'none', color: 'var(--text)', fontSize: '12px',
+                      }}
+                    >
+                      Keine Signatur
+                    </button>
+                    {emailSignaturen.map(s => (
+                      <button key={s.id}
+                        onClick={() => applySignatur(s.id)}
+                        style={{
+                          display: 'block', width: '100%', textAlign: 'left',
+                          padding: '7px 10px', borderRadius: '6px', cursor: 'pointer',
+                          background: s.id === activeSignaturId ? 'rgba(255,255,255,0.06)' : 'none',
+                          border: 'none', color: 'var(--text)', fontSize: '12px',
+                        }}
+                      >
+                        <span style={{ fontWeight: 600 }}>{s.name}</span>
+                        {s.isDefault && <span style={{ marginLeft: '6px', fontSize: '10px', color: '#60a5fa' }}>Standard</span>}
+                      </button>
+                    ))}
+                    <div style={{ borderTop: '1px solid var(--border)', marginTop: '4px', paddingTop: '4px' }}>
+                      <button className="btn btn-ghost btn-sm"
+                        style={{ width: '100%', fontSize: '10px', textAlign: 'left', justifyContent: 'flex-start' }}
+                        onClick={() => { setShowSignaturSelect(false); setShowSignaturenModal(true) }}
+                      >
+                        ⚙ Signaturen verwalten
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
             <textarea
               className="input"
               value={text}
@@ -909,11 +1027,14 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
       {/* Editor-Buttons + Vorlagen-Link */}
       {!editorOpen && (
         <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', flexWrap: 'wrap', alignItems: 'center' }}>
-          <button className="btn btn-ghost btn-sm" onClick={() => setEditorOpen(true)} style={{ fontSize: '12px' }}>
+          <button className="btn btn-ghost btn-sm" onClick={openNewEditor} style={{ fontSize: '12px' }}>
             ✏️ Neue E-Mail verfassen
           </button>
           <button className="btn btn-ghost btn-sm" onClick={() => setShowVorlagenModal(true)} style={{ fontSize: '12px', color: '#a78bfa' }}>
-            📝 Vorlagen verwalten ({emailVorlagen.length})
+            📝 Vorlagen ({emailVorlagen.length})
+          </button>
+          <button className="btn btn-ghost btn-sm" onClick={() => setShowSignaturenModal(true)} style={{ fontSize: '12px', color: '#6ee7b7' }}>
+            ✍️ Signaturen ({emailSignaturen.length})
           </button>
         </div>
       )}
@@ -924,6 +1045,15 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
           vorlagen={emailVorlagen}
           onUpdate={onUpdateEmailVorlagen ?? (() => {})}
           onClose={() => setShowVorlagenModal(false)}
+        />
+      )}
+
+      {/* E-Mail-Signaturen-Modal */}
+      {showSignaturenModal && (
+        <EmailSignaturenModal
+          signaturen={emailSignaturen}
+          onUpdate={onUpdateEmailSignaturen ?? (() => {})}
+          onClose={() => setShowSignaturenModal(false)}
         />
       )}
 
