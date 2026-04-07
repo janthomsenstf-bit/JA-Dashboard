@@ -9,7 +9,7 @@ const PLATZHALTER = [
 ]
 
 function emptyVorlage() {
-  return { id: '', name: '', kategorie: 'Allgemein', betreff: '', text: '', cc: '' }
+  return { id: '', name: '', kategorie: 'Allgemein', betreff: '', text: '', cc: '', schnellaktion: false }
 }
 
 export default function EmailVorlagenModal({ vorlagen = [], onUpdate, onClose }) {
@@ -126,10 +126,29 @@ export default function EmailVorlagenModal({ vorlagen = [], onUpdate, onClose })
                 rows={10} placeholder="Text der Vorlage..." style={{ width: '100%', fontSize: '13px', resize: 'vertical', fontFamily: 'inherit', lineHeight: '1.6' }} />
             </div>
 
-            <div style={{ marginBottom: '20px' }}>
+            <div style={{ marginBottom: '12px' }}>
               <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>Standard-CC (optional)</label>
               <input className="input" value={form.cc} onChange={e => setForm(p => ({ ...p, cc: e.target.value }))}
                 placeholder="cc@kanzlei.de" style={{ width: '100%', fontSize: '13px' }} />
+            </div>
+
+            <div style={{ marginBottom: '20px', padding: '10px 14px', borderRadius: '8px', background: form.schnellaktion ? 'rgba(167,139,250,0.08)' : 'rgba(255,255,255,0.03)', border: `1px solid ${form.schnellaktion ? 'rgba(167,139,250,0.3)' : 'var(--border)'}` }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', userSelect: 'none' }}>
+                <input
+                  type="checkbox"
+                  checked={!!form.schnellaktion}
+                  onChange={e => setForm(p => ({ ...p, schnellaktion: e.target.checked }))}
+                  style={{ cursor: 'pointer' }}
+                />
+                <div>
+                  <div style={{ fontSize: '12px', fontWeight: 600, color: form.schnellaktion ? '#a78bfa' : 'var(--text)' }}>
+                    ⚡ Als Schnellaktion anzeigen
+                  </div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '1px' }}>
+                    Vorlage erscheint direkt als Button in der Kommunikationsleiste
+                  </div>
+                </div>
+              </label>
             </div>
 
             <div style={{ display: 'flex', gap: '8px' }}>
@@ -177,6 +196,12 @@ export default function EmailVorlagenModal({ vorlagen = [], onUpdate, onClose })
                         fontSize: '10px', padding: '1px 7px', borderRadius: '10px',
                         background: 'rgba(37,99,235,0.12)', color: '#60a5fa', border: '1px solid rgba(37,99,235,0.25)',
                       }}>{v.kategorie}</span>
+                      {v.schnellaktion && (
+                        <span style={{
+                          fontSize: '10px', padding: '1px 7px', borderRadius: '10px',
+                          background: 'rgba(167,139,250,0.12)', color: '#a78bfa', border: '1px solid rgba(167,139,250,0.3)',
+                        }}>⚡ Schnellaktion</span>
+                      )}
                     </div>
                     <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{v.betreff}</div>
                     {v.cc && <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>CC: {v.cc}</div>}

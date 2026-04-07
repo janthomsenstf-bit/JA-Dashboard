@@ -382,6 +382,25 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
     setEditorOpen(true)
   }
 
+  // Vorlage direkt als Schnellaktion öffnen (Editor + Vorlage in einem Schritt)
+  function openWithVorlage(vorlage) {
+    const name  = client.name ?? ''
+    const vj    = String(client.veranlagungsjahr ?? new Date().getFullYear())
+    const monat = new Date().toLocaleDateString('de-DE', { month: 'long' })
+    const fill  = str => (str ?? '')
+      .replace(/\{\{name\}\}/gi, name)
+      .replace(/\{\{vj\}\}/gi, vj)
+      .replace(/\{\{monat\}\}/gi, monat)
+    const defaultSig = emailSignaturen.find(s => s.isDefault)
+    const filledText = fill(vorlage.text)
+    setBetreff(fill(vorlage.betreff))
+    setText(defaultSig ? filledText + SIG_SEP + defaultSig.text : filledText)
+    setActiveSignaturId(defaultSig?.id ?? null)
+    if (vorlage.cc) setCC(vorlage.cc)
+    setActivTyp('frei')
+    setEditorOpen(true)
+  }
+
   // Schnellaktion → Editor befüllen
   function openQuickAction(typ) {
     const tpl = buildTemplate(typ, client)
@@ -709,6 +728,29 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
               <span>{cfg.icon}</span>{cfg.label}
             </button>
           ))}
+
+          {/* ── Vorlage-Schnellaktionen ── */}
+          {emailVorlagen.filter(v => v.schnellaktion).length > 0 && (
+            <>
+              <div style={{ width: '1px', background: 'var(--border)', alignSelf: 'stretch', margin: '0 4px' }} />
+              {emailVorlagen.filter(v => v.schnellaktion).map(v => (
+                <button
+                  key={v.id}
+                  onClick={() => openWithVorlage(v)}
+                  title={v.betreff}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '6px',
+                    padding: '7px 14px', borderRadius: '8px', cursor: 'pointer',
+                    background: 'rgba(167,139,250,0.08)', color: '#a78bfa',
+                    border: '1px solid rgba(167,139,250,0.25)',
+                    fontSize: '12px', fontWeight: 600,
+                  }}
+                >
+                  ⚡ {v.name}
+                </button>
+              ))}
+            </>
+          )}
         </div>
       </div>
 
