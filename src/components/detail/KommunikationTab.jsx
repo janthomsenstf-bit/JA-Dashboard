@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
+import EmailVorlagenModal from '../EmailVorlagenModal.jsx'
 
 // ── Persistence helpers ───────────────────────────────────────────────────────
 const APIKEY_STORAGE  = 'sda-claude-api-key'
@@ -18,11 +19,11 @@ function saveAbsender(list) {
 }
 
 // ── SMTP Senden ───────────────────────────────────────────────────────────────
-async function sendViaSMTP({ to, from, subject, text, cc, bcc, account }) {
+async function sendViaSMTP({ to, from, subject, text, cc, bcc, account, attachments = [] }) {
   const res = await fetch('/api/send-email', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ to, from, subject, text, cc, bcc, account }),
+    body: JSON.stringify({ to, from, subject, text, cc, bcc, account, attachments }),
   })
   const data = await res.json()
   if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`)
@@ -289,7 +290,7 @@ function AbsenderModal({ onClose }) {
 }
 
 // ── Haupt-Komponente ──────────────────────────────────────────────────────────
-export default function KommunikationTab({ client, onUpdate }) {
+export default function KommunikationTab({ client, onUpdate, emailVorlagen = [], onUpdateEmailVorlagen }) {
   const komm    = client.kommunikation ?? { events: [], standardAbsender: '' }
   const events  = Array.isArray(komm.events) ? komm.events : []
   const absender = loadAbsender()
@@ -303,7 +304,15 @@ export default function KommunikationTab({ client, onUpdate }) {
   const [text,        setText]        = useState('')
   const [cc,          setCC]          = useState('')
   const [bcc,         setBCC]         = useState('')
-  const [showCCBCC,   setShowCCBCC]   = useState(false)
+  const [showBCC,     setShowBCC]     = useState(false)
+
+  // Anhänge State
+  const [attachments,    setAttachments]    = useState([])
+  const fileInputRef = useRef(null)
+
+  // Vorlagen
+  const [showVorlagenSelect, setShowVorlagenSelect] = useState(false)
+  const [showVorlagenModal,  setShowVorlagenModal]  = useState(false)
 
   // UI State
   const [aiLoading,   setAiLoading]   = useState(false)
@@ -344,6 +353,7 @@ export default function KommunikationTab({ client, onUpdate }) {
       status: 'entwurf',
       erstelltAm: new Date().toISOString(),
       gesendetAm: null,
+      anlagen: attachments.length > 0 ? attachments.map(a => ({ name: a.name, size: a.size })) : undefined,
     }
     saveKomm({ events: [entry, ...events] })
     resetEditor()
@@ -359,8 +369,9 @@ export default function KommunikationTab({ client, onUpdate }) {
     setSendError('')
     const selectedAbsender = absender.find(a => a.email === absenderVal)
     const account = selectedAbsender?.konto || 'hostinger'
+    const smtpAttachments = attachments.map(a => ({ filename: a.name, content: a.data, contentType: a.type }))
     try {
-      await sendViaSMTP({ to: empfaenger, from: absenderVal, subject: betreff, text, cc, bcc, account })
+      await sendViaSMTP({ to: empfaenger, from: absenderVal, subject: betreff, text, cc, bcc, account, attachments: smtpAttachments })
       const now = new Date().toISOString()
       const entry = {
         id: 'k' + Date.now().toString(36),
@@ -369,6 +380,7 @@ export default function KommunikationTab({ client, onUpdate }) {
         status: 'gesendet',
         erstelltAm: now,
         gesendetAm: now,
+        anlagen: attachments.length > 0 ? attachments.map(a => ({ name: a.name, size: a.size })) : undefined,
       }
       saveKomm({ events: [entry, ...events] })
       applyStatusUpdates(activTyp, now)
@@ -391,6 +403,7 @@ export default function KommunikationTab({ client, onUpdate }) {
       status: 'gesendet',
       erstelltAm: now,
       gesendetAm: now,
+      anlagen: attachments.length > 0 ? attachments.map(a => ({ name: a.name, size: a.size })) : undefined,
     }
     saveKomm({ events: [entry, ...events] })
     applyStatusUpdates(activTyp, now)
@@ -411,6 +424,50 @@ export default function KommunikationTab({ client, onUpdate }) {
     setEmpfaenger('')
     setActivTyp('frei')
     setAiError('')
+    setAttachments([])
+    setShowVorlagenSelect(false)
+  }
+
+  // ── Anhänge ──────────────────────────────────────────────────────────────────
+  function handleFileSelect(e) {
+    const files = Array.from(e.target.files ?? [])
+    files.forEach(file => {
+      const reader = new FileReader()
+      reader.onload = (ev) => {
+        const base64 = ev.target.result.split(',')[1]
+        setAttachments(prev => [...prev, {
+          id: Date.now().toString(36) + Math.random().toString(36).slice(2),
+          name: file.name, size: file.size, type: file.type, data: base64,
+        }])
+      }
+      reader.readAsDataURL(file)
+    })
+    e.target.value = ''
+  }
+
+  function removeAttachment(id) {
+    setAttachments(prev => prev.filter(a => a.id !== id))
+  }
+
+  function fmtFileSize(bytes) {
+    if (bytes < 1024)        return `${bytes} B`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+    return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+  }
+
+  // ── Vorlage anwenden ─────────────────────────────────────────────────────────
+  function applyVorlage(vorlage) {
+    const name  = client.name ?? ''
+    const vj    = String(client.veranlagungsjahr ?? new Date().getFullYear())
+    const monat = new Date().toLocaleDateString('de-DE', { month: 'long' })
+    const fill  = str => (str ?? '')
+      .replace(/\{\{name\}\}/gi, name)
+      .replace(/\{\{vj\}\}/gi, vj)
+      .replace(/\{\{monat\}\}/gi, monat)
+    setBetreff(fill(vorlage.betreff))
+    setText(fill(vorlage.text))
+    if (vorlage.cc) setCC(vorlage.cc)
+    setShowVorlagenSelect(false)
   }
 
   // Status-Verknüpfungen
@@ -577,22 +634,80 @@ export default function KommunikationTab({ client, onUpdate }) {
           background: 'var(--surface)', border: '1px solid var(--border)',
           borderRadius: '12px', padding: '20px', marginBottom: '20px',
         }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              {/* Typ-Badge + Schnellwechsel */}
               <span style={{
                 fontSize: '11px', fontWeight: 700, padding: '3px 10px', borderRadius: '20px',
                 background: TYP_CONFIG[activTyp]?.bg, color: TYP_CONFIG[activTyp]?.color,
               }}>
                 {TYP_CONFIG[activTyp]?.icon} {TYP_CONFIG[activTyp]?.label}
               </span>
-              <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+              <span>
                 {Object.keys(TYP_CONFIG).filter(t => t !== activTyp).map(t => (
                   <button key={t} onClick={() => { setActivTyp(t); const tpl = buildTemplate(t, client); setBetreff(tpl.betreff); setText(tpl.text) }}
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '11px', marginRight: '4px' }}>
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '12px', marginRight: '2px' }}>
                     {TYP_CONFIG[t].icon}
                   </button>
                 ))}
               </span>
+
+              {/* Vorlagen-Auswahl */}
+              <div style={{ position: 'relative' }}>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => setShowVorlagenSelect(p => !p)}
+                  style={{ fontSize: '11px', color: '#a78bfa' }}
+                >
+                  📝 Vorlage {emailVorlagen.length > 0 ? `(${emailVorlagen.length})` : ''}
+                </button>
+                {showVorlagenSelect && (
+                  <div style={{
+                    position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 200,
+                    background: 'var(--surface)', border: '1px solid var(--border)',
+                    borderRadius: '10px', boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+                    minWidth: '260px', maxHeight: '320px', overflowY: 'auto',
+                    padding: '6px',
+                  }}>
+                    {emailVorlagen.length === 0 ? (
+                      <div style={{ padding: '12px', fontSize: '12px', color: 'var(--text-muted)', textAlign: 'center' }}>
+                        Noch keine Vorlagen.<br />
+                        <button className="btn btn-ghost btn-sm" style={{ marginTop: '8px', fontSize: '11px' }}
+                          onClick={() => { setShowVorlagenSelect(false); setShowVorlagenModal(true) }}>
+                          + Erste Vorlage erstellen
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        {emailVorlagen.map(v => (
+                          <button key={v.id}
+                            onClick={() => applyVorlage(v)}
+                            style={{
+                              display: 'block', width: '100%', textAlign: 'left',
+                              padding: '8px 10px', borderRadius: '6px', cursor: 'pointer',
+                              background: 'none', border: 'none', color: 'var(--text)',
+                              fontSize: '12px',
+                            }}
+                            onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
+                            onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                          >
+                            <div style={{ fontWeight: 600 }}>{v.name}</div>
+                            <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '1px' }}>
+                              {v.kategorie} · {v.betreff}
+                            </div>
+                          </button>
+                        ))}
+                        <div style={{ borderTop: '1px solid var(--border)', marginTop: '4px', paddingTop: '4px' }}>
+                          <button className="btn btn-ghost btn-sm" style={{ width: '100%', fontSize: '10px', textAlign: 'left', justifyContent: 'flex-start' }}
+                            onClick={() => { setShowVorlagenSelect(false); setShowVorlagenModal(true) }}>
+                            ⚙ Vorlagen verwalten
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
             <button className="btn btn-ghost btn-sm" onClick={resetEditor} style={{ fontSize: '11px' }}>✕ Schließen</button>
           </div>
@@ -656,25 +771,38 @@ export default function KommunikationTab({ client, onUpdate }) {
             />
           </div>
 
-          {/* CC/BCC Toggle */}
-          <div style={{ marginBottom: '10px' }}>
-            <button onClick={() => setShowCCBCC(p => !p)}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '11px' }}>
-              {showCCBCC ? '▲ CC/BCC ausblenden' : '▼ CC / BCC hinzufügen'}
-            </button>
-            {showCCBCC && (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginTop: '8px' }}>
-                <div>
-                  <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>CC</label>
-                  <input className="input" value={cc} onChange={e => setCC(e.target.value)} placeholder="cc@firma.de" style={{ width: '100%', fontSize: '13px' }} />
-                </div>
-                <div>
-                  <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>BCC</label>
-                  <input className="input" value={bcc} onChange={e => setBCC(e.target.value)} placeholder="bcc@kanzlei.de" style={{ width: '100%', fontSize: '13px' }} />
-                </div>
-              </div>
-            )}
+          {/* CC + Anhänge-Zeile */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '10px', alignItems: 'end', marginBottom: '10px' }}>
+            <div>
+              <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
+                CC
+                {(client.kontakte ?? []).length > 0 && (
+                  <span style={{ marginLeft: '8px', fontSize: '10px', color: 'var(--accent)' }}>
+                    Schnell: {(client.kontakte ?? []).filter(k => k.email && k.email !== cc).slice(0, 3).map((k, i) => (
+                      <button key={k.id} onClick={() => setCC(prev => prev ? `${prev}, ${k.email}` : k.email)}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent)', fontSize: '10px', textDecoration: 'underline', padding: '0 2px' }}>
+                        {k.name || k.email}
+                      </button>
+                    ))}
+                  </span>
+                )}
+              </label>
+              <input className="input" value={cc} onChange={e => setCC(e.target.value)}
+                placeholder="cc@firma.de, weitere@kontakt.de" style={{ width: '100%', fontSize: '13px' }} />
+            </div>
+            <div style={{ paddingBottom: '0' }}>
+              <button onClick={() => setShowBCC(p => !p)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '11px', whiteSpace: 'nowrap' }}>
+                {showBCC ? '▲ BCC' : '+ BCC'}
+              </button>
+            </div>
           </div>
+          {showBCC && (
+            <div style={{ marginBottom: '10px' }}>
+              <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>BCC</label>
+              <input className="input" value={bcc} onChange={e => setBCC(e.target.value)} placeholder="bcc@kanzlei.de" style={{ width: '100%', fontSize: '13px' }} />
+            </div>
+          )}
 
           {/* KI-Buttons */}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '12px', paddingTop: '8px', borderTop: '1px solid var(--border)' }}>
@@ -700,6 +828,47 @@ export default function KommunikationTab({ client, onUpdate }) {
               ⚠️ Senden fehlgeschlagen: {sendError}
             </div>
           )}
+
+          {/* ── Anhänge ── */}
+          <div style={{ marginBottom: '12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: attachments.length > 0 ? '8px' : '0' }}>
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={() => fileInputRef.current?.click()}
+                style={{ fontSize: '11px', color: '#f59e0b' }}
+              >
+                📎 Anhang hinzufügen
+              </button>
+              {attachments.length > 0 && (
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                  {attachments.length} Anhang{attachments.length !== 1 ? 'hänge' : ''} ·{' '}
+                  {fmtFileSize(attachments.reduce((s, a) => s + a.size, 0))} gesamt
+                </span>
+              )}
+              <span style={{ fontSize: '10px', color: 'var(--text-muted)', marginLeft: 'auto' }}>
+                Max. ~4 MB gesamt (Vercel-Limit)
+              </span>
+            </div>
+            <input ref={fileInputRef} type="file" multiple style={{ display: 'none' }} onChange={handleFileSelect} />
+            {attachments.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                {attachments.map(a => (
+                  <div key={a.id} style={{
+                    display: 'flex', alignItems: 'center', gap: '6px',
+                    padding: '4px 10px', borderRadius: '20px', fontSize: '11px',
+                    background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', color: '#f59e0b',
+                  }}>
+                    <span>📄 {a.name}</span>
+                    <span style={{ opacity: 0.7 }}>({fmtFileSize(a.size)})</span>
+                    <button onClick={() => removeAttachment(a.id)}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#f59e0b', fontSize: '12px', padding: '0', lineHeight: 1 }}>
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
           {/* Aktions-Buttons */}
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
@@ -737,15 +906,25 @@ export default function KommunikationTab({ client, onUpdate }) {
         </div>
       )}
 
-      {/* Neues Editor-Öffnen-Button wenn geschlossen */}
+      {/* Editor-Buttons + Vorlagen-Link */}
       {!editorOpen && (
-        <button
-          className="btn btn-ghost btn-sm"
-          onClick={() => setEditorOpen(true)}
-          style={{ marginBottom: '20px', fontSize: '12px' }}
-        >
-          ✏️ Neue E-Mail verfassen
-        </button>
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', flexWrap: 'wrap', alignItems: 'center' }}>
+          <button className="btn btn-ghost btn-sm" onClick={() => setEditorOpen(true)} style={{ fontSize: '12px' }}>
+            ✏️ Neue E-Mail verfassen
+          </button>
+          <button className="btn btn-ghost btn-sm" onClick={() => setShowVorlagenModal(true)} style={{ fontSize: '12px', color: '#a78bfa' }}>
+            📝 Vorlagen verwalten ({emailVorlagen.length})
+          </button>
+        </div>
+      )}
+
+      {/* E-Mail-Vorlagen-Modal */}
+      {showVorlagenModal && (
+        <EmailVorlagenModal
+          vorlagen={emailVorlagen}
+          onUpdate={onUpdateEmailVorlagen ?? (() => {})}
+          onClose={() => setShowVorlagenModal(false)}
+        />
       )}
 
       {/* ── Posteingang abrufen ── */}
@@ -883,6 +1062,18 @@ export default function KommunikationTab({ client, onUpdate }) {
                         <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '8px' }}>
                           {entry.cc && <span>CC: {entry.cc} </span>}
                           {entry.bcc && <span>BCC: {entry.bcc}</span>}
+                        </div>
+                      )}
+                      {entry.anlagen?.length > 0 && (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '8px' }}>
+                          {entry.anlagen.map((a, i) => (
+                            <span key={i} style={{
+                              fontSize: '11px', padding: '2px 8px', borderRadius: '12px',
+                              background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.25)', color: '#f59e0b',
+                            }}>
+                              📎 {a.name}
+                            </span>
+                          ))}
                         </div>
                       )}
                       <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>

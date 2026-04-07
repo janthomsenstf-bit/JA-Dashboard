@@ -23,7 +23,7 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end()
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
-  const { to, from, subject, text, html, cc, bcc, account = 'hostinger' } = req.body ?? {}
+  const { to, from, subject, text, html, cc, bcc, account = 'hostinger', attachments = [] } = req.body ?? {}
 
   if (!to || !subject || (!text && !html)) {
     return res.status(400).json({ error: 'Fehlende Pflichtfelder: to, subject, text' })
@@ -51,6 +51,11 @@ export default async function handler(req, res) {
       subject,
       text: text || undefined,
       html: html || undefined,
+      attachments: Array.isArray(attachments) ? attachments.map(a => ({
+        filename:    a.filename,
+        content:     Buffer.from(a.content, 'base64'),
+        contentType: a.contentType || 'application/octet-stream',
+      })) : [],
     })
 
     return res.status(200).json({ success: true })

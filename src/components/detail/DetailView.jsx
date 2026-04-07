@@ -33,6 +33,8 @@ export default function DetailView({
   onAddRueckfrageFromCheckliste,
   vorlagen = [],
   onUpdateVorlagen,
+  emailVorlagen = [],
+  onUpdateEmailVorlagen,
   termine = [],
   onAddTermin,
   onUpdateTermin,
@@ -217,7 +219,7 @@ export default function DetailView({
           <RechnerTab key={client.id} client={client} onUpdate={onUpdate} />
         )}
         {activeTab === 7 && (
-          <KommunikationTab key={client.id} client={client} onUpdate={onUpdate} />
+          <KommunikationTab key={client.id} client={client} onUpdate={onUpdate} emailVorlagen={emailVorlagen} onUpdateEmailVorlagen={onUpdateEmailVorlagen} />
         )}
       </div>
 

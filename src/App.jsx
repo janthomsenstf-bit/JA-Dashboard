@@ -180,6 +180,9 @@ export default function App() {
   const [unbekannteEmails,  setUnbekannteEmails]  = useState([])
   const [posteingangOpen,   setPosteingangOpen]   = useState(false)
 
+  // ── E-Mail-Vorlagen ───────────────────────────────────────────────────────────
+  const [emailVorlagen, setEmailVorlagen] = useState([])
+
   // ── Termine ───────────────────────────────────────────────────────────────────
   const [termine, setTermine] = useState([])
 
@@ -226,6 +229,7 @@ export default function App() {
         if (cloudData['spielbuch-checklisten-v1'])    setChecklistenTypen(cloudData['spielbuch-checklisten-v1'])
         if (cloudData['spielbuch-vorlagen-v1'])       setVorlagen(cloudData['spielbuch-vorlagen-v1'])
         if (Array.isArray(cloudData['unbekannte-emails'])) setUnbekannteEmails(cloudData['unbekannte-emails'])
+        if (Array.isArray(cloudData['email-vorlagen-v1'])) setEmailVorlagen(cloudData['email-vorlagen-v1'])
       } else {
         // Noch keine Cloud-Daten – lokale Daten prüfen
         try {
@@ -271,6 +275,10 @@ export default function App() {
     if (!authUser || dataLoading) return
     cloudSave('unbekannte-emails', unbekannteEmails)
   }, [unbekannteEmails])
+  useEffect(() => {
+    if (!authUser || dataLoading) return
+    cloudSave('email-vorlagen-v1', emailVorlagen)
+  }, [emailVorlagen])
 
   // Auto-dismiss Startup-Banner nach 6 Sekunden
   useEffect(() => {
@@ -1103,6 +1111,8 @@ export default function App() {
                 addRueckfrageFromCheckliste(selectedClient.id, rqId, text, typId, itemId, name)}
               vorlagen={vorlagen}
               onUpdateVorlagen={setVorlagen}
+              emailVorlagen={emailVorlagen}
+              onUpdateEmailVorlagen={setEmailVorlagen}
               termine={termine}
               onAddTermin={addTermin}
               onUpdateTermin={updateTermin}
