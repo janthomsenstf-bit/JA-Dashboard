@@ -96,7 +96,10 @@ function migrateClient(c) {
     unternehmensgegenstand:      c.unternehmensgegenstand      ?? '',
     veranlagungsjahr2:           c.veranlagungsjahr2           ?? '',
     veranlagungsjahr3:           c.veranlagungsjahr3           ?? '',
-    kommunikation:               c.kommunikation               ?? { events: [] },
+    kommunikation:               (() => {
+      const k = c.kommunikation ?? {}
+      return { standardAbsender: '', ...k, events: Array.isArray(k.events) ? k.events : [] }
+    })(),
     abschluss:                   (() => {
       const base = c.abschluss ?? {}
       return { punkte: [], ...base, checkliste: base.checkliste ?? null }

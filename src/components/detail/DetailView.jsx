@@ -6,10 +6,11 @@ import AbschlussTab         from './AbschlussTab.jsx'
 import LohnTab              from './LohnTab.jsx'
 import BeratungTab          from './BeratungTab.jsx'
 import RechnerTab           from './rechner/RechnerTab.jsx'
+import KommunikationTab     from './KommunikationTab.jsx'
 import TermineSection       from './TermineSection.jsx'
 import NewClientModal       from '../NewClientModal.jsx'
 
-const TABS = ['📋 Auftrag', '📊 Status & Arbeit', '✅ Aufgaben', '📁 Abschluss', '💼 Lohn', '🧠 Beratung', '🔢 Rechner']
+const TABS = ['📋 Auftrag', '📊 Status & Arbeit', '✅ Aufgaben', '📁 Abschluss', '💼 Lohn', '🧠 Beratung', '🔢 Rechner', '✉️ Kommunikation']
 
 
 export default function DetailView({
@@ -151,6 +152,9 @@ export default function DetailView({
         )}
         {activeTab === 6 && (
           <RechnerTab key={client.id} client={client} onUpdate={onUpdate} />
+        )}
+        {activeTab === 7 && (
+          <KommunikationTab key={client.id} client={client} onUpdate={onUpdate} />
         )}
       </div>
 
