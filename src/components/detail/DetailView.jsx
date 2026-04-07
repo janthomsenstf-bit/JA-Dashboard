@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { getMandantStatus, MANDANT_STATUS_CONFIG } from '../../utils/progress.js'
+import UebersichtTab        from './UebersichtTab.jsx'
 import StandDerArbeitTab    from './StandDerArbeitTab.jsx'
 import AufgabenTab          from './AufgabenTab.jsx'
 import AuftragTab           from './AuftragTab.jsx'
@@ -11,7 +12,7 @@ import KommunikationTab     from './KommunikationTab.jsx'
 import TermineSection       from './TermineSection.jsx'
 import NewClientModal       from '../NewClientModal.jsx'
 
-const TABS = ['📋 Auftrag', '📊 Status & Arbeit', '✅ Aufgaben', '📁 Abschluss', '💼 Lohn', '🧠 Beratung', '🔢 Rechner', '✉️ Kommunikation']
+const TABS = ['🏠 Übersicht', '📋 Auftrag', '📊 Status & Arbeit', '✅ Aufgaben', '📁 Abschluss', '💼 Lohn', '🧠 Beratung', '🔢 Rechner', '✉️ Kommunikation']
 
 
 export default function DetailView({
@@ -200,27 +201,30 @@ export default function DetailView({
       {/* Tab content */}
       <div style={{ flex: 1 }}>
         {activeTab === 0 && (
-          <AuftragTab key={client.id} client={client} onUpdate={onUpdate} />
+          <UebersichtTab key={client.id} client={client} onNavigateToTab={setActiveTab} />
         )}
         {activeTab === 1 && (
-          <StandDerArbeitTab key={client.id} client={client} onUpdate={onUpdate} />
+          <AuftragTab key={client.id} client={client} onUpdate={onUpdate} />
         )}
         {activeTab === 2 && (
-          <AufgabenTab key={client.id} client={client} onUpdate={onUpdate} />
+          <StandDerArbeitTab key={client.id} client={client} onUpdate={onUpdate} />
         )}
         {activeTab === 3 && (
-          <AbschlussTab key={client.id} client={client} onUpdate={onUpdate} />
+          <AufgabenTab key={client.id} client={client} onUpdate={onUpdate} />
         )}
         {activeTab === 4 && (
-          <LohnTab key={client.id} client={client} onUpdate={onUpdate} />
+          <AbschlussTab key={client.id} client={client} onUpdate={onUpdate} />
         )}
         {activeTab === 5 && (
-          <BeratungTab key={client.id} client={client} onUpdate={onUpdate} />
+          <LohnTab key={client.id} client={client} onUpdate={onUpdate} />
         )}
         {activeTab === 6 && (
-          <RechnerTab key={client.id} client={client} onUpdate={onUpdate} />
+          <BeratungTab key={client.id} client={client} onUpdate={onUpdate} />
         )}
         {activeTab === 7 && (
+          <RechnerTab key={client.id} client={client} onUpdate={onUpdate} />
+        )}
+        {activeTab === 8 && (
           <KommunikationTab key={client.id} client={client} onUpdate={onUpdate} emailVorlagen={emailVorlagen} onUpdateEmailVorlagen={onUpdateEmailVorlagen} emailSignaturen={emailSignaturen} onUpdateEmailSignaturen={onUpdateEmailSignaturen} />
         )}
       </div>

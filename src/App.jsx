@@ -13,6 +13,9 @@ import ChecklistenEditor from './components/ChecklistenEditor.jsx'
 import KalenderSection from './components/KalenderSection.jsx'
 import GlobalTodoView  from './components/GlobalTodoView.jsx'
 import PosteingangUngeklaert from './components/PosteingangUngeklaert.jsx'
+import GlobalSearch          from './components/search/GlobalSearch.jsx'
+import DashboardHome         from './components/dashboard/DashboardHome.jsx'
+import CommandPalette        from './components/CommandPalette.jsx'
 import { supabase } from './utils/supabaseClient.js'
 import { cloudLoadAll, cloudSave, cloudSaveNow, cloudSnapshot, migrateLocalStorageToCloud } from './utils/cloudStorage.js'
 import LoginPage from './components/LoginPage.jsx'
@@ -200,8 +203,10 @@ export default function App() {
   const clientsRef                          = useRef(clients)
   const unbekannteEmailsRef                 = useRef([])
   const lastEmailFetchRef                   = useRef(localStorage.getItem('email-last-fetch-at') || null)
-  const [headerMenuOpen,  setHeaderMenuOpen] = useState(false)
-  const headerMenuRef                        = useRef(null)
+  const [headerMenuOpen,    setHeaderMenuOpen]    = useState(false)
+  const headerMenuRef                            = useRef(null)
+  const [calendarOpen,      setCalendarOpen]      = useState(() => localStorage.getItem('calendar-open') !== 'false')
+  const [cmdPaletteOpen,    setCmdPaletteOpen]    = useState(false)
 
   // clientsRef immer aktuell halten (für den Interval-Callback)
   useEffect(() => { clientsRef.current = clients }, [clients])
@@ -303,6 +308,18 @@ export default function App() {
     if (headerMenuOpen) document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [headerMenuOpen])
+
+  // ── CMD+K Command Palette ────────────────────────────────────────────────────
+  useEffect(() => {
+    function handleCmdK(e) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault()
+        setCmdPaletteOpen(p => !p)
+      }
+    }
+    document.addEventListener('keydown', handleCmdK)
+    return () => document.removeEventListener('keydown', handleCmdK)
+  }, [])
 
   // ── Auto-Snapshot alle 30 Minuten ────────────────────────────────────────────
   useEffect(() => {
@@ -817,6 +834,13 @@ export default function App() {
           </span>
         </div>
 
+        {/* ── Intelligente Suche ── */}
+        <GlobalSearch
+          clients={clients}
+          onSelect={id => setSelectedId(id)}
+          onEmailQuickAction={id => setSelectedId(id)}
+        />
+
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           {importMsg && (
             <span style={{
@@ -845,6 +869,26 @@ export default function App() {
               📥 {unbekannteEmails.length}
             </button>
           )}
+
+          {/* Kalender-Toggle */}
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={() => setCalendarOpen(o => { localStorage.setItem('calendar-open', String(!o)); return !o })}
+            title={calendarOpen ? 'Kalender ausblenden' : 'Kalender einblenden'}
+            style={{ fontSize: '14px', opacity: calendarOpen ? 1 : 0.45 }}
+          >
+            📅
+          </button>
+
+          {/* CMD+K Hint */}
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={() => setCmdPaletteOpen(true)}
+            title="Schnellsuche (Strg+K)"
+            style={{ fontSize: '12px', color: 'var(--text-muted)' }}
+          >
+            ⌘K
+          </button>
 
           {/* Primäre Aktion */}
           <button className="btn btn-primary btn-sm" onClick={() => setShowNewModal(true)}>
@@ -1127,32 +1171,38 @@ export default function App() {
               onDeleteTermin={deleteTermin}
             />
           ) : (
-            <div className="detail-empty">
-              <div className="detail-empty-icon">📂</div>
-              <div className="detail-empty-text">Mandant auswählen</div>
-              <div style={{fontSize:'12px', color:'var(--text-muted)', marginBottom: '16px'}}>
-                Klicken Sie auf einen Mandanten in der linken Spalte
-              </div>
-              <button onClick={() => setSelectedId('__todo__')} style={{ padding: '10px 20px', background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 600, fontSize: '13px' }}>
-                📋 Aufgaben-Übersicht öffnen
-              </button>
-            </div>
+            <DashboardHome
+              clients={clients}
+              onSelectClient={setSelectedId}
+            />
           )}
         </div>
 
-        {/* Right column – Kalender */}
-        <div className="col-calendar">
-          <KalenderSection
-            termine={termine}
-            clients={clients}
-            onAdd={addTermin}
-            onUpdate={updateTermin}
-            onDelete={deleteTermin}
-            compact={true}
-            prefillMandantId={selectedId}
-          />
-        </div>
+        {/* Right column – Kalender (togglebar) */}
+        {calendarOpen && (
+          <div className="col-calendar">
+            <KalenderSection
+              termine={termine}
+              clients={clients}
+              onAdd={addTermin}
+              onUpdate={updateTermin}
+              onDelete={deleteTermin}
+              compact={true}
+              prefillMandantId={selectedId}
+            />
+          </div>
+        )}
       </div>
+
+      {/* Command Palette */}
+      {cmdPaletteOpen && (
+        <CommandPalette
+          clients={clients}
+          onClose={() => setCmdPaletteOpen(false)}
+          onSelectClient={id => { setSelectedId(id); setCmdPaletteOpen(false) }}
+          onNewClient={() => { setShowNewModal(true); setCmdPaletteOpen(false) }}
+        />
+      )}
 
       {showNewModal && (
         <NewClientModal onClose={() => setShowNewModal(false)} onSubmit={addClient} />
