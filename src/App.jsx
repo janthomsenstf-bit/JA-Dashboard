@@ -114,6 +114,7 @@ function migrateClient(c) {
     beratung:                    c.beratung                    ?? { branche: '', ergebnis: null, erstelltAm: null },
     jaMonat:                     c.jaMonat                     ?? null,
     zusatzaufgaben:              Array.isArray(c.zusatzaufgaben) ? c.zusatzaufgaben : [],
+    aufgaben:                    Array.isArray(c.aufgaben)       ? c.aufgaben       : [],
     rechner:                     Array.isArray(c.rechner)        ? c.rechner        : [],
     kontakte:                    Array.isArray(c.kontakte)       ? c.kontakte       : [],
     mandatstyp:                  c.mandatstyp                   ?? 'extern',

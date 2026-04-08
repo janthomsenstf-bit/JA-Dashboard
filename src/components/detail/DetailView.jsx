@@ -9,10 +9,11 @@ import LohnTab              from './LohnTab.jsx'
 import BeratungTab          from './BeratungTab.jsx'
 import RechnerTab           from './rechner/RechnerTab.jsx'
 import KommunikationTab     from './KommunikationTab.jsx'
+import DokumenteTab         from './DokumenteTab.jsx'
 import TermineSection       from './TermineSection.jsx'
 import NewClientModal       from '../NewClientModal.jsx'
 
-const TABS = ['🏠 Übersicht', '📋 Auftrag', '📊 Status & Arbeit', '✅ Aufgaben', '📁 Abschluss', '💼 Lohn', '🧠 Beratung', '🔢 Rechner', '✉️ Kommunikation']
+const TABS = ['🏠 Übersicht', '📋 Auftrag', '📊 Status & Arbeit', '✅ Aufgaben', '📁 Abschluss', '💼 Lohn', '🧠 Beratung', '🔢 Rechner', '✉️ Kommunikation', '📂 Dokumente']
 
 
 export default function DetailView({
@@ -227,6 +228,9 @@ export default function DetailView({
         )}
         {activeTab === 8 && (
           <KommunikationTab key={client.id} client={client} onUpdate={onUpdate} emailVorlagen={emailVorlagen} onUpdateEmailVorlagen={onUpdateEmailVorlagen} emailSignaturen={emailSignaturen} onUpdateEmailSignaturen={onUpdateEmailSignaturen} />
+        )}
+        {activeTab === 9 && (
+          <DokumenteTab key={client.id} client={client} onUpdate={onUpdate} onNavigateToKomm={() => setActiveTab(8)} />
         )}
       </div>
 
