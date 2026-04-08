@@ -344,6 +344,11 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
   const [expanded,    setExpanded]    = useState(null)
   const [showAbsenderModal, setShowAbsenderModal] = useState(false)
 
+  // Inhalt-Loading State (keyed by event.id)
+  const [contentLoading, setContentLoading] = useState({})
+  const [contentError,   setContentError]   = useState({})
+  const [attachmentData, setAttachmentData] = useState({})  // Anhang-Binärdaten (nicht persistiert)
+
   // Posteingang State
   const [posteingangOpen,   setPosteingangOpen]   = useState(false)
   const [posteingangEmails, setPosteingangEmails] = useState([])
@@ -552,6 +557,44 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
     return `${(bytes / 1024 / 1024).toFixed(1)} MB`
   }
 
+  // ── E-Mail-Vollinhalt nachladen (Fetch-on-Open) ──────────────────────────────
+  async function fetchEmailContent(entry) {
+    if (contentLoading[entry.id] || !entry.sourceUid || !entry.sourceAccount) return
+    setContentLoading(prev => ({ ...prev, [entry.id]: true }))
+    setContentError(prev => ({ ...prev, [entry.id]: '' }))
+    try {
+      const res  = await fetch(`/api/get-email-content?uid=${encodeURIComponent(entry.sourceUid)}&account=${encodeURIComponent(entry.sourceAccount)}`)
+      const data = await res.json()
+      if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`)
+      // Text + HTML + Anlage-Metadaten persistent in Event speichern
+      const updatedEvents = events.map(e => e.id !== entry.id ? e : {
+        ...e,
+        text:          data.text ?? e.text,
+        html:          data.html ?? undefined,
+        anlagen:       data.attachments.map(a => ({ name: a.name, size: a.size, contentType: a.contentType, tooLarge: a.tooLarge ?? false })),
+        contentLoaded: true,
+      })
+      saveKomm({ events: updatedEvents })
+      // Anhang-Binärdaten nur im Component-State (nicht in Supabase)
+      setAttachmentData(prev => ({ ...prev, [entry.id]: data.attachments }))
+    } catch (e) {
+      setContentError(prev => ({ ...prev, [entry.id]: e.message }))
+    } finally {
+      setContentLoading(prev => ({ ...prev, [entry.id]: false }))
+    }
+  }
+
+  function downloadAttachment(att) {
+    const bytes = atob(att.data)
+    const arr   = new Uint8Array(bytes.length)
+    for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i)
+    const blob  = new Blob([arr], { type: att.contentType || 'application/octet-stream' })
+    const url   = URL.createObjectURL(blob)
+    const a     = document.createElement('a')
+    a.href = url; a.download = att.name; a.click()
+    URL.revokeObjectURL(url)
+  }
+
   // ── Vorlage anwenden ─────────────────────────────────────────────────────────
   function applyVorlage(vorlage) {
     const name  = client.name ?? ''
@@ -679,7 +722,10 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
       empfaenger: email.an,
       absender: email.von,
       betreff: email.betreff,
-      text: `Von: ${email.vonName ? email.vonName + ' <' + email.von + '>' : email.von}\nBetreff: ${email.betreff}\nDatum: ${fmtDatum(email.datum)}\n\n(E-Mail-Text nicht geladen — bitte im E-Mail-Client öffnen)`,
+      text: null,
+      html: undefined,
+      anlagen: [],
+      contentLoaded: false,
       cc: '', bcc: '',
       status: 'gesendet',
       erstelltAm: email.datum,
@@ -1232,7 +1278,13 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
                 }}>
                   {/* Zeile */}
                   <div
-                    onClick={() => setExpanded(isOpen ? null : entry.id)}
+                    onClick={() => {
+                      const nowOpen = !isOpen
+                      setExpanded(nowOpen ? entry.id : null)
+                      if (nowOpen && entry.typ === 'eingehend' && !entry.contentLoaded && entry.sourceUid) {
+                        fetchEmailContent(entry)
+                      }
+                    }}
                     style={{
                       display: 'grid',
                       gridTemplateColumns: '130px 90px 1fr 130px 80px',
@@ -1273,29 +1325,73 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
                   {/* Detail-Klappteil */}
                   {isOpen && (
                     <div style={{ padding: '0 14px 14px', borderTop: '1px solid var(--border)' }}>
-                      <pre style={{
-                        fontFamily: 'inherit', fontSize: '12px', lineHeight: '1.6',
-                        whiteSpace: 'pre-wrap', margin: '12px 0', color: 'var(--text)',
-                        background: 'rgba(0,0,0,0.1)', padding: '12px', borderRadius: '6px',
-                      }}>
-                        {entry.text || '(kein Text)'}
-                      </pre>
+
+                      {/* Loading */}
+                      {contentLoading[entry.id] && (
+                        <div style={{ padding: '16px 0', fontSize: '12px', color: 'var(--text-muted)' }}>
+                          ⏳ E-Mail-Inhalt wird geladen…
+                        </div>
+                      )}
+
+                      {/* Fehler */}
+                      {contentError[entry.id] && (
+                        <div style={{ fontSize: '11px', color: '#dc2626', padding: '8px 12px', background: 'rgba(220,38,38,0.06)', borderRadius: '6px', margin: '8px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          ⚠️ {contentError[entry.id]}
+                          <button className="btn btn-ghost btn-sm" onClick={() => fetchEmailContent(entry)} style={{ fontSize: '10px' }}>
+                            Erneut versuchen
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Inhalt: HTML-iframe oder Text-Fallback */}
+                      {!contentLoading[entry.id] && (
+                        entry.html ? (
+                          <iframe
+                            srcDoc={entry.html}
+                            sandbox="allow-same-origin"
+                            style={{ width: '100%', minHeight: '300px', border: '1px solid var(--border)', borderRadius: '6px', background: '#fff', margin: '12px 0', display: 'block' }}
+                            onLoad={e => {
+                              try {
+                                const h = e.target.contentDocument?.body?.scrollHeight
+                                if (h > 50) e.target.style.height = (h + 24) + 'px'
+                              } catch {}
+                            }}
+                          />
+                        ) : (
+                          <pre style={{ fontFamily: 'inherit', fontSize: '12px', lineHeight: '1.6', whiteSpace: 'pre-wrap', margin: '12px 0', color: 'var(--text)', background: 'rgba(0,0,0,0.1)', padding: '12px', borderRadius: '6px' }}>
+                            {entry.text || (entry.sourceUid && !entry.contentLoaded ? '(Inhalt wird beim nächsten Öffnen geladen)' : '(kein Text)')}
+                          </pre>
+                        )
+                      )}
+
+                      {/* CC / BCC */}
                       {(entry.cc || entry.bcc) && (
                         <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '8px' }}>
                           {entry.cc && <span>CC: {entry.cc} </span>}
                           {entry.bcc && <span>BCC: {entry.bcc}</span>}
                         </div>
                       )}
+
+                      {/* Anhänge mit Download */}
                       {entry.anlagen?.length > 0 && (
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '8px' }}>
-                          {entry.anlagen.map((a, i) => (
-                            <span key={i} style={{
-                              fontSize: '11px', padding: '2px 8px', borderRadius: '12px',
-                              background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.25)', color: '#f59e0b',
-                            }}>
-                              📎 {a.name}
-                            </span>
-                          ))}
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px' }}>
+                          {entry.anlagen.map((a, i) => {
+                            const bin   = attachmentData[entry.id]?.[i]
+                            const canDl = bin?.data && !a.tooLarge
+                            return (
+                              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', padding: '3px 10px', borderRadius: '12px', background: 'rgba(245,158,11,0.1)', border: `1px solid ${canDl ? 'rgba(245,158,11,0.5)' : 'rgba(245,158,11,0.25)'}`, color: '#f59e0b' }}>
+                                <span>📎 {a.name}</span>
+                                <span style={{ opacity: 0.7 }}>({fmtFileSize(a.size)})</span>
+                                {canDl ? (
+                                  <button onClick={() => downloadAttachment(bin)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#f59e0b', fontSize: '11px', padding: '0 2px' }}>
+                                    ⬇ Herunterladen
+                                  </button>
+                                ) : a.tooLarge ? (
+                                  <span style={{ fontSize: '10px', opacity: 0.6 }}>zu groß — E-Mail-Client</span>
+                                ) : null}
+                              </div>
+                            )
+                          })}
                         </div>
                       )}
                       <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
