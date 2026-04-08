@@ -14,7 +14,7 @@ import KalenderSection from './components/KalenderSection.jsx'
 import GlobalTodoView  from './components/GlobalTodoView.jsx'
 import PosteingangUngeklaert from './components/PosteingangUngeklaert.jsx'
 import GlobalSearch          from './components/search/GlobalSearch.jsx'
-import DashboardHome         from './components/dashboard/DashboardHome.jsx'
+import StartseiteHome        from './components/dashboard/StartseiteHome.jsx'
 import CommandPalette        from './components/CommandPalette.jsx'
 import { supabase } from './utils/supabaseClient.js'
 import { cloudLoadAll, cloudSave, cloudSaveNow, cloudSnapshot, migrateLocalStorageToCloud } from './utils/cloudStorage.js'
@@ -207,6 +207,7 @@ export default function App() {
   const headerMenuRef                            = useRef(null)
   const [calendarOpen,      setCalendarOpen]      = useState(() => localStorage.getItem('calendar-open') !== 'false')
   const [cmdPaletteOpen,    setCmdPaletteOpen]    = useState(false)
+  const [detailInitialTab,  setDetailInitialTab]  = useState(0)
 
   // clientsRef immer aktuell halten (für den Interval-Callback)
   useEffect(() => { clientsRef.current = clients }, [clients])
@@ -547,6 +548,11 @@ export default function App() {
     setTimeout(() => setImportMsg(''), 5000)
   }
 
+  function openClientAtKomm(clientId) {
+    setDetailInitialTab(8)
+    setSelectedId(clientId)
+  }
+
   const updateClient = useCallback((id, patch) => {
     setClients(prev => prev.map(c => c.id === id ? { ...c, ...patch } : c))
   }, [])
@@ -821,7 +827,7 @@ export default function App() {
     <div className="app-layout">
       {/* Header */}
       <header className="app-header">
-        <div className="app-header-logo">
+        <div className="app-header-logo" onClick={() => setSelectedId(null)} style={{ cursor: 'pointer' }}>
           <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
             <rect width="28" height="28" rx="6" fill="var(--accent-dim)"/>
             <path d="M7 8h14M7 14h10M7 20h12" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round"/>
@@ -1116,7 +1122,7 @@ export default function App() {
               search={search}
               sortCol={sortCol}
               sortDir={sortDir}
-              onSelect={setSelectedId}
+              onSelect={(id) => { setDetailInitialTab(0); setSelectedId(id) }}
               onFilterChange={setFilter}
               onMandatsTypFilterChange={setMandatsTypFilter}
               onSearchChange={setSearch}
@@ -1139,6 +1145,7 @@ export default function App() {
           ) : selectedClient ? (
             <DetailView
               client={selectedClient}
+              initialTab={detailInitialTab}
               onUpdate={(patch) => updateClient(selectedClient.id, patch)}
               onAddRueckfrage={(text) => addRueckfrage(selectedClient.id, text)}
               onToggleRueckfrage={(rqId, checked) => toggleRueckfrage(selectedClient.id, rqId, checked)}
@@ -1171,9 +1178,11 @@ export default function App() {
               onDeleteTermin={deleteTermin}
             />
           ) : (
-            <DashboardHome
+            <StartseiteHome
               clients={clients}
-              onSelectClient={setSelectedId}
+              onSelectClient={(id) => { setDetailInitialTab(0); setSelectedId(id) }}
+              onSelectClientAtKomm={openClientAtKomm}
+              onUpdateClient={updateClient}
             />
           )}
         </div>

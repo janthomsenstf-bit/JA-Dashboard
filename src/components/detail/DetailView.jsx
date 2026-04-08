@@ -17,6 +17,7 @@ const TABS = ['🏠 Übersicht', '📋 Auftrag', '📊 Status & Arbeit', '✅ Au
 
 export default function DetailView({
   client,
+  initialTab = 0,
   onUpdate,
   onAddRueckfrage,
   onToggleRueckfrage,
@@ -43,7 +44,7 @@ export default function DetailView({
   onUpdateTermin,
   onDeleteTermin,
 }) {
-  const [activeTab, setActiveTab]   = useState(0)
+  const [activeTab, setActiveTab]   = useState(initialTab)
   const [showEdit, setShowEdit]     = useState(false)
 
   // Mandantennummern als Array (ohne leere)
