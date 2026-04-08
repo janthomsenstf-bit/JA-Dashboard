@@ -197,6 +197,9 @@ export default function App() {
   const [emailVorlagen,   setEmailVorlagen]   = useState([])
   const [emailSignaturen, setEmailSignaturen] = useState([])
 
+  // ── OneDrive-Tokens ───────────────────────────────────────────────────────────
+  const [onedriveTokens, setOnedriveTokens] = useState(null)
+
   // ── Termine ───────────────────────────────────────────────────────────────────
   const [termine, setTermine] = useState([])
 
@@ -249,6 +252,7 @@ export default function App() {
         if (Array.isArray(cloudData['unbekannte-emails'])) setUnbekannteEmails(cloudData['unbekannte-emails'])
         if (Array.isArray(cloudData['email-vorlagen-v1']))    setEmailVorlagen(cloudData['email-vorlagen-v1'])
         if (Array.isArray(cloudData['email-signaturen-v1'])) setEmailSignaturen(cloudData['email-signaturen-v1'])
+        if (cloudData['onedrive-tokens-v1'])                 setOnedriveTokens(cloudData['onedrive-tokens-v1'])
       } else {
         // Noch keine Cloud-Daten – lokale Daten prüfen
         try {
@@ -302,6 +306,10 @@ export default function App() {
     if (!authUser || dataLoading) return
     cloudSave('email-signaturen-v1', emailSignaturen)
   }, [emailSignaturen])
+  useEffect(() => {
+    if (!authUser || dataLoading || !onedriveTokens) return
+    cloudSaveNow('onedrive-tokens-v1', onedriveTokens).catch(() => {})
+  }, [onedriveTokens])
 
   // Auto-dismiss Startup-Banner nach 6 Sekunden
   useEffect(() => {
@@ -1276,6 +1284,8 @@ export default function App() {
               onAddTermin={addTermin}
               onUpdateTermin={updateTermin}
               onDeleteTermin={deleteTermin}
+              onedriveTokens={onedriveTokens}
+              onUpdateOnedriveTokens={setOnedriveTokens}
             />
           ) : (
             <StartseiteHome

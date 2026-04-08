@@ -44,6 +44,8 @@ export default function DetailView({
   onAddTermin,
   onUpdateTermin,
   onDeleteTermin,
+  onedriveTokens = null,
+  onUpdateOnedriveTokens,
 }) {
   const [activeTab, setActiveTab]   = useState(initialTab)
   const [showEdit, setShowEdit]     = useState(false)
@@ -230,7 +232,14 @@ export default function DetailView({
           <KommunikationTab key={client.id} client={client} onUpdate={onUpdate} emailVorlagen={emailVorlagen} onUpdateEmailVorlagen={onUpdateEmailVorlagen} emailSignaturen={emailSignaturen} onUpdateEmailSignaturen={onUpdateEmailSignaturen} />
         )}
         {activeTab === 9 && (
-          <DokumenteTab key={client.id} client={client} onUpdate={onUpdate} onNavigateToKomm={() => setActiveTab(8)} />
+          <DokumenteTab
+            key={client.id}
+            client={client}
+            onUpdate={onUpdate}
+            onNavigateToKomm={() => setActiveTab(8)}
+            onedriveTokens={onedriveTokens}
+            onUpdateOnedriveTokens={onUpdateOnedriveTokens}
+          />
         )}
       </div>
 
