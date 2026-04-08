@@ -68,12 +68,14 @@ function ClientSelect({ clients, onSelect, placeholder = 'Mandant auswählen…'
 }
 
 // ── Haupt-Komponente ───────────────────────────────────────────────────────────
-export default function PosteingangUngeklaert({ unbekannteEmails, clients, onAssign, onAssignAll, onClose }) {
+export default function PosteingangUngeklaert({ unbekannteEmails, clients, onAssign, onAssignAll, onRecheck, onClose }) {
   const [search,    setSearch]    = useState('')
   const [grouped,   setGrouped]   = useState(false)
   const [selected,  setSelected]  = useState(new Set())           // uid:account keys
   const [bulkClientId, setBulkClientId] = useState('')
   const [saveContactDialog, setSaveContactDialog] = useState(null) // { email, clientId, mode: 'single'|'all' }
+  const [recheckResult, setRecheckResult] = useState(null)        // { geprüft, zugeordnet, verbleibend }
+  const [recheckLoading, setRecheckLoading] = useState(false)
 
   const emailKey = e => `${e.account}:${e.uid}`
 
@@ -146,6 +148,18 @@ export default function PosteingangUngeklaert({ unbekannteEmails, clients, onAss
     }
   }
 
+  function handleRecheck() {
+    if (!onRecheck || recheckLoading) return
+    setRecheckLoading(true)
+    setRecheckResult(null)
+    // kurze Verzögerung für visuelles Feedback
+    setTimeout(() => {
+      const result = onRecheck()
+      setRecheckResult(result ?? { geprüft: 0, zugeordnet: 0, verbleibend: 0 })
+      setRecheckLoading(false)
+    }, 120)
+  }
+
   return (
     <>
       {/* Backdrop */}
@@ -206,7 +220,47 @@ export default function PosteingangUngeklaert({ unbekannteEmails, clients, onAss
           >
             Gruppiert
           </button>
+          {onRecheck && (
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={handleRecheck}
+              disabled={recheckLoading || unbekannteEmails.length === 0}
+              title="Ungeklärte E-Mails erneut gegen Mandanten-Kontakte abgleichen"
+              style={{ fontSize: '11px', color: 'var(--accent)', whiteSpace: 'nowrap' }}
+            >
+              {recheckLoading ? '⏳ Prüfe…' : '🔄 Neu abgleichen'}
+            </button>
+          )}
         </div>
+
+        {/* Recheck-Ergebnis */}
+        {recheckResult && (
+          <div style={{
+            padding: '8px 16px', borderBottom: '1px solid var(--border)',
+            background: recheckResult.zugeordnet > 0 ? 'rgba(22,163,74,0.08)' : 'rgba(100,116,139,0.06)',
+            display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap',
+            flexShrink: 0,
+          }}>
+            <span style={{ fontSize: '11px', fontWeight: 700, color: recheckResult.zugeordnet > 0 ? '#16a34a' : 'var(--text-muted)' }}>
+              {recheckResult.zugeordnet > 0 ? '✅' : 'ℹ️'} Abgleich abgeschlossen
+            </span>
+            <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+              {recheckResult.geprüft} geprüft
+            </span>
+            <span style={{ fontSize: '11px', color: recheckResult.zugeordnet > 0 ? '#16a34a' : 'var(--text-muted)', fontWeight: recheckResult.zugeordnet > 0 ? 700 : 400 }}>
+              {recheckResult.zugeordnet} zugeordnet
+            </span>
+            <span style={{ fontSize: '11px', color: recheckResult.verbleibend > 0 ? '#f97316' : 'var(--text-muted)' }}>
+              {recheckResult.verbleibend} verbleibend
+            </span>
+            <button
+              onClick={() => setRecheckResult(null)}
+              style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', fontSize: '12px', color: 'var(--text-muted)' }}
+            >
+              ✕
+            </button>
+          </div>
+        )}
 
         {/* Bulk-Auswahl */}
         {selected.size > 0 && (

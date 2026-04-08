@@ -211,6 +211,7 @@ export default function App() {
   const [backupLoading, setBackupLoading]   = useState(false)
   const clientsRef                          = useRef(clients)
   const unbekannteEmailsRef                 = useRef([])
+  const recheckFnRef                        = useRef(null)  // immer aktuelle Recheck-Funktion
   const lastEmailFetchRef                   = useRef(localStorage.getItem('email-last-fetch-at') || null)
   const [headerMenuOpen,    setHeaderMenuOpen]    = useState(false)
   const headerMenuRef                            = useRef(null)
@@ -465,6 +466,43 @@ export default function App() {
     setUnbekannteEmails(prev => prev.filter(e => e.von?.toLowerCase() !== vonAddress.toLowerCase()))
   }
 
+  // ── Ungeklärte E-Mails erneut gegen Mandanten-Kontakte abgleichen ────────────
+  function recheckUnbekannteEmails() {
+    const emails = unbekannteEmailsRef.current
+    if (!emails.length) return { geprüft: 0, zugeordnet: 0, verbleibend: 0 }
+
+    // E-Mail-Adress-Index aus aktuellen Mandanten-Kontakten aufbauen
+    const emailIndex = {}
+    clientsRef.current.forEach(c =>
+      (c.kontakte ?? []).forEach(k => {
+        if (k.email) emailIndex[k.email.toLowerCase()] = c.id
+      })
+    )
+
+    const toAssign = []
+    const toKeep   = []
+    emails.forEach(email => {
+      const clientId = emailIndex[email.von?.toLowerCase()]
+      if (clientId) toAssign.push({ clientId, email })
+      else toKeep.push(email)
+    })
+
+    if (toAssign.length) {
+      setClients(prev => prev.map(c => {
+        const matching = toAssign.filter(a => a.clientId === c.id)
+        if (!matching.length) return c
+        const newEvents = matching.map(({ email }) => buildIncomingEvent(email))
+        const komm = c.kommunikation ?? { events: [] }
+        return { ...c, kommunikation: { ...komm, events: [...newEvents, ...komm.events] } }
+      }))
+      setUnbekannteEmails(toKeep)
+    }
+
+    return { geprüft: emails.length, zugeordnet: toAssign.length, verbleibend: toKeep.length }
+  }
+  // Ref immer aktuell halten (für Aufrufe aus Callbacks)
+  recheckFnRef.current = recheckUnbekannteEmails
+
   // ── Backup-Erinnerung alle 30 Minuten ─────────────────────────────────────────
   useEffect(() => {
     const id = setInterval(() => setBackupReminder(true), 30 * 60 * 1000)
@@ -567,6 +605,16 @@ export default function App() {
 
   const updateClient = useCallback((id, patch) => {
     setClients(prev => prev.map(c => c.id === id ? { ...c, ...patch } : c))
+    // Auto-Recheck: wenn Kontakte geändert wurden und ungeklärte E-Mails vorhanden
+    if (patch.kontakte && unbekannteEmailsRef.current.length > 0) {
+      setTimeout(() => {
+        const result = recheckFnRef.current?.()
+        if (result?.zugeordnet > 0) {
+          setBackupToast(`✓ ${result.zugeordnet} E-Mail${result.zugeordnet !== 1 ? 's' : ''} automatisch zugeordnet`)
+          setTimeout(() => setBackupToast(''), 5000)
+        }
+      }, 300)
+    }
   }, [])
 
   const selectedClient = clients.find(c => c.id === selectedId) ?? null
@@ -1091,6 +1139,7 @@ export default function App() {
           clients={clients}
           onAssign={assignEmail}
           onAssignAll={assignAllFromAddress}
+          onRecheck={recheckUnbekannteEmails}
           onClose={() => setPosteingangOpen(false)}
         />
       )}
