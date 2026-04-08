@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { sampleClients } from './utils/sampleData.js'
 import { calculateProgress, getOverdueClients } from './utils/progress.js'
 import { loadChecklistenTypen, saveChecklistenTypen } from './utils/checklistenStorage.js'
@@ -156,6 +156,15 @@ function downloadBackup(clients) {
 
 function generateId() {
   return 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
+}
+
+// ── E-Mail offen? (kein erledigtAm + keine gesendete Antwort danach) ──────────
+function isEmailOpen(incomingEvent, allEvents) {
+  if (incomingEvent.erledigtAm) return false
+  const t = new Date(incomingEvent.erstelltAm).getTime()
+  return !allEvents.some(
+    e => e.typ !== 'eingehend' && e.status === 'gesendet' && new Date(e.erstelltAm).getTime() > t
+  )
 }
 
 export default function App() {
@@ -805,6 +814,16 @@ export default function App() {
 
   const overdueClients = getOverdueClients(clients)
 
+  // ── Offene E-Mails (zugeordnet, aber noch nicht beantwortet/erledigt) ─────────
+  const offeneEmailCount = useMemo(() => {
+    let count = 0
+    clients.filter(c => !c.archiviert).forEach(c => {
+      const evts = c.kommunikation?.events ?? []
+      evts.forEach(e => { if (e.typ === 'eingehend' && isEmailOpen(e, evts)) count++ })
+    })
+    return count
+  }, [clients])
+
   // Auth wird noch geprüft
   if (authUser === undefined) {
     return (
@@ -867,16 +886,44 @@ export default function App() {
             {lastSaveAt && <span style={{ marginLeft: '6px', opacity: 0.6 }}>· {fmtZeit(lastSaveAt)}</span>}
           </span>
 
-          {/* Posteingang-Badge */}
-          {unbekannteEmails.length > 0 && (
-            <button
-              className="btn btn-ghost btn-sm"
-              onClick={() => setPosteingangOpen(true)}
-              title={`${unbekannteEmails.length} nicht zugeordnete E-Mail(s)`}
-              style={{ fontSize: '12px', color: '#f97316', fontWeight: 700 }}
-            >
-              📥 {unbekannteEmails.length}
-            </button>
+          {/* ── E-Mail Status-Badges ── */}
+          {(offeneEmailCount > 0 || unbekannteEmails.length > 0) && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              {offeneEmailCount > 0 && (
+                <button
+                  onClick={() => setSelectedId(null)}
+                  title={`${offeneEmailCount} offene E-Mail(s) — zur Startseite`}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '4px',
+                    padding: '3px 9px', borderRadius: '20px', border: 'none', cursor: 'pointer',
+                    background: 'rgba(22,163,74,0.12)', color: '#16a34a',
+                    fontSize: '11px', fontWeight: 700, lineHeight: 1,
+                    transition: 'background 0.15s',
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(22,163,74,0.22)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'rgba(22,163,74,0.12)'}
+                >
+                  ✉️ Neu: {offeneEmailCount}
+                </button>
+              )}
+              {unbekannteEmails.length > 0 && (
+                <button
+                  onClick={() => setPosteingangOpen(true)}
+                  title={`${unbekannteEmails.length} nicht zugeordnete E-Mail(s)`}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '4px',
+                    padding: '3px 9px', borderRadius: '20px', border: 'none', cursor: 'pointer',
+                    background: 'rgba(249,115,22,0.12)', color: '#f97316',
+                    fontSize: '11px', fontWeight: 700, lineHeight: 1,
+                    transition: 'background 0.15s',
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(249,115,22,0.22)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'rgba(249,115,22,0.12)'}
+                >
+                  📥 Ungeklärt: {unbekannteEmails.length}
+                </button>
+              )}
+            </div>
           )}
 
           {/* Kalender-Toggle */}
