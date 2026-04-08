@@ -10,10 +10,9 @@ import BeratungTab          from './BeratungTab.jsx'
 import RechnerTab           from './rechner/RechnerTab.jsx'
 import KommunikationTab     from './KommunikationTab.jsx'
 import DokumenteTab         from './DokumenteTab.jsx'
-import TermineSection       from './TermineSection.jsx'
 import NewClientModal       from '../NewClientModal.jsx'
 
-const TABS = ['🏠 Übersicht', '📋 Auftrag', '📊 Status & Arbeit', '✅ Aufgaben', '📁 Abschluss', '💼 Lohn', '🧠 Beratung', '🔢 Rechner', '✉️ Kommunikation', '📂 Dokumente']
+const TABS = ['🏠 Übersicht', '🗂 Stammdaten', '📊 Status', '✅ Aufgaben', '📁 Abschluss', '💼 Lohn', '🧠 Beratung', '🔢 Rechner', '✉️ Kommunikation', '📂 Dokumente']
 
 
 export default function DetailView({
@@ -46,6 +45,8 @@ export default function DetailView({
   onDeleteTermin,
   onedriveTokens = null,
   onUpdateOnedriveTokens,
+  claudeApiKey = '',
+  onUpdateClaudeApiKey,
 }) {
   const [activeTab, setActiveTab]   = useState(initialTab)
   const [showEdit, setShowEdit]     = useState(false)
@@ -193,28 +194,19 @@ export default function DetailView({
         })()}
       </div>
 
-      {/* Termine & Fristen – immer sichtbar, aufklappbar */}
-      <TermineSection
-        client={client}
-        termine={termine}
-        onAdd={onAddTermin}
-        onUpdate={onUpdateTermin}
-        onDelete={onDeleteTermin}
-      />
-
       {/* Tab content */}
       <div style={{ flex: 1 }}>
         {activeTab === 0 && (
           <UebersichtTab key={client.id} client={client} onNavigateToTab={setActiveTab} />
         )}
         {activeTab === 1 && (
-          <AuftragTab key={client.id} client={client} onUpdate={onUpdate} />
+          <AuftragTab key={client.id} client={client} onUpdate={onUpdate} claudeApiKey={claudeApiKey} onUpdateClaudeApiKey={onUpdateClaudeApiKey} />
         )}
         {activeTab === 2 && (
           <StandDerArbeitTab key={client.id} client={client} onUpdate={onUpdate} />
         )}
         {activeTab === 3 && (
-          <AufgabenTab key={client.id} client={client} onUpdate={onUpdate} />
+          <AufgabenTab key={client.id} client={client} onUpdate={onUpdate} onAddTermin={onAddTermin} />
         )}
         {activeTab === 4 && (
           <AbschlussTab key={client.id} client={client} onUpdate={onUpdate} />

@@ -4,7 +4,6 @@ import { useState, useRef } from 'react'
 const APIKEY_STORAGE = 'sda-claude-api-key'
 const TEMPLATE3_KEY  = 'sda-email-template3'
 function loadApiKey()     { return (localStorage.getItem(APIKEY_STORAGE) ?? '').replace(/\s/g, '') }
-function saveApiKey(k)    { localStorage.setItem(APIKEY_STORAGE, k.replace(/\s/g, '')) }
 function loadTemplate3()  { return localStorage.getItem(TEMPLATE3_KEY) ?? '' }
 function saveTemplate3(t) { localStorage.setItem(TEMPLATE3_KEY, t) }
 
@@ -516,12 +515,8 @@ export default function StandDerArbeitTab({ client, onUpdate }) {
     showToast(`${EVENT_TYPES[typ].icon} ${EVENT_TYPES[typ].label} – KI hat Eintrag erstellt${remDatum ? ` · ⏰ Erinnerung am ${fmtDateShort(remDatum)}` : ''}`)
   }
 
-  // ── API-Key ──
-  const [apiKey,       setApiKey]       = useState(loadApiKey)
-  const [showKeyInput, setShowKeyInput] = useState(!loadApiKey())
-  const [toast,        setToast_]       = useState('')
+  const [toast, setToast_] = useState('')
   function showToast(msg) { setToast_(msg); setTimeout(() => setToast_(''), 4000) }
-  function handleSaveKey() { saveApiKey(apiKey.trim()); setShowKeyInput(false); showToast('API-Schlüssel gespeichert ✓') }
 
   // ── E-Mail-Bereich ──
   const stand     = client.standDerArbeit ?? { emails: [] }
@@ -571,7 +566,19 @@ export default function StandDerArbeitTab({ client, onUpdate }) {
     background: 'var(--surface2)', color: 'var(--text)', fontSize: '12px', boxSizing: 'border-box',
   }
 
-  const savedKey = loadApiKey()
+  // Rückfragen (aus client.rueckfragen)
+  const rueckfragen = client.rueckfragen ?? []
+  const offeneRQ = rueckfragen.filter(r => !r.beantwortet)
+  const erledigteRQ = rueckfragen.filter(r => r.beantwortet)
+
+  function fmtRQDatum(iso) {
+    if (!iso) return ''
+    const d = new Date(iso)
+    return `${d.getDate().toString().padStart(2,'0')}.${(d.getMonth()+1).toString().padStart(2,'0')}.${d.getFullYear()}`
+  }
+
+  // API-Key Hinweis (kein Key → Link zu Stammdaten)
+  const hasApiKey = !!loadApiKey()
 
   return (
     <div className="tab-content" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -583,22 +590,75 @@ export default function StandDerArbeitTab({ client, onUpdate }) {
         </div>
       )}
 
-      {/* API-Key (oben rechts, klein) */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <button onClick={() => setShowKeyInput(s => !s)} style={{ padding: '4px 10px', border: '1px solid var(--border)', borderRadius: '4px', background: 'none', cursor: 'pointer', fontSize: '11px', color: savedKey ? 'var(--green)' : 'var(--orange)' }} title={savedKey ? `Key: …${savedKey.slice(-6)}` : 'API-Schlüssel eingeben'}>
-          🔑 {savedKey ? `✓ …${savedKey.slice(-6)}` : 'API Key fehlt'}
-        </button>
-      </div>
+      {/* API-Key Hinweis wenn nicht gesetzt */}
+      {!hasApiKey && (
+        <div style={{ padding: '8px 12px', background: 'rgba(249,115,22,0.07)', border: '1px solid rgba(249,115,22,0.25)', borderRadius: '7px', fontSize: '12px', color: '#c2410c', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          🔑 <span>Claude API-Schlüssel fehlt — KI-Funktionen nicht verfügbar. Bitte unter <strong>🗂 Stammdaten → API-Schlüssel</strong> hinterlegen.</span>
+        </div>
+      )}
 
-      {showKeyInput && (
-        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '6px', padding: '12px' }}>
-          <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '6px' }}>Claude API-Key von <strong>console.anthropic.com</strong></div>
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <input type="text" value={apiKey} onChange={e => setApiKey(e.target.value.replace(/\s/g, ''))} placeholder="sk-ant-api03-..." style={{ ...iStyle, flex: 1, fontFamily: 'monospace' }} onKeyDown={e => e.key === 'Enter' && handleSaveKey()} autoComplete="off" spellCheck={false} />
-            <button className="btn btn-primary btn-sm" onClick={handleSaveKey}>Speichern</button>
-            {apiKey && <button className="btn btn-ghost btn-sm" style={{ color: 'var(--red)' }} onClick={() => { setApiKey(''); saveApiKey(''); showToast('Key gelöscht') }}>🗑</button>}
-            <button className="btn btn-ghost btn-sm" onClick={() => setShowKeyInput(false)}>✕</button>
+      {/* ══════════ RÜCKFRAGEN-ÜBERSICHT ══════════ */}
+      {rueckfragen.length > 0 && (
+        <div style={{ border: '1px solid var(--border)', borderRadius: '10px', overflow: 'hidden' }}>
+          <div style={{ padding: '9px 14px', background: 'var(--surface)', borderBottom: rueckfragen.length > 0 ? '1px solid var(--border)' : 'none', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '14px' }}>📤</span>
+            <span style={{ fontWeight: 700, fontSize: '13px', flex: 1 }}>Rückfragen</span>
+            {offeneRQ.length > 0 && (
+              <span style={{ fontSize: '11px', fontWeight: 700, padding: '2px 9px', borderRadius: '10px', background: 'rgba(239,68,68,0.1)', color: '#ef4444' }}>
+                {offeneRQ.length} offen
+              </span>
+            )}
+            {offeneRQ.length === 0 && erledigteRQ.length > 0 && (
+              <span style={{ fontSize: '11px', fontWeight: 700, padding: '2px 9px', borderRadius: '10px', background: 'rgba(22,163,74,0.1)', color: '#16a34a' }}>
+                ✓ Alle beantwortet
+              </span>
+            )}
           </div>
+          <div style={{ padding: '6px 0', maxHeight: '260px', overflowY: 'auto' }}>
+            {rueckfragen.map((rq, i) => (
+              <div key={rq.id ?? i} style={{
+                display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '8px 14px',
+                borderBottom: i < rueckfragen.length - 1 ? '1px solid var(--border)' : 'none',
+                background: rq.beantwortet ? 'transparent' : 'rgba(239,68,68,0.02)',
+              }}>
+                <span style={{ fontSize: '14px', marginTop: '1px', flexShrink: 0 }}>
+                  {rq.beantwortet ? '✅' : '❓'}
+                </span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: '12px', fontWeight: rq.beantwortet ? 400 : 600, color: rq.beantwortet ? 'var(--text-muted)' : 'var(--text)', textDecoration: rq.beantwortet ? 'line-through' : 'none', lineHeight: 1.4 }}>
+                    {rq.text}
+                  </div>
+                  {rq.buchungskonto && (
+                    <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                      Konto: {rq.buchungskonto}
+                    </div>
+                  )}
+                  {rq.antwort && (
+                    <div style={{ fontSize: '11px', color: '#16a34a', marginTop: '3px', background: 'rgba(22,163,74,0.06)', padding: '3px 8px', borderRadius: '4px' }}>
+                      💬 {rq.antwort}
+                    </div>
+                  )}
+                </div>
+                <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
+                  <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+                    {fmtRQDatum(rq.datum)}
+                  </span>
+                  <span style={{
+                    fontSize: '10px', fontWeight: 700, padding: '1px 7px', borderRadius: '8px',
+                    background: rq.beantwortet ? 'rgba(22,163,74,0.1)' : 'rgba(239,68,68,0.1)',
+                    color: rq.beantwortet ? '#16a34a' : '#ef4444',
+                  }}>
+                    {rq.beantwortet ? 'Beantwortet' : 'Offen'}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+          {offeneRQ.length > 0 && (
+            <div style={{ padding: '8px 14px', background: 'var(--surface)', borderTop: '1px solid var(--border)', fontSize: '11px', color: 'var(--text-muted)' }}>
+              💡 Rückfragen bearbeiten: <strong>📁 Abschluss → Rückfragen</strong>
+            </div>
+          )}
         </div>
       )}
 

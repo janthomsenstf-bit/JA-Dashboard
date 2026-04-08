@@ -200,6 +200,9 @@ export default function App() {
   // ── OneDrive-Tokens ───────────────────────────────────────────────────────────
   const [onedriveTokens, setOnedriveTokens] = useState(null)
 
+  // ── Claude API-Key (global, cloud-persistent) ─────────────────────────────────
+  const [claudeApiKey, setClaudeApiKey] = useState(() => localStorage.getItem('sda-claude-api-key') ?? '')
+
   // ── Termine ───────────────────────────────────────────────────────────────────
   const [termine, setTermine] = useState([])
 
@@ -253,6 +256,10 @@ export default function App() {
         if (Array.isArray(cloudData['email-vorlagen-v1']))    setEmailVorlagen(cloudData['email-vorlagen-v1'])
         if (Array.isArray(cloudData['email-signaturen-v1'])) setEmailSignaturen(cloudData['email-signaturen-v1'])
         if (cloudData['onedrive-tokens-v1'])                 setOnedriveTokens(cloudData['onedrive-tokens-v1'])
+        if (cloudData['claude-api-key-v1']) {
+          setClaudeApiKey(cloudData['claude-api-key-v1'])
+          localStorage.setItem('sda-claude-api-key', cloudData['claude-api-key-v1'])
+        }
       } else {
         // Noch keine Cloud-Daten – lokale Daten prüfen
         try {
@@ -310,6 +317,11 @@ export default function App() {
     if (!authUser || dataLoading || !onedriveTokens) return
     cloudSaveNow('onedrive-tokens-v1', onedriveTokens).catch(() => {})
   }, [onedriveTokens])
+  useEffect(() => {
+    if (!authUser || dataLoading) return
+    localStorage.setItem('sda-claude-api-key', claudeApiKey)
+    if (claudeApiKey) cloudSaveNow('claude-api-key-v1', claudeApiKey).catch(() => {})
+  }, [claudeApiKey])
 
   // Auto-dismiss Startup-Banner nach 6 Sekunden
   useEffect(() => {
@@ -1286,6 +1298,8 @@ export default function App() {
               onDeleteTermin={deleteTermin}
               onedriveTokens={onedriveTokens}
               onUpdateOnedriveTokens={setOnedriveTokens}
+              claudeApiKey={claudeApiKey}
+              onUpdateClaudeApiKey={setClaudeApiKey}
             />
           ) : (
             <StartseiteHome

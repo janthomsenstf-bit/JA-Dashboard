@@ -397,7 +397,7 @@ function GenerierteAufgaben({ client, onUpdate }) {
 }
 
 // ── Haupt-Komponente ─────────────────────────────────────────────────────────
-export default function AufgabenTab({ client, onUpdate }) {
+export default function AufgabenTab({ client, onUpdate, onAddTermin }) {
   const aufgaben = client.aufgaben ?? []
 
   const [filter, setFilter]   = useState('offen') // 'alle' | 'offen' | 'erledigt'
@@ -412,6 +412,17 @@ export default function AufgabenTab({ client, onUpdate }) {
 
   function addAufgabe(aufgabe) {
     onUpdate({ aufgaben: [aufgabe, ...aufgaben] })
+    // Kalender-Integration: Aufgabe mit Frist → automatisch als Termin eintragen
+    if (aufgabe.faelligAm && onAddTermin) {
+      onAddTermin({
+        id:    't' + Date.now().toString(36) + Math.random().toString(36).slice(2, 4),
+        datum: aufgabe.faelligAm + 'T12:00:00.000Z',
+        art:   'frist',
+        text:  `📋 ${aufgabe.titel}`,
+        erledigt:   false,
+        erledigtAm: null,
+      })
+    }
   }
 
   async function processInput(text) {

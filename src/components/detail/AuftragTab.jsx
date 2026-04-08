@@ -41,6 +41,11 @@ const LOHN_INTERVALLE = [
   { key: 'sonstiges', label: 'Sonstiges'  },
 ]
 
+const LOHN_ARTEN = [
+  { key: 'standard', label: 'Standardlohn' },
+  { key: 'baulohn',  label: 'Baulohn'      },
+]
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Checklisten-Kategorien (mit Schlüsseln aus dem alten auftrag-Objekt)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -528,7 +533,72 @@ function KontaktpersonenSection({ client, onUpdate }) {
   )
 }
 
-export default function AuftragTab({ client, onUpdate }) {
+// ── API-Key-Sektion (Stammdaten) ──────────────────────────────────────────────
+function ApiKeySection({ claudeApiKey, onUpdateClaudeApiKey }) {
+  const [localKey, setLocalKey] = useState(claudeApiKey ?? '')
+  const [saved,    setSaved]    = useState(false)
+  const [show,     setShow]     = useState(false)
+
+  function handleSave() {
+    const trimmed = localKey.trim().replace(/\s/g, '')
+    onUpdateClaudeApiKey?.(trimmed)
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2500)
+  }
+
+  const hasKey = !!(claudeApiKey ?? '').trim()
+
+  return (
+    <div style={{ border: '1px solid var(--border)', borderRadius: '10px', overflow: 'hidden', marginTop: '14px' }}>
+      <button
+        onClick={() => setShow(o => !o)}
+        style={{ width: '100%', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: '10px', background: 'var(--surface)', border: 'none', cursor: 'pointer', textAlign: 'left', borderBottom: show ? '1px solid var(--border)' : 'none' }}
+      >
+        <span style={{ fontSize: '15px' }}>🔑</span>
+        <span style={{ fontWeight: 700, fontSize: '13px', flex: 1 }}>Claude API-Schlüssel</span>
+        <span style={{
+          fontSize: '11px', fontWeight: 700, padding: '2px 9px', borderRadius: '10px',
+          background: hasKey ? 'rgba(22,163,74,0.1)' : 'rgba(249,115,22,0.1)',
+          color: hasKey ? '#16a34a' : '#f97316',
+        }}>
+          {hasKey ? `✓ Hinterlegt …${(claudeApiKey ?? '').slice(-6)}` : '⚠ Nicht gesetzt'}
+        </span>
+        <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{show ? '▲' : '▼'}</span>
+      </button>
+
+      {show && (
+        <div style={{ padding: '14px 16px' }}>
+          <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '10px' }}>
+            Wird für KI-Funktionen (Aufgaben, Aktivitäten, E-Mail-Formulierung) benötigt.
+            Key von <strong>console.anthropic.com</strong> — wird sicher gespeichert und geräteübergreifend synchronisiert.
+          </div>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <input
+              type="password"
+              value={localKey}
+              onChange={e => setLocalKey(e.target.value)}
+              placeholder="sk-ant-api03-..."
+              style={{ flex: 1, padding: '7px 10px', border: '1px solid var(--border)', borderRadius: '6px', background: 'var(--surface2)', color: 'var(--text)', fontSize: '12px', fontFamily: 'monospace' }}
+              onKeyDown={e => e.key === 'Enter' && handleSave()}
+              autoComplete="off"
+              spellCheck={false}
+            />
+            <button className={`btn btn-sm ${saved ? 'btn-success' : 'btn-primary'}`} onClick={handleSave} style={{ fontSize: '12px' }}>
+              {saved ? '✓ Gespeichert' : '💾 Speichern'}
+            </button>
+            {hasKey && (
+              <button className="btn btn-ghost btn-sm" style={{ color: 'var(--red)', fontSize: '12px' }} onClick={() => { setLocalKey(''); onUpdateClaudeApiKey?.('') }}>
+                🗑 Löschen
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+export default function AuftragTab({ client, onUpdate, claudeApiKey, onUpdateClaudeApiKey }) {
   const auftrag = client.auftrag ?? {}
 
   // Setup-Felder (aus client-Ebene)
@@ -678,20 +748,55 @@ export default function AuftragTab({ client, onUpdate }) {
               </SetupRow>
             )}
 
+            {/* Dauerfristverlängerung */}
+            {(steuerarten.ust || hatUSt) && !istKleinunternehmer && ustIntervall !== 'keine' && (
+              <SetupRow label="Dauerfristverlängerung">
+                <Chip label="Ja" active={client.dauerfriv === true}  color="#b45309" onClick={() => onUpdate({ dauerfriv: true })}  small />
+                <Chip label="Nein" active={client.dauerfriv !== true} color="#64748b" onClick={() => onUpdate({ dauerfriv: false })} small />
+                {client.dauerfriv && (
+                  <span style={{ fontSize: '11px', color: '#b45309', marginLeft: '6px' }}>
+                    ℹ️ Frist verschiebt sich um 1 Monat
+                  </span>
+                )}
+              </SetupRow>
+            )}
+
             {/* Lohn */}
             <SetupRow label="Lohnabrechnung">
               <Chip label="Vorhanden" active={lohnAktiv} color="#7c3aed" onClick={() => onUpdate({ lohnAktiv: true })} small />
               <Chip label="Nicht vorhanden" active={!lohnAktiv} color="#64748b" onClick={() => onUpdate({ lohnAktiv: false })} small />
-              {lohnAktiv && (
-                <>
-                  <span style={{ fontSize: '11px', color: 'var(--text-muted)', margin: '0 4px' }}>Intervall:</span>
+            </SetupRow>
+            {lohnAktiv && (
+              <>
+                <SetupRow label="Lohn-Intervall">
                   {LOHN_INTERVALLE.map(i => (
                     <Chip key={i.key} label={i.label} active={lohnIntervall === i.key} color="#7c3aed"
                       onClick={() => onUpdate({ lohnIntervall: i.key })} small />
                   ))}
-                </>
-              )}
-            </SetupRow>
+                </SetupRow>
+                <SetupRow label="Lohn-Art">
+                  {LOHN_ARTEN.map(a => (
+                    <Chip key={a.key} label={a.label} active={(client.lohnArt ?? 'standard') === a.key} color="#7c3aed"
+                      onClick={() => onUpdate({ lohnArt: a.key })} small />
+                  ))}
+                </SetupRow>
+                <SetupRow label="Anzahl Mitarbeiter">
+                  <input
+                    type="number"
+                    min="0"
+                    value={client.lohnMitarbeiter ?? ''}
+                    onChange={e => onUpdate({ lohnMitarbeiter: e.target.value === '' ? null : parseInt(e.target.value) })}
+                    placeholder="z.B. 5"
+                    style={{ width: '80px', padding: '4px 8px', border: '1px solid var(--border)', borderRadius: '6px', background: 'var(--surface2)', color: 'var(--text)', fontSize: '12px' }}
+                  />
+                  {client.lohnMitarbeiter > 0 && (
+                    <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginLeft: '6px' }}>
+                      {client.lohnMitarbeiter} Mitarbeiter
+                    </span>
+                  )}
+                </SetupRow>
+              </>
+            )}
 
             {/* Jahresabschluss-Monat */}
             <SetupRow label="JA-Aufgabe Monat">
@@ -775,6 +880,9 @@ export default function AuftragTab({ client, onUpdate }) {
 
       {/* ══════════════════ 4. KONTAKTPERSONEN ══════════════════ */}
       <KontaktpersonenSection client={client} onUpdate={onUpdate} />
+
+      {/* ══════════════════ 5. API-SCHLÜSSEL ══════════════════ */}
+      <ApiKeySection claudeApiKey={claudeApiKey} onUpdateClaudeApiKey={onUpdateClaudeApiKey} />
 
     </div>
   )
