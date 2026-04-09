@@ -10,9 +10,10 @@ import BeratungTab          from './BeratungTab.jsx'
 import RechnerTab           from './rechner/RechnerTab.jsx'
 import KommunikationTab     from './KommunikationTab.jsx'
 import DokumenteTab         from './DokumenteTab.jsx'
+import EStTab               from './EStTab.jsx'
 import NewClientModal       from '../NewClientModal.jsx'
 
-const TABS = ['🏠 Übersicht', '🗂 Stammdaten', '📊 Status', '✅ Aufgaben', '📁 Abschluss', '💼 Lohn', '🧠 Beratung', '🔢 Rechner', '✉️ Kommunikation', '📂 Dokumente']
+const TABS = ['🏠 Übersicht', '🗂 Stammdaten', '📊 Status', '✅ Aufgaben', '📁 Abschluss', '💼 Lohn', '🧠 Beratung', '🔢 Rechner', '✉️ Kommunikation', '📂 Dokumente', '📊 ESt']
 
 
 export default function DetailView({
@@ -232,6 +233,9 @@ export default function DetailView({
             onedriveTokens={onedriveTokens}
             onUpdateOnedriveTokens={onUpdateOnedriveTokens}
           />
+        )}
+        {activeTab === 10 && (
+          <EStTab key={client.id} client={client} onUpdate={onUpdate} onAddRueckfrage={onAddRueckfrage} />
         )}
       </div>
 

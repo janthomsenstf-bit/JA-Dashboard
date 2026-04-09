@@ -117,6 +117,7 @@ function migrateClient(c) {
     kontakte:                    Array.isArray(c.kontakte)       ? c.kontakte       : [],
     mandatstyp:                  c.mandatstyp                   ?? 'extern',
     manuellerStatus:             c.manuellerStatus              ?? null,
+    est:                         c.est                          ?? {},
   }
 }
 
