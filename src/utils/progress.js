@@ -105,9 +105,14 @@ const STATUS_DRIVING_EVENTS = new Set(['unterschrift', 'rueckfragen', 'antwort',
  *  abschlussFertig   → abgeschlossen (Rückwärtskompatibilität)
  */
 export function getMandantStatus(client) {
+  // Manueller Override hat höchste Priorität
+  if (client.manuellerStatus && MANDANT_STATUS_CONFIG[client.manuellerStatus]) {
+    return client.manuellerStatus
+  }
+
   if (client.abschlussFertig) return 'abgeschlossen'
 
-  const events = (client.standDerArbeit?.events ?? [])
+  const events = (client.kommunikation?.events ?? [])
     .filter(e => STATUS_DRIVING_EVENTS.has(e.typ))
     .sort((a, b) => (b.datum ?? '').localeCompare(a.datum ?? ''))  // neueste zuerst
 
@@ -121,13 +126,24 @@ export function getMandantStatus(client) {
 }
 
 export const MANDANT_STATUS_CONFIG = {
-  in_bearbeitung:     { label: 'In Bearbeitung',     icon: '🔵', color: '#2563eb', bg: 'rgba(37,99,235,0.09)',  border: 'rgba(37,99,235,0.22)'  },
-  warte_feedback:     { label: 'Warte auf Feedback', icon: '💬', color: '#b45309', bg: 'rgba(180,83,9,0.09)',   border: 'rgba(180,83,9,0.22)'   },
-  warte_unterschrift: { label: 'Zur Unterschrift',   icon: '✍️', color: '#d97706', bg: 'rgba(217,119,6,0.09)',  border: 'rgba(217,119,6,0.22)'  },
-  rechnung_schreiben: { label: 'Rechnung schreiben', icon: '🧾', color: '#0891b2', bg: 'rgba(8,145,178,0.09)',  border: 'rgba(8,145,178,0.22)'  },
-  abgeschlossen:      { label: 'Abgeschlossen',      icon: '✅', color: '#16a34a', bg: 'rgba(22,163,74,0.09)',  border: 'rgba(22,163,74,0.22)'  },
-  erledigt:           { label: 'Abgeschlossen',      icon: '✅', color: '#16a34a', bg: 'rgba(22,163,74,0.09)',  border: 'rgba(22,163,74,0.22)'  },
+  unbearbeitet:       { label: 'Unbearbeitet',        icon: '⚪', color: '#94a3b8', bg: 'rgba(148,163,184,0.09)', border: 'rgba(148,163,184,0.22)' },
+  in_bearbeitung:     { label: 'In Bearbeitung',      icon: '🔵', color: '#2563eb', bg: 'rgba(37,99,235,0.09)',   border: 'rgba(37,99,235,0.22)'   },
+  warte_feedback:     { label: 'Warte auf Rückmeldung', icon: '💬', color: '#b45309', bg: 'rgba(180,83,9,0.09)', border: 'rgba(180,83,9,0.22)'    },
+  warte_unterschrift: { label: 'Zur Unterschrift',    icon: '✍️', color: '#d97706', bg: 'rgba(217,119,6,0.09)',   border: 'rgba(217,119,6,0.22)'   },
+  rechnung_schreiben: { label: 'Rechnung schreiben',  icon: '🧾', color: '#0891b2', bg: 'rgba(8,145,178,0.09)',   border: 'rgba(8,145,178,0.22)'   },
+  abgeschlossen:      { label: 'Abgeschlossen',       icon: '✅', color: '#16a34a', bg: 'rgba(22,163,74,0.09)',   border: 'rgba(22,163,74,0.22)'   },
+  erledigt:           { label: 'Abgeschlossen',       icon: '✅', color: '#16a34a', bg: 'rgba(22,163,74,0.09)',   border: 'rgba(22,163,74,0.22)'   },
 }
+
+// Für manuelle Auswahl sichtbare Status (Reihenfolge des Workflows)
+export const MANUELL_STATUS_OPTIONEN = [
+  'unbearbeitet',
+  'in_bearbeitung',
+  'warte_feedback',
+  'warte_unterschrift',
+  'rechnung_schreiben',
+  'abgeschlossen',
+]
 
 export function getFACountdown(dateStr) {
   const today = new Date()

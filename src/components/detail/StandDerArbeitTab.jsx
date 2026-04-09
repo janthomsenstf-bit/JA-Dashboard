@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react'
+import { MANDANT_STATUS_CONFIG, MANUELL_STATUS_OPTIONEN, getMandantStatus } from '../../utils/progress.js'
 
 // ── Persistence helpers ──────────────────────────────────────────────────────
 const APIKEY_STORAGE = 'sda-claude-api-key'
@@ -673,6 +674,68 @@ export default function StandDerArbeitTab({ client, onUpdate }) {
           )}
         </div>
       )}
+
+      {/* ══════════════ MANUELLER STATUS ══════════════ */}
+      <div style={{ border: '1px solid var(--border)', borderRadius: '10px', overflow: 'hidden' }}>
+        <div style={{ padding: '9px 14px', background: 'var(--surface)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '14px' }}>🎛</span>
+          <span style={{ fontWeight: 700, fontSize: '13px', flex: 1 }}>Status manuell setzen</span>
+          {client.manuellerStatus ? (
+            <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+              Automatik deaktiviert —{' '}
+              <button
+                onClick={() => {
+                  onUpdate({ manuellerStatus: null })
+                  const komm = client.kommunikation ?? { events: [] }
+                  onUpdate({
+                    manuellerStatus: null,
+                    kommunikation: { ...komm, events: [{ id: 'e' + Date.now().toString(36), typ: 'notiz', datum: new Date().toISOString(), notiz: 'Status-Override entfernt – automatische Statuslogik aktiv', reminder: null }, ...(komm.events ?? [])] }
+                  })
+                }}
+                style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: '11px', padding: 0, textDecoration: 'underline' }}
+              >
+                Zurück zur Automatik
+              </button>
+            </span>
+          ) : (
+            <span style={{ fontSize: '11px', color: '#16a34a', fontWeight: 600 }}>● Automatisch aktiv</span>
+          )}
+        </div>
+        <div style={{ padding: '10px 14px', background: 'var(--surface2)', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+          {MANUELL_STATUS_OPTIONEN.map(key => {
+            const cfg     = MANDANT_STATUS_CONFIG[key]
+            const aktiv   = client.manuellerStatus === key
+            const autoKey = !client.manuellerStatus && getMandantStatus(client) === key
+            return (
+              <button
+                key={key}
+                onClick={() => {
+                  if (aktiv) return  // schon aktiv, nix tun
+                  const komm = client.kommunikation ?? { events: [] }
+                  onUpdate({
+                    manuellerStatus: key,
+                    kommunikation: { ...komm, events: [{ id: 'e' + Date.now().toString(36), typ: 'notiz', datum: new Date().toISOString(), notiz: `Status manuell gesetzt: ${cfg.label}`, reminder: null }, ...(komm.events ?? [])] }
+                  })
+                }}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: '5px',
+                  padding: '6px 13px', borderRadius: '20px', cursor: aktiv ? 'default' : 'pointer',
+                  fontSize: '12px', fontWeight: aktiv ? 700 : 500,
+                  border: `1.5px solid ${aktiv ? cfg.color : autoKey ? cfg.color + '80' : 'var(--border)'}`,
+                  background: aktiv ? cfg.bg : autoKey ? cfg.bg + '80' : 'var(--surface)',
+                  color: aktiv ? cfg.color : autoKey ? cfg.color : 'var(--text-muted)',
+                  transition: 'all 0.15s',
+                  boxShadow: aktiv ? `0 0 0 2px ${cfg.color}30` : 'none',
+                }}
+              >
+                {cfg.icon} {cfg.label}
+                {aktiv && <span style={{ fontSize: '10px', marginLeft: '2px' }}>✓</span>}
+                {autoKey && !aktiv && <span style={{ fontSize: '10px', color: cfg.color, opacity: 0.7 }}> (auto)</span>}
+              </button>
+            )
+          })}
+        </div>
+      </div>
 
       {/* ═══════════════════════ STATUS BANNER ═══════════════════════ */}
       <StatusBanner events={events} />
