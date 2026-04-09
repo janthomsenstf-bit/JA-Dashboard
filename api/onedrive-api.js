@@ -47,7 +47,7 @@ async function refreshAccessToken(refreshToken) {
       client_secret: clientSecret,
       refresh_token: refreshToken,
       grant_type:    'refresh_token',
-      scope:         'Files.ReadWrite offline_access User.Read',
+      scope:         'Files.ReadWrite offline_access User.Read Mail.Send',
     }).toString(),
   })
   const data = await res.json()
@@ -231,6 +231,61 @@ export default async function handler(req, res) {
       const d = await r.json()
       if (!r.ok) return fail(r.status, d.error?.message ?? 'listRoot failed')
       return ok({ items: d.value ?? [] })
+    }
+
+    // ── sendMail ─────────────────────────────────────────────────────────────
+    // Sendet eine E-Mail über das Microsoft-Konto des Nutzers.
+    // Die E-Mail wird automatisch in "Gesendete Elemente" (Sent Items) gespeichert.
+    if (action === 'sendMail') {
+      const { to, subject, body, bodyType = 'text', cc, bcc, attachments = [] } = body
+
+      if (!to || !subject || !body) {
+        return fail(400, 'sendMail: to, subject und body sind Pflicht')
+      }
+
+      // Empfänger-Adressen in Graph-Format umwandeln
+      function toRecipients(addresses) {
+        if (!addresses) return []
+        return String(addresses).split(/[,;]/).map(a => a.trim()).filter(Boolean)
+          .map(a => ({ emailAddress: { address: a } }))
+      }
+
+      // Anhänge in Graph-Format (Base64)
+      const graphAttachments = (attachments ?? []).map(a => ({
+        '@odata.type': '#microsoft.graph.fileAttachment',
+        name:          a.filename,
+        contentType:   a.contentType ?? 'application/octet-stream',
+        contentBytes:  a.content, // bereits Base64
+      }))
+
+      const message = {
+        subject,
+        body: {
+          contentType: bodyType === 'html' ? 'html' : 'text',
+          content:     body,
+        },
+        toRecipients:  toRecipients(to),
+        ...(cc  ? { ccRecipients:  toRecipients(cc)  } : {}),
+        ...(bcc ? { bccRecipients: toRecipients(bcc) } : {}),
+        ...(graphAttachments.length > 0 ? { attachments: graphAttachments } : {}),
+      }
+
+      const r = await graphFetch(`${GRAPH}/me/sendMail`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ message, saveToSentItems: true }),
+      }, tokens)
+
+      // sendMail gibt 202 Accepted zurück (kein Body)
+      if (r.status === 202 || r.status === 200) return ok({ messageId: null })
+
+      // Fehlerfall
+      let errMsg = `HTTP ${r.status}`
+      try {
+        const d = await r.json()
+        errMsg = d.error?.message ?? errMsg
+      } catch {}
+      return fail(r.status, errMsg)
     }
 
     return fail(400, `Unbekannte action: ${action}`)

@@ -124,6 +124,19 @@ export function getMandantPath(client) {
 }
 
 /**
+ * Sendet eine E-Mail über das Microsoft-Konto (Graph API).
+ * Die Mail landet automatisch in Outlook "Gesendete Elemente".
+ *
+ * @param {object} params         - { to, subject, body, bodyType?, cc?, bcc?, attachments? }
+ * @param {object} tokens         - Aktuelle OneDrive/Graph-Tokens
+ * @param {function} onTokenRefresh - Callback wenn Tokens refreshed wurden
+ * @returns {Promise<void>}
+ */
+export async function sendMailGraph(params, tokens, onTokenRefresh) {
+  return callApi('sendMail', params, tokens, onTokenRefresh)
+}
+
+/**
  * Lädt eine Datei aus dem E-Mail-Anhang und gibt sie als Base64 zurück.
  * Wird für den Upload zu OneDrive benötigt.
  */

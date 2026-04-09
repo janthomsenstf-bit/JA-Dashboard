@@ -222,7 +222,7 @@ export default function DetailView({
           <RechnerTab key={client.id} client={client} onUpdate={onUpdate} />
         )}
         {activeTab === 8 && (
-          <KommunikationTab key={client.id} client={client} onUpdate={onUpdate} emailVorlagen={emailVorlagen} onUpdateEmailVorlagen={onUpdateEmailVorlagen} emailSignaturen={emailSignaturen} onUpdateEmailSignaturen={onUpdateEmailSignaturen} />
+          <KommunikationTab key={client.id} client={client} onUpdate={onUpdate} emailVorlagen={emailVorlagen} onUpdateEmailVorlagen={onUpdateEmailVorlagen} emailSignaturen={emailSignaturen} onUpdateEmailSignaturen={onUpdateEmailSignaturen} onedriveTokens={onedriveTokens} onUpdateOnedriveTokens={onUpdateOnedriveTokens} />
         )}
         {activeTab === 9 && (
           <DokumenteTab

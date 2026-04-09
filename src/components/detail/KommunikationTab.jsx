@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react'
 import EmailVorlagenModal   from '../EmailVorlagenModal.jsx'
 import EmailSignaturenModal from '../EmailSignaturenModal.jsx'
+import { sendMailGraph, openAuthPopup } from '../../utils/onedriveClient.js'
 
 // ── Signatur-Helfer ───────────────────────────────────────────────────────────
 const SIG_SEP = '\n\n--\n'
@@ -305,7 +306,7 @@ function AbsenderModal({ onClose }) {
 }
 
 // ── Haupt-Komponente ──────────────────────────────────────────────────────────
-export default function KommunikationTab({ client, onUpdate, emailVorlagen = [], onUpdateEmailVorlagen, emailSignaturen = [], onUpdateEmailSignaturen }) {
+export default function KommunikationTab({ client, onUpdate, emailVorlagen = [], onUpdateEmailVorlagen, emailSignaturen = [], onUpdateEmailSignaturen, onedriveTokens = null, onUpdateOnedriveTokens }) {
   const komm    = client.kommunikation ?? { events: [], standardAbsender: '' }
   const events  = Array.isArray(komm.events) ? komm.events : []
   const absender = loadAbsender()
@@ -338,8 +339,9 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
   // UI State
   const [aiLoading,   setAiLoading]   = useState(false)
   const [aiError,     setAiError]     = useState('')
-  const [sendLoading, setSendLoading] = useState(false)
-  const [sendError,   setSendError]   = useState('')
+  const [sendLoading,         setSendLoading]         = useState(false)
+  const [sendOutlookLoading,  setSendOutlookLoading]  = useState(false)
+  const [sendError,           setSendError]           = useState('')
   const [filter,      setFilter]      = useState('alle')
   const [expanded,    setExpanded]    = useState(null)
   const [detailEntry, setDetailEntry] = useState(null)   // E-Mail-Panel
@@ -470,6 +472,62 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
       setSendError(e.message)
     } finally {
       setSendLoading(false)
+    }
+  }
+
+  // Senden über Microsoft Graph API (Outlook)
+  async function handleSendOutlook() {
+    if (!empfaenger || !betreff || !text) {
+      setSendError('Bitte Empfänger, Betreff und Text ausfüllen.')
+      return
+    }
+    setSendOutlookLoading(true)
+    setSendError('')
+
+    let tokens = onedriveTokens
+    try {
+      // Wenn noch keine Tokens → OAuth-Login starten
+      if (!tokens?.accessToken) {
+        try {
+          tokens = await openAuthPopup()
+          onUpdateOnedriveTokens?.(tokens)
+        } catch (authErr) {
+          setSendError('Outlook-Anmeldung fehlgeschlagen: ' + authErr.message)
+          setSendOutlookLoading(false)
+          return
+        }
+      }
+
+      const outlookAttachments = attachments.map(a => ({
+        filename:    a.name,
+        content:     a.data,
+        contentType: a.type,
+      }))
+
+      await sendMailGraph(
+        { to: empfaenger, subject: betreff, body: text, cc: cc || undefined, bcc: bcc || undefined, attachments: outlookAttachments },
+        tokens,
+        (newTokens) => onUpdateOnedriveTokens?.(newTokens),
+      )
+
+      const now = new Date().toISOString()
+      const entry = {
+        id: 'k' + Date.now().toString(36),
+        typ: activTyp,
+        empfaenger, absender: absenderVal, betreff, text, cc, bcc,
+        status:      'gesendet',
+        versandweg:  'outlook',
+        erstelltAm:  now,
+        gesendetAm:  now,
+        anlagen: attachments.length > 0 ? attachments.map(a => ({ name: a.name, size: a.size })) : undefined,
+      }
+      saveKomm({ events: [entry, ...events] })
+      applyStatusUpdates(activTyp, now)
+      resetEditor()
+    } catch (e) {
+      setSendError(e.message)
+    } finally {
+      setSendOutlookLoading(false)
     }
   }
 
@@ -1132,12 +1190,21 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
             <button
               className="btn btn-primary btn-sm"
-              onClick={handleSendSMTP}
-              disabled={sendLoading}
-              style={{ fontSize: '12px' }}
-              title="E-Mail direkt über SMTP senden"
+              onClick={handleSendOutlook}
+              disabled={sendOutlookLoading || sendLoading}
+              style={{ fontSize: '12px', background: '#0078d4', borderColor: '#0078d4' }}
+              title="E-Mail über Outlook senden – erscheint in Gesendete Elemente"
             >
-              {sendLoading ? '⏳ Wird gesendet...' : '📤 Senden'}
+              {sendOutlookLoading ? '⏳ Wird gesendet...' : '📨 Via Outlook senden'}
+            </button>
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={handleSendSMTP}
+              disabled={sendLoading || sendOutlookLoading}
+              style={{ fontSize: '12px' }}
+              title="E-Mail über SMTP senden (Hostinger/Strato)"
+            >
+              {sendLoading ? '⏳ Wird gesendet...' : '📤 Via SMTP senden'}
             </button>
             <button
               className="btn btn-ghost btn-sm"
@@ -1308,6 +1375,9 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontSize: '13px', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{entry.betreff || '(kein Betreff)'}</span>
+                        {entry.versandweg === 'outlook' && (
+                          <span style={{ fontSize: '10px', background: 'rgba(0,120,212,0.12)', color: '#0078d4', border: '1px solid rgba(0,120,212,0.3)', padding: '1px 6px', borderRadius: '10px', flexShrink: 0 }}>Outlook</span>
+                        )}
                         {entry.anlagen?.length > 0 && (
                           <span style={{ fontSize: '10px', color: '#f59e0b', flexShrink: 0 }}>📎 {entry.anlagen.length}</span>
                         )}
@@ -1494,6 +1564,11 @@ function EmailDetailPanel({
             <span style={{ fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '20px', background: sbCfg.bg, color: sbCfg.color }}>
               {sbCfg.label}
             </span>
+            {entry.versandweg === 'outlook' && (
+              <span style={{ fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '20px', background: 'rgba(0,120,212,0.12)', color: '#0078d4', border: '1px solid rgba(0,120,212,0.3)' }}>
+                📨 Outlook gesendet
+              </span>
+            )}
             {entry.erledigtAm && <span style={{ fontSize: '10px', color: 'var(--green)', fontWeight: 700 }}>✓ Erledigt</span>}
             <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginLeft: 'auto', fontFamily: 'var(--font-mono)' }}>
               {fmtD(entry.gesendetAm ?? entry.erstelltAm)}
