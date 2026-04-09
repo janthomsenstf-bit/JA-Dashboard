@@ -381,7 +381,7 @@ function TimelineItem({ event, isLast, onDelete, onToggleReminder }) {
         {(event.notiz || hasReminder) && (
           <div style={{ padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
             {event.notiz && (
-              <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{event.notiz}</div>
+              <div style={{ fontSize: '13px', color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.6 }}>{event.notiz}</div>
             )}
             {hasReminder && (
               <label style={{ display: 'flex', alignItems: 'center', gap: '7px', cursor: 'pointer', userSelect: 'none', width: 'fit-content' }}>
@@ -788,8 +788,17 @@ export default function StandDerArbeitTab({ client, onUpdate }) {
                   <input type="date" value={newDatum} onChange={e => setNewDatum(e.target.value)} style={iStyle} />
                 </div>
                 <div style={{ flex: 1, minWidth: '200px' }}>
-                  <label style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '3px', display: 'block' }}>Notiz (optional)</label>
-                  <input type="text" value={newNotiz} onChange={e => setNewNotiz(e.target.value)} placeholder="Kurze Beschreibung…" style={{ ...iStyle, width: '100%' }} onKeyDown={e => e.key === 'Enter' && handleAddEvent()} autoFocus />
+                  <label style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '3px', display: 'block' }}>Notiz / Text (optional)</label>
+                  <textarea
+                    value={newNotiz}
+                    onChange={e => setNewNotiz(e.target.value)}
+                    placeholder="Beschreibung, E-Mail-Text, Notiz… Formatierung (Zeilenumbrüche) bleibt erhalten."
+                    rows={4}
+                    style={{ ...iStyle, width: '100%', resize: 'vertical', whiteSpace: 'pre-wrap', minHeight: '80px', boxSizing: 'border-box' }}
+                    onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) handleAddEvent() }}
+                    autoFocus
+                  />
+                  <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '3px' }}>Strg+Enter zum Speichern · Zeilenumbrüche werden übernommen</div>
                 </div>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '12px' }}>
