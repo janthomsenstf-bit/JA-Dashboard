@@ -90,39 +90,43 @@ export function getClientStatus(client) {
 
 // Event-Typen, die den Mandantenstatus setzen (in Priorität absteigend)
 // Neutrale Typen (erinnerung, email, notiz) werden ignoriert
-const STATUS_DRIVING_EVENTS = new Set(['unterschrift', 'rueckfragen', 'antwort', 'telefonat'])
+const STATUS_DRIVING_EVENTS = new Set(['unterschrift', 'rueckfragen', 'antwort', 'telefonat', 'fa_gesendet', 'rechnung_gestellt'])
 
 /**
  * Leitet den Bearbeitungsstatus eines Mandanten automatisch ab.
- * 4 Werte: 'in_bearbeitung' | 'warte_feedback' | 'warte_unterschrift' | 'erledigt'
+ * 6 Werte: 'in_bearbeitung' | 'warte_feedback' | 'warte_unterschrift' | 'rechnung_schreiben' | 'abgeschlossen' | 'erledigt'
  *
- * Logik:
- *  1. abschlussFertig = true → erledigt
- *  2. Letztes zustandssetzendes Event in der Timeline bestimmt den Status:
- *     - 'unterschrift'       → warte_unterschrift
- *     - 'rueckfragen'        → warte_feedback
- *     - 'antwort'/'telefonat'→ in_bearbeitung
- *  3. Kein zustandssetzendes Event → in_bearbeitung
+ * Logik (neuestes zustandssetzendes Event gewinnt):
+ *  rechnung_gestellt → abgeschlossen
+ *  fa_gesendet       → rechnung_schreiben
+ *  unterschrift      → warte_unterschrift
+ *  rueckfragen       → warte_feedback
+ *  antwort/telefonat → in_bearbeitung
+ *  abschlussFertig   → abgeschlossen (Rückwärtskompatibilität)
  */
 export function getMandantStatus(client) {
-  if (client.abschlussFertig) return 'erledigt'
+  if (client.abschlussFertig) return 'abgeschlossen'
 
-  const events = (client.kommunikation?.events ?? [])
+  const events = (client.standDerArbeit?.events ?? [])
     .filter(e => STATUS_DRIVING_EVENTS.has(e.typ))
     .sort((a, b) => (b.datum ?? '').localeCompare(a.datum ?? ''))  // neueste zuerst
 
   const last = events[0]
   if (!last) return 'in_bearbeitung'
-  if (last.typ === 'unterschrift')               return 'warte_unterschrift'
-  if (last.typ === 'rueckfragen')                return 'warte_feedback'
+  if (last.typ === 'rechnung_gestellt') return 'abgeschlossen'
+  if (last.typ === 'fa_gesendet')       return 'rechnung_schreiben'
+  if (last.typ === 'unterschrift')      return 'warte_unterschrift'
+  if (last.typ === 'rueckfragen')       return 'warte_feedback'
   return 'in_bearbeitung'
 }
 
 export const MANDANT_STATUS_CONFIG = {
-  in_bearbeitung:     { label: 'In Bearbeitung',  icon: '🔵', color: '#2563eb', bg: 'rgba(37,99,235,0.09)',  border: 'rgba(37,99,235,0.22)'  },
-  warte_feedback:     { label: 'Warte auf Feedback', icon: '💬', color: '#b45309', bg: 'rgba(180,83,9,0.09)', border: 'rgba(180,83,9,0.22)' },
-  warte_unterschrift: { label: 'Zur Unterschrift', icon: '✍️', color: '#d97706', bg: 'rgba(217,119,6,0.09)',  border: 'rgba(217,119,6,0.22)'  },
-  erledigt:           { label: 'Erledigt',         icon: '✅', color: '#16a34a', bg: 'rgba(22,163,74,0.09)',  border: 'rgba(22,163,74,0.22)'  },
+  in_bearbeitung:     { label: 'In Bearbeitung',     icon: '🔵', color: '#2563eb', bg: 'rgba(37,99,235,0.09)',  border: 'rgba(37,99,235,0.22)'  },
+  warte_feedback:     { label: 'Warte auf Feedback', icon: '💬', color: '#b45309', bg: 'rgba(180,83,9,0.09)',   border: 'rgba(180,83,9,0.22)'   },
+  warte_unterschrift: { label: 'Zur Unterschrift',   icon: '✍️', color: '#d97706', bg: 'rgba(217,119,6,0.09)',  border: 'rgba(217,119,6,0.22)'  },
+  rechnung_schreiben: { label: 'Rechnung schreiben', icon: '🧾', color: '#0891b2', bg: 'rgba(8,145,178,0.09)',  border: 'rgba(8,145,178,0.22)'  },
+  abgeschlossen:      { label: 'Abgeschlossen',      icon: '✅', color: '#16a34a', bg: 'rgba(22,163,74,0.09)',  border: 'rgba(22,163,74,0.22)'  },
+  erledigt:           { label: 'Abgeschlossen',      icon: '✅', color: '#16a34a', bg: 'rgba(22,163,74,0.09)',  border: 'rgba(22,163,74,0.22)'  },
 }
 
 export function getFACountdown(dateStr) {

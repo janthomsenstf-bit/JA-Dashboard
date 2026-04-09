@@ -94,6 +94,18 @@ const EVENT_TYPES = {
     statusIcon: '🛠', statusColor: '#16a34a',
     statusBg: 'rgba(22,163,74,0.05)', statusBorder: 'rgba(22,163,74,0.25)',
   },
+  fa_gesendet: {
+    label: 'Steuererklärung ans Finanzamt geschickt', icon: '🏛', color: '#0891b2',
+    statusLabel: 'An Finanzamt gesendet → Rechnung schreiben',
+    statusIcon: '🧾', statusColor: '#0891b2',
+    statusBg: 'rgba(8,145,178,0.05)', statusBorder: 'rgba(8,145,178,0.25)',
+  },
+  rechnung_gestellt: {
+    label: 'Rechnung geschrieben', icon: '🧾', color: '#16a34a',
+    statusLabel: 'Abgeschlossen',
+    statusIcon: '✅', statusColor: '#16a34a',
+    statusBg: 'rgba(22,163,74,0.05)', statusBorder: 'rgba(22,163,74,0.25)',
+  },
 }
 
 // ── KI: Timeline-Analyse ─────────────────────────────────────────────────────
