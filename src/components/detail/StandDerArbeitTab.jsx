@@ -779,63 +779,6 @@ export default function StandDerArbeitTab({ client, onUpdate }) {
         )}
       </div>
 
-      {/* ═══════════════════════ E-MAIL (aufklappbar) ════════════════ */}
-      <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflow: 'hidden' }}>
-        <button
-          onClick={() => setShowEmails(s => !s)}
-          style={{ width: '100%', padding: '10px 14px', background: 'var(--surface)', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', textAlign: 'left' }}
-        >
-          <span style={{ fontWeight: 700, fontSize: '13px', flex: 1 }}>📧 E-Mail verfassen</span>
-          <span style={{ fontSize: '11px', color: 'var(--text-muted)', background: 'var(--surface2)', padding: '1px 8px', borderRadius: '10px', border: '1px solid var(--border)' }}>{emails.length}</span>
-          <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{showEmails ? '▲' : '▼'}</span>
-        </button>
-
-        {showEmails && (
-          <div style={{ background: 'var(--surface2)', borderTop: '1px solid var(--border)' }}>
-            {/* Schnellvorlagen */}
-            <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border)', background: 'var(--surface)' }}>
-              <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '8px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>⚡ Schnellvorlagen</div>
-              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                <button onClick={() => generateQuickEmail('termin')} disabled={!!quickLoading} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', borderRadius: '8px', border: '1px solid var(--green)', background: quickLoading === 'termin' ? 'var(--green)' : 'rgba(34,197,94,0.1)', color: quickLoading === 'termin' ? '#fff' : 'var(--green)', fontSize: '12px', fontWeight: 600, cursor: quickLoading ? 'not-allowed' : 'pointer', transition: 'all 0.15s', opacity: quickLoading && quickLoading !== 'termin' ? 0.5 : 1 }}>
-                  {quickLoading === 'termin' ? '⏳' : '📞'} Terminvereinbarung
-                </button>
-                <button onClick={() => generateQuickEmail('jahresabschluss')} disabled={!!quickLoading} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', borderRadius: '8px', border: `1px solid ${loadTemplate3() ? 'var(--orange)' : 'var(--border)'}`, background: quickLoading === 'jahresabschluss' ? 'var(--orange)' : loadTemplate3() ? 'rgba(249,115,22,0.1)' : 'var(--surface2)', color: quickLoading === 'jahresabschluss' ? '#fff' : loadTemplate3() ? 'var(--orange)' : 'var(--text-muted)', fontSize: '12px', fontWeight: 600, cursor: quickLoading ? 'not-allowed' : 'pointer', transition: 'all 0.15s', opacity: quickLoading && quickLoading !== 'jahresabschluss' ? 0.5 : 1 }}>
-                  {quickLoading === 'jahresabschluss' ? '⏳' : '📄'} Jahresabschluss & StE {!loadTemplate3() && <span style={{ fontSize: '10px', opacity: 0.7 }}>– Text fehlt</span>}
-                </button>
-                <button onClick={() => setShowT3Edit(s => !s)} style={{ padding: '6px 10px', borderRadius: '8px', border: '1px solid var(--border)', background: showT3Edit ? 'var(--surface2)' : 'none', color: 'var(--text-muted)', fontSize: '12px', cursor: 'pointer' }} title="Vorlage bearbeiten">✏️</button>
-              </div>
-              {showT3Edit && (
-                <div style={{ marginTop: '10px', padding: '10px', background: 'var(--surface2)', borderRadius: '6px', border: '1px solid var(--border)' }}>
-                  <textarea value={template3Text} onChange={e => setTemplate3Text(e.target.value)} placeholder="Vorlage-Text für Jahresabschluss & StE-E-Mail…" rows={3} style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: '6px', background: 'var(--surface)', color: 'var(--text)', fontSize: '12px', resize: 'vertical', boxSizing: 'border-box' }} />
-                  <div style={{ display: 'flex', gap: '6px', marginTop: '6px', justifyContent: 'flex-end' }}>
-                    <button className="btn btn-ghost btn-sm" style={{ fontSize: '11px' }} onClick={() => setShowT3Edit(false)}>Schließen</button>
-                    <button className={`btn btn-sm ${t3Saved ? 'btn-success' : 'btn-primary'}`} style={{ fontSize: '11px' }} onClick={() => { saveTemplate3(template3Text); setT3Saved(true); setTimeout(() => setT3Saved(false), 2000) }}>{t3Saved ? '✓ Gespeichert' : '💾 Speichern'}</button>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Freie Eingabe */}
-            <VoiceInputBlock placeholder='E-Mail beschreiben, z.B.: "Erinnerung an fehlende Unterlagen"…' onProcess={processEmail} />
-
-            {/* Liste */}
-            <div style={{ padding: '10px', maxHeight: '320px', overflowY: 'auto' }}>
-              {emails.length === 0 ? (
-                <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '12px', padding: '16px' }}>
-                  Noch keine E-Mails verfasst.
-                </div>
-              ) : (
-                emails.map(e => (
-                  <EmailCard key={e.id} entry={e}
-                    onDelete={id => onUpdate({ standDerArbeit: { ...stand, emails: emails.filter(x => x.id !== id) } })}
-                    onUpdate={updateEmail}
-                  />
-                ))
-              )}
-            </div>
-          </div>
-        )}
-      </div>
 
       <style>{`
         @keyframes pulseRec {
