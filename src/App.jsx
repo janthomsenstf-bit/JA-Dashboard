@@ -3,7 +3,6 @@ import { sampleClients } from './utils/sampleData.js'
 import { calculateProgress, getOverdueClients } from './utils/progress.js'
 import { loadChecklistenTypen, saveChecklistenTypen } from './utils/checklistenStorage.js'
 import { loadVorlagen, saveVorlagen } from './utils/vorlagenStorage.js'
-import { isSupported as fsSupported, pickBackupDir, loadBackupDir, clearBackupDir, writeBackup, pruneOldBackups } from './utils/autoBackup.js'
 import AlertBanner from './components/AlertBanner.jsx'
 import ClientTable from './components/ClientTable.jsx'
 import DetailView from './components/detail/DetailView.jsx'
@@ -24,7 +23,6 @@ const BACKUP_INTERVAL_MS = 30 * 60 * 1000  // 30 Minuten
 
 const STORAGE_KEY       = 'jans-spielbuch-v1'
 const LAST_SAVE_KEY     = 'jans-spielbuch-last-save'
-const LAST_BACKUP_KEY   = 'jans-spielbuch-last-backup'
 
 function fmtZeit(iso) {
   if (!iso) return '–'
@@ -144,17 +142,6 @@ function saveState(clients) {
   } catch { /* ignore */ }
 }
 
-function downloadBackup(clients) {
-  const data = JSON.stringify(clients, null, 2)
-  const blob = new Blob([data], { type: 'application/json' })
-  const url  = URL.createObjectURL(blob)
-  const a    = document.createElement('a')
-  const date = new Date().toISOString().slice(0, 10)
-  a.href     = url
-  a.download = `spielbuch-backup-${date}.json`
-  a.click()
-  URL.revokeObjectURL(url)
-}
 
 function generateId() {
   return 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
@@ -184,7 +171,6 @@ export default function App() {
   const [archiveTarget, setArchiveTarget] = useState(null)
   const [importMsg, setImportMsg]         = useState('')
   const [sidebarOpen, setSidebarOpen]     = useState(true)
-  const [backupReminder, setBackupReminder]             = useState(false)
   const [checklistenTypen, setChecklistenTypen]         = useState(() => loadChecklistenTypen())  // Fallback: lokal
   const [showChecklistEditor, setShowChecklistEditor]   = useState(false)
   const [vorlagen, setVorlagen]                         = useState(() => loadVorlagen())           // Fallback: lokal
@@ -209,14 +195,10 @@ export default function App() {
 
   // ── Zeitstempel ───────────────────────────────────────────────────────────────
   const [lastSaveAt,   setLastSaveAt]   = useState(null)
-  const [lastBackupAt, setLastBackupAt] = useState(null)
   const [startupBanner, setStartupBanner] = useState(true)
 
-  // ── Auto-Backup State ──────────────────────────────────────────────────────────
-  const [backupDir, setBackupDir]           = useState(null)          // FileSystemDirectoryHandle
-  const [backupDirName, setBackupDirName]   = useState('')            // Anzeigename
-  const [backupToast, setBackupToast]       = useState('')            // Erfolgs-/Fehlertext
-  const [backupLoading, setBackupLoading]   = useState(false)
+  // ── Toast (E-Mail-Benachrichtigungen etc.) ────────────────────────────────────
+  const [backupToast, setBackupToast]       = useState('')
   const clientsRef                          = useRef(clients)
   const unbekannteEmailsRef                 = useRef([])
   const recheckFnRef                        = useRef(null)  // immer aktuelle Recheck-Funktion
@@ -525,39 +507,6 @@ export default function App() {
   // Ref immer aktuell halten (für Aufrufe aus Callbacks)
   recheckFnRef.current = recheckUnbekannteEmails
 
-  // ── Backup-Erinnerung alle 30 Minuten ─────────────────────────────────────────
-  useEffect(() => {
-    const id = setInterval(() => setBackupReminder(true), 30 * 60 * 1000)
-    return () => clearInterval(id)
-  }, [])
-
-  // ── Gespeicherten Backup-Ordner beim Start laden ───────────────────────────────
-  useEffect(() => {
-    if (!fsSupported) return
-    loadBackupDir().then(handle => {
-      if (handle) { setBackupDir(handle); setBackupDirName(handle.name) }
-    }).catch(() => {})
-  }, [])
-
-  // ── Auto-Backup alle 30 Minuten ────────────────────────────────────────────────
-  useEffect(() => {
-    if (!backupDir) return
-    const id = setInterval(async () => {
-      try {
-        const filename = await writeBackup(backupDir, clientsRef.current)
-        await pruneOldBackups(backupDir, 20)
-        const now = new Date().toISOString()
-        localStorage.setItem(LAST_BACKUP_KEY, now)
-        setLastBackupAt(now)
-        setBackupToast(`✓ Auto-Sicherung: ${filename}`)
-        setTimeout(() => setBackupToast(''), 5000)
-      } catch (e) {
-        setBackupToast(`⚠ Auto-Sicherung fehlgeschlagen: ${e.message}`)
-        setTimeout(() => setBackupToast(''), 8000)
-      }
-    }, BACKUP_INTERVAL_MS)
-    return () => clearInterval(id)
-  }, [backupDir])
 
   async function handlePickBackupDir() {
     try {
@@ -575,31 +524,6 @@ export default function App() {
     } finally {
       setBackupLoading(false)
     }
-  }
-
-  async function handleManualBackup() {
-    if (!backupDir) { handlePickBackupDir(); return }
-    try {
-      setBackupLoading(true)
-      const filename = await writeBackup(backupDir, clients)
-      await pruneOldBackups(backupDir, 20)
-      const now = new Date().toISOString()
-      localStorage.setItem(LAST_BACKUP_KEY, now)
-      setLastBackupAt(now)
-      setBackupToast(`✓ Sicherung gespeichert: ${filename}`)
-      setTimeout(() => setBackupToast(''), 5000)
-    } catch (e) {
-      setBackupToast(`⚠ ${e.message}`)
-      setTimeout(() => setBackupToast(''), 6000)
-    } finally {
-      setBackupLoading(false)
-    }
-  }
-
-  async function handleClearBackupDir() {
-    await clearBackupDir()
-    setBackupDir(null)
-    setBackupDirName('')
   }
 
   async function handleLogout() {
@@ -641,13 +565,6 @@ export default function App() {
 
   const selectedClient = clients.find(c => c.id === selectedId) ?? null
 
-  // ── Backup / Import ───────────────────────────────────────────────────────────
-  function handleBackup() { downloadBackup(clients) }
-
-  function handleBackupReminder() {
-    downloadBackup(clients)
-    setBackupReminder(false)
-  }
 
   function handleImportFile(e) {
     const file = e.target.files?.[0]
@@ -1039,40 +956,6 @@ export default function App() {
                 minWidth: '230px', zIndex: 500,
                 padding: '6px',
               }}>
-                {/* Backup-Sektion */}
-                <div style={{ padding: '4px 8px 6px', borderBottom: '1px solid var(--border)', marginBottom: '4px' }}>
-                  <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '6px' }}>
-                    Sicherung
-                  </div>
-                  {fsSupported ? (
-                    <>
-                      <button
-                        className="btn btn-ghost btn-sm"
-                        onClick={() => { handleManualBackup(); setHeaderMenuOpen(false) }}
-                        disabled={backupLoading}
-                        style={{ width: '100%', textAlign: 'left', fontSize: '12px', color: backupDir ? 'var(--green)' : undefined, justifyContent: 'flex-start', marginBottom: '4px' }}
-                      >
-                        {backupLoading ? '⏳ Sichern…' : (backupDir ? '💾 Jetzt sichern ✓' : '💾 Backup erstellen')}
-                      </button>
-                      <button
-                        className="btn btn-ghost btn-sm"
-                        onClick={() => { handlePickBackupDir(); setHeaderMenuOpen(false) }}
-                        style={{ width: '100%', textAlign: 'left', fontSize: '11px', color: 'var(--text-muted)', justifyContent: 'flex-start' }}
-                      >
-                        📁 {backupDir ? `Ordner: ${backupDirName}` : 'Auto-Backup-Ordner wählen'}
-                      </button>
-                    </>
-                  ) : (
-                    <button
-                      className="btn btn-ghost btn-sm"
-                      onClick={() => { handleBackup(); setHeaderMenuOpen(false) }}
-                      style={{ width: '100%', textAlign: 'left', fontSize: '12px', justifyContent: 'flex-start' }}
-                    >
-                      💾 Backup herunterladen
-                    </button>
-                  )}
-                </div>
-
                 {/* Import */}
                 <button
                   className="btn btn-ghost btn-sm"
@@ -1141,7 +1024,7 @@ export default function App() {
           <span>📋 <strong style={{ color: '#fff' }}>Datenstatus beim Öffnen:</strong></span>
           <span>🕐 Letzter Stand: <strong style={{ color: lastSaveAt ? '#86efac' : '#fca5a5' }}>{fmtDatumLang(lastSaveAt)}</strong></span>
           <span style={{ color: 'rgba(255,255,255,0.4)' }}>·</span>
-          <span>💾 Letzte Sicherung: <strong style={{ color: lastBackupAt ? '#86efac' : '#fca5a5' }}>{lastBackupAt ? fmtDatumLang(lastBackupAt) : 'noch keine Sicherung'}</strong></span>
+          <span>☁️ Automatisch gesichert in der Cloud</span>
           <span style={{ color: 'rgba(255,255,255,0.4)' }}>·</span>
           <span>📂 <strong style={{ color: '#fff' }}>{clients.filter(c => !c.archiviert).length} Mandate</strong> geladen</span>
           <button onClick={() => setStartupBanner(false)} style={{
@@ -1166,26 +1049,6 @@ export default function App() {
         />
       )}
 
-      {/* Backup-Erinnerung nach 30 Minuten (nur wenn kein Auto-Backup-Ordner gesetzt) */}
-      {backupReminder && !backupDir && (
-        <div className="backup-reminder-banner">
-          <span className="backup-reminder-icon">⏰</span>
-          <span className="backup-reminder-text">
-            <strong>Backup-Erinnerung</strong> – 30 Minuten sind vergangen. Daten jetzt sichern?
-          </span>
-          {fsSupported && (
-            <button className="btn btn-primary btn-sm" onClick={() => { handlePickBackupDir(); setBackupReminder(false) }}>
-              📁 Auto-Backup einrichten
-            </button>
-          )}
-          <button className="btn btn-ghost btn-sm" onClick={handleBackupReminder}>
-            💾 Einmalig herunterladen
-          </button>
-          <button className="btn btn-ghost btn-sm" onClick={() => setBackupReminder(false)}>
-            Später
-          </button>
-        </div>
-      )}
 
       {/* Auto-Backup Toast */}
       {backupToast && (
