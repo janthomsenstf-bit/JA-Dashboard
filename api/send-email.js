@@ -57,21 +57,22 @@ async function appendToSentFolder(imapCfg, rawMessage) {
 
   await client.connect()
   try {
-    // 1. Versuche Sent-Ordner über IMAP-Special-Use-Flag zu finden
+    // 1. Alle Ordner listen + Special-Use-Flag prüfen
     let sentPath = null
     const list = await client.list('', '*')
     for (const mb of list) {
-      if (typeof mb.specialUse === 'string' && mb.specialUse.toLowerCase() === '\\sent') {
+      const su = (mb.specialUse ?? '').toLowerCase()
+      if (su === '\\sent' || su === 'sent') {
         sentPath = mb.path
         break
       }
     }
 
-    // 2. Fallback: gängige Ordnernamen durchprobieren
+    // 2. Fallback: bekannte Ordnernamen durchprobieren (Hostinger: INBOX.Sent)
     if (!sentPath) {
       const candidates = [
-        'Sent', 'Sent Items', 'Gesendete Elemente', 'Gesendet',
-        'INBOX.Sent', 'INBOX.Gesendet', 'Sent Messages',
+        'INBOX.Sent', 'Sent', 'Sent Items', 'Gesendete Elemente',
+        'Gesendet', 'INBOX.Gesendet', 'Sent Messages',
       ]
       for (const name of candidates) {
         try {
@@ -80,6 +81,15 @@ async function appendToSentFolder(imapCfg, rawMessage) {
           break
         } catch { /* nächsten versuchen */ }
       }
+    }
+
+    // 3. Letzter Versuch: irgendeinen Ordner mit "sent"/"gesendet" im Pfad finden
+    if (!sentPath) {
+      const fallback = list.find(mb =>
+        mb.path.toLowerCase().includes('sent') ||
+        mb.path.toLowerCase().includes('gesendet')
+      )
+      if (fallback) sentPath = fallback.path
     }
 
     if (sentPath) {
@@ -142,17 +152,25 @@ export default async function handler(req, res) {
       secure: smtpCfg.port === 465,
       auth:   { user: smtpCfg.user, pass: smtpCfg.pass },
     })
-    await transporter.sendMail(mailOptions)
+    const info = await transporter.sendMail(mailOptions)
+    const messageId = info.messageId ?? null
 
-    // ── 2. Kopie in Sent-Ordner per IMAP ablegen (non-blocking) ──
+    // ── 2. Kopie in Sent-Ordner per IMAP ablegen (blocking, mit Ergebnis) ──
+    let sentFolderOk  = false
+    let sentFolderErr = null
     const imapCfg = IMAP_ACCOUNTS[account]
     if (imapCfg?.user && imapCfg?.pass) {
-      buildRawMessage(mailOptions)
-        .then(raw => appendToSentFolder(imapCfg, raw))
-        .catch(e => console.warn('[send-email] Sent-Ordner append fehlgeschlagen:', e.message))
+      try {
+        const raw = await buildRawMessage(mailOptions)
+        await appendToSentFolder(imapCfg, raw)
+        sentFolderOk = true
+      } catch (e) {
+        sentFolderErr = e.message
+        console.warn('[send-email] Sent-Ordner append fehlgeschlagen:', e.message)
+      }
     }
 
-    return res.status(200).json({ success: true })
+    return res.status(200).json({ success: true, messageId, sentFolderOk, sentFolderErr })
   } catch (e) {
     console.error('[send-email]', e.message)
     return res.status(500).json({ error: e.message })

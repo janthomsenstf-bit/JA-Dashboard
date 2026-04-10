@@ -460,20 +460,27 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
     const account = selectedAbsender?.konto || 'hostinger'
     const smtpAttachments = attachments.map(a => ({ filename: a.name, content: a.data, contentType: a.type }))
     try {
-      await sendViaSMTP({ to: empfaenger, from: absenderVal, subject: betreff, text, cc, bcc, account, attachments: smtpAttachments })
+      const result = await sendViaSMTP({ to: empfaenger, from: absenderVal, subject: betreff, text, cc, bcc, account, attachments: smtpAttachments })
       const now = new Date().toISOString()
       const entry = {
         id: 'k' + Date.now().toString(36),
         typ: activTyp,
         empfaenger, absender: absenderVal, betreff, text, cc, bcc,
         status: 'gesendet',
+        versandweg: 'smtp',
+        sentFolderOk: result?.sentFolderOk ?? null,
         erstelltAm: now,
         gesendetAm: now,
         anlagen: attachments.length > 0 ? attachments.map(a => ({ name: a.name, size: a.size })) : undefined,
       }
       saveKomm({ events: [entry, ...events] })
       applyStatusUpdates(activTyp, now)
-      resetEditor()
+      // Warnung wenn Sent-Ordner-Kopie fehlschlug
+      if (result?.sentFolderOk === false) {
+        setSendError(`✅ E-Mail wurde gesendet – aber Kopie konnte nicht in Ihren Postfach-Ordner "Gesendet" gespeichert werden. (${result.sentFolderErr ?? 'unbekannter Fehler'})`)
+      } else {
+        resetEditor()
+      }
     } catch (e) {
       setSendError(e.message)
     } finally {
