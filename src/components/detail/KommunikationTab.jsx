@@ -1571,6 +1571,7 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
             {filteredEvents.map(entry => {
               const cfg    = TYP_CONFIG[entry.typ] ?? TYP_CONFIG.frei
               const sbCfg  = STATUS_BADGES[entry.status] ?? STATUS_BADGES.entwurf
+              const isNeu  = entry.typ === 'eingehend' && !entry.erledigtAm
 
               return (
                 <div
@@ -1583,12 +1584,16 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
                     }
                   }}
                   style={{
-                    background: 'var(--surface)', border: '1px solid var(--border)',
+                    background: isNeu ? 'rgba(8,145,178,0.07)' : 'var(--surface)',
+                    border: isNeu ? '1px solid rgba(8,145,178,0.45)' : '1px solid var(--border)',
+                    borderLeft: isNeu ? '4px solid #0891b2' : undefined,
                     borderRadius: '8px', overflow: 'hidden', cursor: 'pointer',
                     transition: 'border-color 0.15s',
                   }}
-                  onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--accent)'}
-                  onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}
+                  onMouseEnter={e => e.currentTarget.style.borderColor = isNeu ? '#0891b2' : 'var(--accent)'}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.borderColor = isNeu ? 'rgba(8,145,178,0.45)' : 'var(--border)'
+                  }}
                 >
                   <div style={{
                     display: 'grid',
@@ -1606,8 +1611,11 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
                       {cfg.icon} {cfg.label}
                     </span>
                     <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: '13px', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <div style={{ fontSize: '13px', fontWeight: isNeu ? 700 : 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center', gap: '6px' }}>
                         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{entry.betreff || '(kein Betreff)'}</span>
+                        {isNeu && (
+                          <span style={{ fontSize: '10px', background: '#0891b2', color: '#fff', fontWeight: 700, padding: '1px 7px', borderRadius: '10px', flexShrink: 0, letterSpacing: '0.03em' }}>NEU</span>
+                        )}
                         {entry.versandweg === 'outlook' && (
                           <span style={{ fontSize: '10px', background: 'rgba(0,120,212,0.12)', color: '#0078d4', border: '1px solid rgba(0,120,212,0.3)', padding: '1px 6px', borderRadius: '10px', flexShrink: 0 }}>Outlook</span>
                         )}

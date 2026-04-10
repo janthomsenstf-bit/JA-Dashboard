@@ -273,6 +273,17 @@ export default function App() {
     cloudSave(STORAGE_KEY, clients)
     setLastSaveAt(new Date().toISOString())
   }, [clients])
+
+  // ── Sofort speichern wenn Seite geschlossen/neu geladen wird ─────────────────
+  // Verhindert Datenverlust wenn die Seite sich schließt bevor der 1,5s-Debounce feuert
+  useEffect(() => {
+    if (!authUser) return
+    const handleBeforeUnload = () => {
+      cloudSaveNow(STORAGE_KEY, clients).catch(() => {})
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [authUser, clients])
   useEffect(() => {
     if (!authUser || dataLoading) return
     cloudSave('spielbuch-checklisten-v1', checklistenTypen)
