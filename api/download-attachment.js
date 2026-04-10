@@ -1,3 +1,12 @@
+/**
+ * /api/download-attachment
+ * Lädt einen einzelnen E-Mail-Anhang direkt per IMAP und streamt ihn
+ * als Datei-Download – ohne Vercel Response-Limit (kein JSON-Wrapper).
+ *
+ * GET /api/download-attachment?uid=123&account=hostinger&name=Rechnung.pdf
+ *
+ * Unterstützt Anhänge bis ~25 MB (Vercel Streaming-Limit).
+ */
 import { ImapFlow }    from 'imapflow'
 import { simpleParser } from 'mailparser'
 
@@ -16,10 +25,6 @@ const ACCOUNTS = {
   },
 }
 
-// Anhänge <= 4 MB werden base64-inline zurückgegeben.
-// Größere Anhänge erhalten tooLarge:true und werden über /api/download-attachment gestreamt.
-const ATTACHMENT_INLINE_LIMIT = 4 * 1024 * 1024
-
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS')
@@ -28,7 +33,7 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end()
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' })
 
-  const { uid, account = 'hostinger' } = req.query
+  const { uid, account = 'hostinger', name } = req.query
   if (!uid) return res.status(400).json({ error: 'Parameter uid fehlt' })
 
   const cfg = ACCOUNTS[account]
@@ -49,7 +54,6 @@ export default async function handler(req, res) {
     await client.connect()
     await client.mailboxOpen('INBOX')
 
-    // Vollständige Rohdaten der E-Mail per UID laden
     let rawBuffer = null
     for await (const msg of client.fetch(String(uid), { source: true }, { uid: true })) {
       rawBuffer = msg.source
@@ -57,47 +61,34 @@ export default async function handler(req, res) {
 
     if (!rawBuffer) {
       await client.logout()
-      return res.status(404).json({ error: 'E-Mail nicht gefunden (möglicherweise bereits gelöscht)' })
+      return res.status(404).json({ error: 'E-Mail nicht gefunden' })
     }
 
-    // Größen-Guard: > 8 MB würde Vercel-Response-Limit sprengen
-    if (rawBuffer.length > 8 * 1024 * 1024) {
-      await client.logout()
-      return res.status(413).json({
-        error:     'E-Mail zu groß für Inline-Anzeige',
-        sizeBytes: rawBuffer.length,
-      })
-    }
-
-    // MIME-Parsing mit mailparser
     const parsed = await simpleParser(rawBuffer)
 
-    const attachments = (parsed.attachments ?? []).map(a => {
-      if ((a.size ?? a.content?.length ?? 0) > ATTACHMENT_INLINE_LIMIT) {
-        return {
-          name:        a.filename || 'Anhang',
-          contentType: a.contentType,
-          size:        a.size ?? a.content?.length ?? 0,
-          tooLarge:    true,
-        }
-      }
-      return {
-        name:        a.filename || 'Anhang',
-        contentType: a.contentType,
-        size:        a.size ?? a.content?.length ?? 0,
-        data:        a.content?.toString('base64') ?? '',
-      }
-    })
+    // Gesuchten Anhang per Name finden
+    const target = name
+      ? parsed.attachments?.find(a => (a.filename ?? '') === decodeURIComponent(name))
+      : parsed.attachments?.[0]
 
     await client.logout()
-    return res.status(200).json({
-      text:        parsed.text  ?? null,
-      html:        parsed.html  ?? null,
-      attachments,
-    })
+
+    if (!target?.content) {
+      return res.status(404).json({ error: `Anhang "${name}" nicht gefunden` })
+    }
+
+    const filename    = target.filename || 'anhang'
+    const contentType = target.contentType || 'application/octet-stream'
+    const safeFilename = encodeURIComponent(filename)
+
+    res.setHeader('Content-Type', contentType)
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${safeFilename}`)
+    res.setHeader('Content-Length', target.content.length)
+    res.setHeader('Cache-Control', 'private, no-store')
+    return res.status(200).end(target.content)
 
   } catch (e) {
-    console.error('[get-email-content]', e.message)
+    console.error('[download-attachment]', e.message)
     try { await client.logout() } catch {}
     return res.status(500).json({ error: e.message })
   }

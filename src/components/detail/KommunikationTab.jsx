@@ -47,8 +47,8 @@ async function sendViaSMTP({ to, from, subject, text, cc, bcc, account, attachme
 }
 
 // ── IMAP Abrufen ──────────────────────────────────────────────────────────────
-async function fetchEmails(account, since) {
-  const params = new URLSearchParams({ account })
+async function fetchEmails(account, since, folder = 'INBOX') {
+  const params = new URLSearchParams({ account, folder })
   if (since) params.set('since', since)
   const res = await fetch(`/api/fetch-emails?${params}`)
   const data = await res.json()
@@ -337,8 +337,10 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
   const [showSignaturenModal, setShowSignaturenModal] = useState(false)
 
   // UI State
-  const [aiLoading,   setAiLoading]   = useState(false)
-  const [aiError,     setAiError]     = useState('')
+  const [aiLoading,    setAiLoading]   = useState(false)
+  const [aiError,      setAiError]    = useState('')
+  const [aiFreitext,   setAiFreitext] = useState('')
+  const [isRecording,  setIsRecording] = useState(false)
   const [sendLoading,         setSendLoading]         = useState(false)
   const [sendOutlookLoading,  setSendOutlookLoading]  = useState(false)
   const [sendError,           setSendError]           = useState('')
@@ -359,6 +361,10 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
   const [posteingangLoad,   setPosteingangLoad]   = useState(false)
   const [posteingangError,  setPosteingangError]  = useState('')
   const [unbekannt,         setUnbekannt]         = useState([]) // nicht zugeordnete E-Mails
+  // Ordner-Auswahl
+  const [selectedFolder,    setSelectedFolder]    = useState('INBOX')
+  const [availFolders,      setAvailFolders]      = useState([])
+  const [foldersLoading,    setFoldersLoading]    = useState(false)
 
   function saveKomm(patch) {
     onUpdate({ kommunikation: { ...komm, ...patch } })
@@ -755,14 +761,72 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
     }
   }
 
+  // KI-Freitext-Anweisung
+  async function handleKIFreitext(anweisung) {
+    if (!anweisung.trim()) return
+    setAiLoading(true)
+    setAiError('')
+    try {
+      const hatText = text.trim().length > 0
+      const prompt = hatText
+        ? `Du bist ein Kanzlei-Assistent. Führe folgende Anweisung mit dem E-Mail-Text aus: "${anweisung}". Antworte NUR mit JSON: {"betreff":"...","text":"..."} – betreff darf leer bleiben wenn unverändert.`
+        : `Du bist ein Kanzlei-Assistent für den Mandanten "${client.name}". Führe folgende Anweisung aus: "${anweisung}". Antworte NUR mit JSON: {"betreff":"...","text":"..."}`
+      const input = hatText ? text : `Mandant: ${client.name}, VJ: ${client.veranlagungsjahr ?? ''}`
+      const result = await callClaude(prompt, input)
+      if (result.text) {
+        const activeSig = emailSignaturen.find(s => s.id === activeSignaturId)
+        setText(activeSig ? result.text + SIG_SEP + activeSig.text : result.text)
+      }
+      if (result.betreff) setBetreff(result.betreff)
+    } catch (e) {
+      setAiError(e.message)
+    } finally {
+      setAiLoading(false)
+    }
+  }
+
+  // KI-Spracheingabe (Web Speech API)
+  function startSpeechInput(onResult) {
+    const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition
+    if (!SpeechRec) { setAiError('Spracheingabe wird von diesem Browser nicht unterstützt (Chrome/Edge empfohlen).'); return }
+    const rec = new SpeechRec()
+    rec.lang = 'de-DE'
+    rec.interimResults = false
+    rec.maxAlternatives = 1
+    rec.onresult = e => { onResult(e.results[0][0].transcript) }
+    rec.onerror  = e => setAiError('Spracheingabe Fehler: ' + e.error)
+    rec.start()
+  }
+
+  // Ordnerliste laden
+  async function loadFolders() {
+    if (availFolders.length > 0) return
+    setFoldersLoading(true)
+    try {
+      const [h, s] = await Promise.all([
+        fetch('/api/list-folders?account=hostinger').then(r => r.json()).catch(() => ({ folders: [] })),
+        fetch('/api/list-folders?account=strato').then(r => r.json()).catch(() => ({ folders: [] })),
+      ])
+      const combined = [
+        ...(h.folders ?? []).map(f => ({ ...f, account: 'hostinger' })),
+        ...(s.folders ?? []).map(f => ({ ...f, account: 'strato' })),
+      ]
+      setAvailFolders(combined)
+    } finally {
+      setFoldersLoading(false)
+    }
+  }
+
   // Posteingang abrufen
   async function handleFetchEmails() {
     setPosteingangLoad(true)
     setPosteingangError('')
     try {
+      // Wenn ein spezifischer Ordner ausgewählt, nur den laden
+      const isSpecific = selectedFolder !== 'INBOX'
       const [h, s] = await Promise.all([
-        fetchEmails('hostinger').catch(e => { console.warn('Hostinger IMAP:', e.message); return [] }),
-        fetchEmails('strato').catch(e => { console.warn('Strato IMAP:', e.message); return [] }),
+        fetchEmails('hostinger', null, isSpecific ? selectedFolder : 'INBOX').catch(e => { console.warn('Hostinger IMAP:', e.message); return [] }),
+        fetchEmails('strato',    null, isSpecific ? selectedFolder : 'INBOX').catch(e => { console.warn('Strato IMAP:', e.message); return [] }),
       ])
       const all = [...h, ...s].sort((a, b) => new Date(b.datum) - new Date(a.datum))
       setPosteingangEmails(all)
@@ -1118,16 +1182,55 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
           )}
 
           {/* KI-Buttons */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '12px', paddingTop: '8px', borderTop: '1px solid var(--border)' }}>
-            <span style={{ fontSize: '11px', color: 'var(--text-muted)', alignSelf: 'center', marginRight: '4px' }}>KI:</span>
-            <button className="btn btn-ghost btn-sm" onClick={handleKIEntwurf} disabled={aiLoading} style={{ fontSize: '11px' }}>
-              {aiLoading ? '⏳' : '✨'} KI-Entwurf
-            </button>
-            <button className="btn btn-ghost btn-sm" onClick={() => handleReformulate('kürzer')} disabled={aiLoading || !text} style={{ fontSize: '11px' }}>Kürzer</button>
-            <button className="btn btn-ghost btn-sm" onClick={() => handleReformulate('freundlicher')} disabled={aiLoading || !text} style={{ fontSize: '11px' }}>Freundlicher</button>
-            <button className="btn btn-ghost btn-sm" onClick={() => handleReformulate('klarer')} disabled={aiLoading || !text} style={{ fontSize: '11px' }}>Klarer</button>
-            <button className="btn btn-ghost btn-sm" onClick={() => handleReformulate('in Du-Form')} disabled={aiLoading || !text} style={{ fontSize: '11px' }}>Du-Form</button>
-            <button className="btn btn-ghost btn-sm" onClick={() => handleReformulate('in Sie-Form')} disabled={aiLoading || !text} style={{ fontSize: '11px' }}>Sie-Form</button>
+          <div style={{ border: '1px solid var(--border)', borderRadius: '8px', padding: '10px 12px', marginBottom: '12px', background: 'rgba(124,58,237,0.03)' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px' }}>
+              <span style={{ fontSize: '11px', color: '#7c3aed', fontWeight: 700, alignSelf: 'center', marginRight: '2px' }}>🧠 KI:</span>
+              <button className="btn btn-ghost btn-sm" onClick={handleKIEntwurf} disabled={aiLoading} style={{ fontSize: '11px' }}>
+                {aiLoading ? '⏳' : '✨'} Entwurf
+              </button>
+              <button className="btn btn-ghost btn-sm" onClick={() => handleReformulate('kürzer')} disabled={aiLoading || !text} style={{ fontSize: '11px' }}>Kürzer</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => handleReformulate('freundlicher')} disabled={aiLoading || !text} style={{ fontSize: '11px' }}>Freundlicher</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => handleReformulate('klarer')} disabled={aiLoading || !text} style={{ fontSize: '11px' }}>Klarer</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => handleReformulate('in Du-Form')} disabled={aiLoading || !text} style={{ fontSize: '11px' }}>Du-Form</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => handleReformulate('in Sie-Form')} disabled={aiLoading || !text} style={{ fontSize: '11px' }}>Sie-Form</button>
+            </div>
+            {/* Freitext-KI + Spracheingabe */}
+            <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+              <input
+                className="input"
+                value={aiFreitext}
+                onChange={e => setAiFreitext(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleKIFreitext(aiFreitext).then(() => setAiFreitext('')) } }}
+                placeholder='KI-Anweisung, z.B. „Übersetze auf Englisch" oder „Mach es kürzer"…'
+                disabled={aiLoading}
+                style={{ flex: 1, fontSize: '12px', padding: '5px 9px' }}
+              />
+              <button
+                className="btn btn-ghost btn-sm"
+                title="Spracheingabe (Mikrofon)"
+                disabled={aiLoading || isRecording}
+                onClick={() => {
+                  setIsRecording(true)
+                  setAiError('')
+                  startSpeechInput(transcript => {
+                    setIsRecording(false)
+                    setAiFreitext(transcript)
+                  })
+                  setTimeout(() => setIsRecording(false), 10000)
+                }}
+                style={{ fontSize: '14px', padding: '4px 8px', color: isRecording ? '#dc2626' : undefined }}
+              >
+                {isRecording ? '🔴' : '🎤'}
+              </button>
+              <button
+                className="btn btn-primary btn-sm"
+                disabled={aiLoading || !aiFreitext.trim()}
+                onClick={() => handleKIFreitext(aiFreitext).then(() => setAiFreitext(''))}
+                style={{ fontSize: '11px' }}
+              >
+                {aiLoading ? '⏳' : '→ Ausführen'}
+              </button>
+            </div>
           </div>
 
           {aiError && (
@@ -1266,15 +1369,32 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
 
       {/* ── Posteingang abrufen ── */}
       <div style={{ marginBottom: '20px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
           <button
             className="btn btn-ghost btn-sm"
             onClick={handleFetchEmails}
             disabled={posteingangLoad}
             style={{ fontSize: '12px' }}
           >
-            {posteingangLoad ? '⏳ Wird abgerufen...' : '📥 E-Mails abrufen (Posteingang)'}
+            {posteingangLoad ? '⏳ Wird abgerufen...' : '📥 E-Mails abrufen'}
           </button>
+          {/* Ordner-Auswahl */}
+          <select
+            className="input"
+            value={selectedFolder}
+            onChange={e => setSelectedFolder(e.target.value)}
+            onFocus={loadFolders}
+            disabled={posteingangLoad}
+            style={{ fontSize: '11px', padding: '4px 8px', maxWidth: '200px' }}
+          >
+            <option value="INBOX">📥 Posteingang (INBOX)</option>
+            {availFolders.map((f, i) => f.path !== 'INBOX' && (
+              <option key={i} value={f.path}>
+                📁 {f.path} ({f.account})
+              </option>
+            ))}
+          </select>
+          {foldersLoading && <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Ordner werden geladen…</span>}
           {posteingangError && (
             <span style={{ fontSize: '11px', color: '#dc2626' }}>⚠️ {posteingangError}</span>
           )}
@@ -1457,6 +1577,11 @@ function EmailDetailPanel({
   const [aufgabeFaellig, setAufgabeFaellig] = useState('')
   const [erDatum,        setErDatum]        = useState('')
   const [erText,         setErText]         = useState('Re: ' + (entry.betreff ?? ''))
+  const [panelAiLoad,    setPanelAiLoad]    = useState(false)
+  const [panelAiResult,  setPanelAiResult]  = useState('')
+  const [panelAiError,   setPanelAiError]   = useState('')
+  const [showTranslate,  setShowTranslate]  = useState(false)
+  const [translateLang,  setTranslateLang]  = useState('Deutsch')
 
   const cfg   = TYP_CONFIG[entry.typ]   ?? TYP_CONFIG.frei
   const sbCfg = STATUS_BADGES[entry.status] ?? STATUS_BADGES.entwurf
@@ -1481,6 +1606,42 @@ function EmailDetailPanel({
     return '📎'
   }
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(''), 3000) }
+
+  async function handlePanelKI(aktion, zielsprache) {
+    const inhalt = entry.text || '(kein Textinhalt verfügbar)'
+    setPanelAiLoad(true)
+    setPanelAiResult('')
+    setPanelAiError('')
+    try {
+      let prompt, input
+      if (aktion === 'zusammenfassen') {
+        prompt = 'Fasse diese E-Mail in 3–5 Stichpunkten auf Deutsch zusammen. Antworte NUR mit JSON: {"text":"..."}'
+        input  = inhalt
+      } else if (aktion === 'uebersetzen') {
+        prompt = `Übersetze diese E-Mail vollständig ins ${zielsprache}. Antworte NUR mit JSON: {"text":"..."}`
+        input  = inhalt
+      } else if (aktion === 'antwort') {
+        prompt = `Du bist Steuerberater-Assistent. Erstelle einen Antwort-Entwurf auf diese eingehende E-Mail (professionell, höflich, Sie-Form). Antworte NUR mit JSON: {"betreff":"...","text":"..."}`
+        input  = `Betreff: ${entry.betreff}\n\n${inhalt}`
+      }
+      const result = await callClaude(prompt, input)
+      setPanelAiResult(result.text ?? '')
+      if (aktion === 'antwort' && result.text) {
+        setActivTyp('frei')
+        setEmpfaenger(entry.absender ?? '')
+        setAbsenderVal('')
+        setBetreff(result.betreff || 'Re: ' + (entry.betreff ?? ''))
+        setText(result.text)
+        setCC(''); setBCC('')
+        setEditorOpen(true)
+        onClose()
+      }
+    } catch (e) {
+      setPanelAiError(e.message)
+    } finally {
+      setPanelAiLoad(false)
+    }
+  }
 
   function handleReply() {
     setActivTyp('frei')
@@ -1609,7 +1770,14 @@ function EmailDetailPanel({
                         ⬇ Herunterladen
                       </button>
                     ) : a.tooLarge ? (
-                      <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>zu groß</span>
+                      <a
+                        href={`/api/download-attachment?uid=${encodeURIComponent(entry.sourceUid)}&account=${encodeURIComponent(entry.sourceAccount)}&name=${encodeURIComponent(a.name)}`}
+                        download={a.name}
+                        onClick={e => e.stopPropagation()}
+                        style={{ color: '#f59e0b', fontSize: '11px', fontWeight: 700, textDecoration: 'none' }}
+                      >
+                        ⬇ Herunterladen
+                      </a>
                     ) : (
                       <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>wird geladen…</span>
                     )}
@@ -1676,6 +1844,48 @@ function EmailDetailPanel({
             </div>
           </div>
         )}
+
+        {/* KI-Leiste im Panel */}
+        <div style={{ padding: '8px 20px', borderTop: '1px solid var(--border)', background: 'rgba(124,58,237,0.03)', flexShrink: 0 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
+            <span style={{ fontSize: '11px', color: '#7c3aed', fontWeight: 700 }}>🧠 KI:</span>
+            <button className="btn btn-ghost btn-sm" onClick={() => handlePanelKI('zusammenfassen')} disabled={panelAiLoad} style={{ fontSize: '11px' }}>
+              {panelAiLoad ? '⏳' : '📋'} Zusammenfassen
+            </button>
+            <button className="btn btn-ghost btn-sm" onClick={() => handlePanelKI('antwort')} disabled={panelAiLoad} style={{ fontSize: '11px' }}>
+              ✍️ Antwort-Entwurf
+            </button>
+            <button
+              className={`btn btn-sm ${showTranslate ? 'btn-primary' : 'btn-ghost'}`}
+              onClick={() => setShowTranslate(v => !v)}
+              disabled={panelAiLoad}
+              style={{ fontSize: '11px' }}
+            >
+              🌐 Übersetzen
+            </button>
+            {showTranslate && (
+              <>
+                <select className="input" value={translateLang} onChange={e => setTranslateLang(e.target.value)}
+                  style={{ fontSize: '11px', padding: '3px 7px', width: '120px' }}>
+                  {['Deutsch','Englisch','Französisch','Spanisch','Polnisch','Türkisch','Arabisch'].map(l => (
+                    <option key={l}>{l}</option>
+                  ))}
+                </select>
+                <button className="btn btn-primary btn-sm" onClick={() => { handlePanelKI('uebersetzen', translateLang); setShowTranslate(false) }} disabled={panelAiLoad} style={{ fontSize: '11px' }}>
+                  → Los
+                </button>
+              </>
+            )}
+          </div>
+          {panelAiError && (
+            <div style={{ fontSize: '11px', color: '#dc2626', marginTop: '6px' }}>⚠️ {panelAiError}</div>
+          )}
+          {panelAiResult && !panelAiError && (
+            <div style={{ marginTop: '8px', padding: '8px 12px', background: 'var(--surface2)', borderRadius: '6px', fontSize: '12px', lineHeight: '1.6', whiteSpace: 'pre-wrap', border: '1px solid rgba(124,58,237,0.2)' }}>
+              {panelAiResult}
+            </div>
+          )}
+        </div>
 
         {/* Aktionsleiste */}
         <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)', display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center', flexShrink: 0 }}>

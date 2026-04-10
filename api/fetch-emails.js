@@ -26,6 +26,7 @@ export default async function handler(req, res) {
   const account = req.query.account || 'hostinger'
   const since   = req.query.since   || null   // ISO-Datum z.B. "2025-01-01"
   const limit   = parseInt(req.query.limit || '50')
+  const folder  = req.query.folder  || 'INBOX'
 
   const cfg = ACCOUNTS[account]
   if (!cfg) return res.status(400).json({ error: `Unbekanntes Konto: ${account}` })
@@ -43,7 +44,7 @@ export default async function handler(req, res) {
 
   try {
     await client.connect()
-    await client.mailboxOpen('INBOX')
+    await client.mailboxOpen(folder)
 
     const searchCriteria = since
       ? { since: new Date(since) }

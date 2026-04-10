@@ -534,6 +534,66 @@ function KontaktpersonenSection({ client, onUpdate }) {
 }
 
 // ── API-Key-Sektion (Stammdaten) ──────────────────────────────────────────────
+// ── Absender-Auswahl pro Mandant ──────────────────────────────────────────────
+const ABSENDER_KEY = 'kommunikation-absender'
+function loadAbsenderGlobal() {
+  try { const r = localStorage.getItem(ABSENDER_KEY); if (r) return JSON.parse(r) } catch {}
+  return []
+}
+
+function AbsenderSection({ client, onUpdate }) {
+  const absender = loadAbsenderGlobal()
+  const current  = client.kommunikation?.standardAbsender ?? ''
+
+  if (absender.length === 0) return (
+    <div style={{ border: '1px solid var(--border)', borderRadius: '10px', padding: '12px 16px', marginTop: '14px' }}>
+      <div style={{ fontSize: '13px', fontWeight: 700, marginBottom: '4px' }}>✉️ Standard-Absender für diesen Mandanten</div>
+      <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+        Noch keine Absenderadressen hinterlegt. Bitte zuerst im Reiter <strong>Kommunikation</strong> unter „Absender-Adressen verwalten" Adressen anlegen.
+      </div>
+    </div>
+  )
+
+  function handleChange(e) {
+    const val = e.target.value
+    const komm = client.kommunikation ?? { events: [] }
+    onUpdate({ kommunikation: { ...komm, standardAbsender: val } })
+  }
+
+  return (
+    <div style={{ border: '1px solid var(--border)', borderRadius: '10px', overflow: 'hidden', marginTop: '14px' }}>
+      <div style={{ padding: '10px 14px', background: 'var(--surface)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <span style={{ fontSize: '15px' }}>✉️</span>
+        <span style={{ fontWeight: 700, fontSize: '13px', flex: 1 }}>Standard-Absender für diesen Mandanten</span>
+        {current && (
+          <span style={{ fontSize: '11px', color: '#16a34a', fontWeight: 700, background: 'rgba(22,163,74,0.1)', padding: '2px 9px', borderRadius: '10px' }}>
+            ✓ Festgelegt
+          </span>
+        )}
+      </div>
+      <div style={{ padding: '12px 16px' }}>
+        <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '10px' }}>
+          Wird beim Öffnen einer neuen E-Mail an diesen Mandanten automatisch vorausgewählt. Kann im Editor jederzeit überschrieben werden.
+        </div>
+        <select
+          className="input"
+          value={current}
+          onChange={handleChange}
+          style={{ width: '100%', fontSize: '13px' }}
+        >
+          <option value="">— Globalen Standard verwenden —</option>
+          {absender.map((a, i) => (
+            <option key={i} value={a.email}>
+              {a.name ? `${a.name} <${a.email}>` : a.email}
+              {a.isDefault ? ' (globaler Standard)' : ''}
+            </option>
+          ))}
+        </select>
+      </div>
+    </div>
+  )
+}
+
 function ApiKeySection({ claudeApiKey, onUpdateClaudeApiKey }) {
   const [localKey, setLocalKey] = useState(claudeApiKey ?? '')
   const [saved,    setSaved]    = useState(false)
@@ -881,7 +941,10 @@ export default function AuftragTab({ client, onUpdate, claudeApiKey, onUpdateCla
       {/* ══════════════════ 4. KONTAKTPERSONEN ══════════════════ */}
       <KontaktpersonenSection client={client} onUpdate={onUpdate} />
 
-      {/* ══════════════════ 5. API-SCHLÜSSEL ══════════════════ */}
+      {/* ══════════════════ 5. ABSENDER ══════════════════ */}
+      <AbsenderSection client={client} onUpdate={onUpdate} />
+
+      {/* ══════════════════ 6. API-SCHLÜSSEL ══════════════════ */}
       <ApiKeySection claudeApiKey={claudeApiKey} onUpdateClaudeApiKey={onUpdateClaudeApiKey} />
 
     </div>
