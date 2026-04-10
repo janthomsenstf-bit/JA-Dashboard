@@ -237,9 +237,10 @@ export default async function handler(req, res) {
     // Sendet eine E-Mail über das Microsoft-Konto des Nutzers.
     // Die E-Mail wird automatisch in "Gesendete Elemente" (Sent Items) gespeichert.
     if (action === 'sendMail') {
-      const { to, subject, body, bodyType = 'text', cc, bcc, attachments = [] } = body
+      // params enthält alles außer action + tokens (aus dem Request-Body destructured)
+      const { to, subject, body: mailBody, bodyType = 'text', cc, bcc, attachments = [] } = params
 
-      if (!to || !subject || !body) {
+      if (!to || !subject || !mailBody) {
         return fail(400, 'sendMail: to, subject und body sind Pflicht')
       }
 
@@ -262,7 +263,7 @@ export default async function handler(req, res) {
         subject,
         body: {
           contentType: bodyType === 'html' ? 'html' : 'text',
-          content:     body,
+          content:     mailBody,
         },
         toRecipients:  toRecipients(to),
         ...(cc  ? { ccRecipients:  toRecipients(cc)  } : {}),
