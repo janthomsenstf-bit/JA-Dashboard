@@ -71,6 +71,12 @@ const EVENT_TYPES = {
     statusIcon: '✅', statusColor: '#16a34a',
     statusBg: 'rgba(22,163,74,0.05)', statusBorder: 'rgba(22,163,74,0.25)',
   },
+  vollstaendigkeit: {
+    label: 'Vollständigkeitserklärung erhalten', icon: '📋', color: '#0f766e',
+    statusLabel: 'Vollständigkeitserklärung erhalten',
+    statusIcon: '📋', statusColor: '#0f766e',
+    statusBg: 'rgba(15,118,110,0.05)', statusBorder: 'rgba(15,118,110,0.25)',
+  },
   telefonat: {
     label: 'Telefonat / Persönlich', icon: '📞', color: '#7c3aed',
     statusLabel: 'Telefonat geführt',
@@ -114,8 +120,8 @@ function getTimelinePrompt() {
   const today = getTodayISO()
   return `Du bist ein Steuerberater-Assistent. Der Nutzer beschreibt eine Aktivität oder Kommunikation mit einem Mandanten. Heute: ${today}.
 Extrahiere folgendes und antworte NUR mit einem JSON-Objekt:
-{"typ":"rueckfragen|erinnerung|antwort|telefonat|email|notiz","datum":"YYYY-MM-DD","notiz":"Kurze Beschreibung max 100 Zeichen","reminder_tage":Zahl oder null}
-Typen: rueckfragen=Rückfragen an Mandant gesendet, erinnerung=Erinnerung gesendet, antwort=Antwort vom Mandant erhalten, telefonat=Telefonat oder persönliches Gespräch, email=allgemeine E-Mail gesendet, notiz=interne Notiz.
+{"typ":"rueckfragen|erinnerung|antwort|vollstaendigkeit|telefonat|email|notiz","datum":"YYYY-MM-DD","notiz":"Kurze Beschreibung max 100 Zeichen","reminder_tage":Zahl oder null}
+Typen: rueckfragen=Rückfragen an Mandant gesendet, erinnerung=Erinnerung gesendet, antwort=Antwort vom Mandant erhalten, vollstaendigkeit=Vollständigkeitserklärung vom Mandant erhalten, telefonat=Telefonat oder persönliches Gespräch, email=allgemeine E-Mail gesendet, notiz=interne Notiz.
 Falls der Nutzer eine Erinnerung erwähnt (z.B. "erinnere mich in 7 Tagen"), setze reminder_tage.`
 }
 
