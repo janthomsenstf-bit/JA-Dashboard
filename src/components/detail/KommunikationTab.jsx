@@ -845,6 +845,80 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
     }
   }
 
+  // ── Auto-Aktualisieren: neue E-Mails dieses Mandanten automatisch zuordnen ──
+  const [refreshLoading,  setRefreshLoading]  = useState(false)
+  const [refreshResult,   setRefreshResult]   = useState(null)  // { count, noEmails }
+
+  async function handleAutoRefresh() {
+    setRefreshLoading(true)
+    setRefreshResult(null)
+
+    // Alle E-Mail-Adressen die diesem Mandanten gehören
+    const clientEmails = new Set(
+      (client.kontakte ?? [])
+        .map(k => (k.email ?? '').toLowerCase().trim())
+        .filter(Boolean)
+    )
+    if (client.email) clientEmails.add(client.email.toLowerCase().trim())
+
+    if (clientEmails.size === 0) {
+      setRefreshResult({ count: 0, noEmails: true })
+      setRefreshLoading(false)
+      return
+    }
+
+    // Bereits importierte UIDs → keine Duplikate
+    const importedKeys = new Set(
+      events
+        .filter(e => e.sourceUid && e.sourceAccount)
+        .map(e => `${e.sourceAccount}:${e.sourceUid}`)
+    )
+
+    try {
+      const [h, s] = await Promise.all([
+        fetchEmails('hostinger', null, selectedFolder).catch(() => []),
+        fetchEmails('strato',    null, selectedFolder).catch(() => []),
+      ])
+      const all = [...h, ...s]
+
+      const newEntries = []
+      for (const email of all) {
+        const key = `${email.account}:${email.uid}`
+        if (importedKeys.has(key)) continue
+        if (!clientEmails.has((email.von ?? '').toLowerCase().trim())) continue
+
+        newEntries.push({
+          id:            'k' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+          typ:           'eingehend',
+          empfaenger:    email.an,
+          absender:      email.von,
+          vonName:       email.vonName ?? '',
+          betreff:       email.betreff,
+          text:          null,
+          html:          undefined,
+          anlagen:       [],
+          contentLoaded: false,
+          gelesen:       false,
+          cc: '', bcc: '',
+          status:        'gesendet',
+          erstelltAm:    email.datum,
+          gesendetAm:    email.datum,
+          sourceUid:     String(email.uid),
+          sourceAccount: email.account,
+        })
+      }
+
+      if (newEntries.length > 0) {
+        saveKomm({ events: [...newEntries, ...events] })
+      }
+      setRefreshResult({ count: newEntries.length })
+    } catch (e) {
+      setRefreshResult({ count: 0, error: e.message })
+    } finally {
+      setRefreshLoading(false)
+    }
+  }
+
   // Eingehende E-Mail einem Mandanten zuordnen (direkt diesem hier)
   function assignToThisClient(email) {
     const entry = {
@@ -1300,21 +1374,12 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
             <button
               className="btn btn-primary btn-sm"
-              onClick={handleSendOutlook}
-              disabled={sendOutlookLoading || sendLoading}
-              style={{ fontSize: '12px', background: '#0078d4', borderColor: '#0078d4' }}
-              title="E-Mail über Outlook senden – erscheint in Gesendete Elemente"
-            >
-              {sendOutlookLoading ? '⏳ Wird gesendet...' : '📨 Via Outlook senden'}
-            </button>
-            <button
-              className="btn btn-ghost btn-sm"
               onClick={handleSendSMTP}
-              disabled={sendLoading || sendOutlookLoading}
+              disabled={sendLoading}
               style={{ fontSize: '12px' }}
-              title="E-Mail über SMTP senden (Hostinger/Strato)"
+              title="E-Mail senden"
             >
-              {sendLoading ? '⏳ Wird gesendet...' : '📤 Via SMTP senden'}
+              {sendLoading ? '⏳ Wird gesendet...' : '📤 Senden'}
             </button>
             <button
               className="btn btn-ghost btn-sm"
@@ -1441,9 +1506,50 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
 
       {/* ── 3. E-Mail-Historie ── */}
       <div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-          <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-            E-Mail-Historie ({events.length})
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+              E-Mail-Historie ({events.length})
+            </div>
+            {/* Ungelesen-Badge: eingegangene E-Mails ohne erledigtAm */}
+            {(() => {
+              const ungelesen = events.filter(e => e.typ === 'eingehend' && !e.erledigtAm).length
+              return ungelesen > 0 ? (
+                <span style={{
+                  fontSize: '11px', fontWeight: 700,
+                  background: '#dc2626', color: '#fff',
+                  padding: '2px 8px', borderRadius: '20px',
+                  cursor: 'pointer',
+                }} onClick={() => setFilter('alle')} title="Eingegangene E-Mails – noch nicht erledigt">
+                  {ungelesen} neu
+                </span>
+              ) : null
+            })()}
+            {/* Aktualisieren-Button */}
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={handleAutoRefresh}
+              disabled={refreshLoading}
+              style={{ fontSize: '11px', color: '#0891b2' }}
+              title="Nach neuen E-Mails von diesem Mandanten suchen und automatisch zuordnen"
+            >
+              {refreshLoading ? '⏳' : '🔄'} Aktualisieren
+            </button>
+            {/* Ergebnis-Feedback */}
+            {refreshResult && !refreshLoading && (
+              <span style={{ fontSize: '11px', fontWeight: 600,
+                color: refreshResult.error ? '#dc2626' : refreshResult.count > 0 ? '#16a34a' : 'var(--text-muted)'
+              }}>
+                {refreshResult.error
+                  ? `⚠️ ${refreshResult.error}`
+                  : refreshResult.noEmails
+                    ? '⚠️ Keine E-Mail-Adressen beim Mandanten hinterlegt'
+                    : refreshResult.count > 0
+                      ? `✓ ${refreshResult.count} neue E-Mail${refreshResult.count !== 1 ? 's' : ''} zugeordnet`
+                      : '✓ Keine neuen E-Mails'
+                }
+              </span>
+            )}
           </div>
           <div style={{ display: 'flex', gap: '4px' }}>
             {[['alle','Alle'], ['gesendet','Gesendet'], ['entwuerfe','Entwürfe']].map(([key, label]) => (
