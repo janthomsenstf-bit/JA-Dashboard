@@ -930,7 +930,7 @@ export default function AuftragTab({ client, onUpdate, claudeApiKey, onUpdateCla
             auftrag={auftrag}
             onToggle={toggleKey}
             setup={setup}
-            defaultOpen={cat.id === 'formalien'}
+            defaultOpen={false}
           />
         ))}
 
