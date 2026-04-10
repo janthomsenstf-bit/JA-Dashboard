@@ -306,7 +306,7 @@ function AbsenderModal({ onClose }) {
 }
 
 // ── Haupt-Komponente ──────────────────────────────────────────────────────────
-export default function KommunikationTab({ client, onUpdate, emailVorlagen = [], onUpdateEmailVorlagen, emailSignaturen = [], onUpdateEmailSignaturen, onedriveTokens = null, onUpdateOnedriveTokens }) {
+export default function KommunikationTab({ client, onUpdate, emailVorlagen = [], onUpdateEmailVorlagen, emailSignaturen = [], onUpdateEmailSignaturen, onedriveTokens = null, onUpdateOnedriveTokens, pendingAttachments = null, onClearPendingAttachments }) {
   const komm    = client.kommunikation ?? { events: [], standardAbsender: '' }
   const events  = Array.isArray(komm.events) ? komm.events : []
   const absender = loadAbsender()
@@ -365,6 +365,22 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
   const [selectedFolder,    setSelectedFolder]    = useState('INBOX')
   const [availFolders,      setAvailFolders]      = useState([])
   const [foldersLoading,    setFoldersLoading]    = useState(false)
+
+  // OneDrive-Anhänge empfangen (von DokumenteTab via DetailView)
+  useEffect(() => {
+    if (!pendingAttachments?.length) return
+    setAttachments(prev => [
+      ...prev,
+      ...pendingAttachments.map(a => ({
+        id: 'od_' + Date.now().toString(36) + Math.random().toString(36).slice(2),
+        filename: a.filename,
+        content: a.content,
+        contentType: a.contentType,
+      }))
+    ])
+    setEditorOpen(true)
+    onClearPendingAttachments?.()
+  }, [pendingAttachments])
 
   function saveKomm(patch) {
     onUpdate({ kommunikation: { ...komm, ...patch } })

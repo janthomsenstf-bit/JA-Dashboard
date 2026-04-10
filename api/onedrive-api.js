@@ -186,6 +186,27 @@ export default async function handler(req, res) {
       return ok({ folderId })
     }
 
+    // ── createFolder ─────────────────────────────────────────────────────────
+    // Legt einen einzelnen Unterordner unter einem gegebenen Pfad an.
+    if (action === 'createFolder') {
+      const { parentPath, folderName: newName } = params
+      let url
+      if (parentPath) {
+        const encoded = encodeURIComponent(parentPath).replace(/%2F/g, '/')
+        url = `${GRAPH}/me/drive/root:/${encoded}:/children`
+      } else {
+        url = `${GRAPH}/me/drive/root/children`
+      }
+      const r = await graphFetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newName, folder: {}, '@microsoft.graph.conflictBehavior': 'rename' }),
+      }, tokens)
+      const d = await r.json()
+      if (!r.ok) return fail(r.status, d.error?.message ?? 'createFolder failed')
+      return ok({ folder: d })
+    }
+
     // ── uploadSmall (<= 4 MB, Base64 encoded) ────────────────────────────────
     if (action === 'uploadSmall') {
       const { filePath, base64, contentType } = params

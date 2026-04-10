@@ -49,8 +49,14 @@ export default function DetailView({
   claudeApiKey = '',
   onUpdateClaudeApiKey,
 }) {
-  const [activeTab, setActiveTab]   = useState(initialTab)
-  const [showEdit, setShowEdit]     = useState(false)
+  const [activeTab, setActiveTab]         = useState(initialTab)
+  const [showEdit, setShowEdit]           = useState(false)
+  const [pendingAttachments, setPendingAttachments] = useState(null)  // OneDrive → E-Mail
+
+  function handleSendAsAttachment(attachments) {
+    setPendingAttachments(attachments)
+    setActiveTab(8)  // Kommunikation-Tab öffnen
+  }
 
   // Mandantennummern als Array (ohne leere)
   const allNrs = [client.mandantennummer, client.mandantennummer2, client.mandantennummer3]
@@ -222,7 +228,7 @@ export default function DetailView({
           <RechnerTab key={client.id} client={client} onUpdate={onUpdate} />
         )}
         {activeTab === 8 && (
-          <KommunikationTab key={client.id} client={client} onUpdate={onUpdate} emailVorlagen={emailVorlagen} onUpdateEmailVorlagen={onUpdateEmailVorlagen} emailSignaturen={emailSignaturen} onUpdateEmailSignaturen={onUpdateEmailSignaturen} onedriveTokens={onedriveTokens} onUpdateOnedriveTokens={onUpdateOnedriveTokens} />
+          <KommunikationTab key={client.id} client={client} onUpdate={onUpdate} emailVorlagen={emailVorlagen} onUpdateEmailVorlagen={onUpdateEmailVorlagen} emailSignaturen={emailSignaturen} onUpdateEmailSignaturen={onUpdateEmailSignaturen} onedriveTokens={onedriveTokens} onUpdateOnedriveTokens={onUpdateOnedriveTokens} pendingAttachments={pendingAttachments} onClearPendingAttachments={() => setPendingAttachments(null)} />
         )}
         {activeTab === 9 && (
           <DokumenteTab
@@ -232,6 +238,7 @@ export default function DetailView({
             onNavigateToKomm={() => setActiveTab(8)}
             onedriveTokens={onedriveTokens}
             onUpdateOnedriveTokens={onUpdateOnedriveTokens}
+            onSendAsAttachment={handleSendAsAttachment}
           />
         )}
         {activeTab === 10 && (
