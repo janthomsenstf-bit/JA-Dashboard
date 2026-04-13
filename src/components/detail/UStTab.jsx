@@ -9,11 +9,11 @@ function loadAbsender() {
   return []
 }
 
-async function sendViaSMTP({ to, from, subject, text, account }) {
+async function sendViaSMTP({ to, from, subject, text, account, attachments = [] }) {
   const res = await fetch('/api/send-email', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ to, from, subject, text, account }),
+    body: JSON.stringify({ to, from, subject, text, account, attachments }),
   })
   const data = await res.json()
   if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`)
@@ -37,10 +37,21 @@ function calcUSt(bem, satz) { return parseNum(bem) * parseNum(satz) / 100 }
 function calcZahllast(bem, satz, vor) { return calcUSt(bem, satz) - parseNum(vor) }
 
 // ── Standard-E-Mail-Text ──────────────────────────────────────────────────────
-function buildDefaultMail(monatName, jahr, bem, satz, ust, vor, zahllast) {
+function buildDefaultMail(monatName, jahr, zahllast) {
   return {
-    betreff: `USt-Voranmeldung ${monatName} ${jahr}`,
-    text: `Sehr geehrte Damen und Herren,\n\nanbei erhalten Sie die Zusammenfassung Ihrer Umsatzsteuer-Voranmeldung für ${monatName} ${jahr}:\n\nBemessungsgrundlage:   ${fmtEurShort(bem)} €\nUmsatzsteuer (${satz} %): ${fmtEurShort(ust)} €\nAbzügliche Vorsteuer:  ${fmtEurShort(vor)} €\n──────────────────────────────\nZahllast:              ${fmtEurShort(zahllast)} €\n\nMit freundlichen Grüßen`,
+    betreff: `Moms – ${monatName} ${jahr}`,
+    text:
+`Hej med dig,
+
+Moms for periode ${monatName} – ${jahr} blive indberet.
+Du skal betale til tysk Finanzamt= ${fmtEurShort(zahllast)} EUR
+
+Bankforbindelse Finanzamt:
+BBK Hamburg (Banknavn)
+IBAN: DE27 2000 0000 0020 2015 00
+BIC: MARKDEF1200
+
+Husk at du skriver dit skattenummer med på overføring så Skattevæsen (Finanzamt) kan tildele betalingen korrekt.`,
   }
 }
 
@@ -69,17 +80,19 @@ function InlineMailEditor({ monatIdx, jahr, monatDaten, emailVorlagen, client, o
   const vor        = parseNum(monatDaten.vor)
   const zahllast   = calcZahllast(bem, satz, vor)
 
-  const absenderList  = loadAbsender()
-  const kontaktEmail  = (client.kontakte ?? []).find(k => k.email)?.email ?? ''
-  const defaultMail   = buildDefaultMail(monatName, jahr, bem, satz, ust, vor, zahllast)
+  const absenderList = loadAbsender()
+  const kontaktEmail = (client.kontakte ?? []).find(k => k.email)?.email ?? ''
+  const defaultMail  = buildDefaultMail(monatName, jahr, zahllast)
 
-  const [von,       setVon]       = useState(absenderList.find(a => a.isDefault)?.email ?? absenderList[0]?.email ?? '')
-  const [an,        setAn]        = useState(kontaktEmail)
-  const [betreff,   setBetreff]   = useState(defaultMail.betreff)
-  const [text,      setText]      = useState(defaultMail.text)
-  const [vorlageId, setVorlageId] = useState('')
-  const [sending,   setSending]   = useState(false)
-  const [error,     setError]     = useState('')
+  const [von,        setVon]        = useState(absenderList.find(a => a.isDefault)?.email ?? absenderList[0]?.email ?? '')
+  const [an,         setAn]         = useState(kontaktEmail)
+  const [betreff,    setBetreff]    = useState(defaultMail.betreff)
+  const [text,       setText]       = useState(defaultMail.text)
+  const [vorlageId,  setVorlageId]  = useState('')
+  const [anlagen,    setAnlagen]    = useState([])   // [{ id, filename, content (base64), contentType, size }]
+  const [sending,    setSending]    = useState(false)
+  const [error,      setError]      = useState('')
+  const fileInputRef = useState(null)
 
   function applyVorlage(id) {
     setVorlageId(id)
@@ -91,6 +104,35 @@ function InlineMailEditor({ monatIdx, jahr, monatDaten, emailVorlagen, client, o
     setText(filled.text)
   }
 
+  async function handleFileAdd(e) {
+    const files = Array.from(e.target.files ?? [])
+    e.target.value = ''
+    for (const file of files) {
+      if (file.size > 10 * 1024 * 1024) { setError(`${file.name} ist zu groß (max. 10 MB).`); continue }
+      const base64 = await new Promise((res, rej) => {
+        const r = new FileReader()
+        r.onload  = () => res(r.result.split(',')[1])
+        r.onerror = rej
+        r.readAsDataURL(file)
+      })
+      setAnlagen(prev => [...prev, {
+        id: 'a' + Date.now().toString(36) + Math.random().toString(36).slice(2),
+        filename: file.name,
+        content:  base64,
+        contentType: file.type || 'application/octet-stream',
+        size: file.size,
+      }])
+    }
+  }
+
+  function removeAnlage(id) { setAnlagen(prev => prev.filter(a => a.id !== id)) }
+
+  function fmtSize(bytes) {
+    if (bytes < 1024)       return bytes + ' B'
+    if (bytes < 1024*1024)  return (bytes/1024).toFixed(0) + ' KB'
+    return (bytes/1024/1024).toFixed(1) + ' MB'
+  }
+
   async function handleSend() {
     if (!an.trim())      { setError('Empfänger fehlt.'); return }
     if (!betreff.trim()) { setError('Betreff fehlt.');   return }
@@ -98,9 +140,10 @@ function InlineMailEditor({ monatIdx, jahr, monatDaten, emailVorlagen, client, o
     if (!von)            { setError('Kein Absender – bitte unter Stammdaten einrichten.'); return }
     setSending(true); setError('')
     const acc = absenderList.find(a => a.email === von)
+    const attachments = anlagen.map(a => ({ filename: a.filename, content: a.content, contentType: a.contentType }))
     try {
-      await sendViaSMTP({ to: an, from: von, subject: betreff, text, account: acc })
-      onSent({ von, an, betreff, text })
+      await sendViaSMTP({ to: an, from: von, subject: betreff, text, account: acc, attachments })
+      onSent({ von, an, betreff, text, anlagenCount: anlagen.length })
     } catch (e) {
       setError('Fehler: ' + e.message)
       setSending(false)
@@ -117,14 +160,15 @@ function InlineMailEditor({ monatIdx, jahr, monatDaten, emailVorlagen, client, o
         {/* Vorlage */}
         {emailVorlagen.length > 0 && (
           <div style={{ marginBottom: '10px' }}>
-            <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Vorlage laden (Platzhalter werden automatisch ersetzt)</label>
+            <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Vorlage laden</label>
             <select className="input" value={vorlageId} onChange={e => applyVorlage(e.target.value)} style={{ fontSize: '12px', padding: '4px 8px', width: '100%' }}>
-              <option value="">– Standard-Vorlage –</option>
+              <option value="">– Standard-Vorlage (Dänisch) –</option>
               {emailVorlagen.map(v => <option key={v.id} value={v.id}>{v.name ?? v.betreff}</option>)}
             </select>
           </div>
         )}
 
+        {/* Von / An */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
           <div>
             <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Von</label>
@@ -141,15 +185,47 @@ function InlineMailEditor({ monatIdx, jahr, monatDaten, emailVorlagen, client, o
           </div>
         </div>
 
+        {/* Betreff */}
         <div style={{ marginBottom: '8px' }}>
           <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Betreff</label>
           <input className="input" value={betreff} onChange={e => setBetreff(e.target.value)} style={{ fontSize: '12px', padding: '4px 8px', width: '100%' }} />
         </div>
 
+        {/* Text */}
         <div style={{ marginBottom: '10px' }}>
           <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Text</label>
-          <textarea className="input" value={text} onChange={e => setText(e.target.value)} rows={7}
-            style={{ fontSize: '12px', padding: '6px 8px', width: '100%', resize: 'vertical', fontFamily: 'var(--font-mono)', lineHeight: 1.5 }} />
+          <textarea className="input" value={text} onChange={e => setText(e.target.value)} rows={9}
+            style={{ fontSize: '12px', padding: '6px 8px', width: '100%', resize: 'vertical', fontFamily: 'var(--font-mono)', lineHeight: 1.6 }} />
+        </div>
+
+        {/* Anlagen */}
+        <div style={{ marginBottom: '10px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+            <label style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+              Anlagen{anlagen.length > 0 ? ` (${anlagen.length})` : ''}
+            </label>
+            <label style={{ cursor: 'pointer' }}>
+              <input type="file" multiple style={{ display: 'none' }} onChange={handleFileAdd} />
+              <span className="btn btn-ghost btn-sm" style={{ fontSize: '11px' }}>📎 Datei hinzufügen</span>
+            </label>
+          </div>
+          {anlagen.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              {anlagen.map(a => (
+                <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '5px 9px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '12px' }}>
+                  <span style={{ fontSize: '15px' }}>📄</span>
+                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.filename}</span>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)', flexShrink: 0 }}>{fmtSize(a.size)}</span>
+                  <button onClick={() => removeAnlage(a.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: '14px', padding: '0 2px', flexShrink: 0 }}>✕</button>
+                </div>
+              ))}
+            </div>
+          )}
+          {anlagen.length === 0 && (
+            <div style={{ padding: '8px 10px', border: '1px dashed var(--border)', borderRadius: '6px', fontSize: '11px', color: 'var(--text-muted)', textAlign: 'center' }}>
+              Keine Anlagen – „Datei hinzufügen" klicken
+            </div>
+          )}
         </div>
 
         {error && <div style={{ color: '#ef4444', fontSize: '12px', marginBottom: '8px' }}>⚠️ {error}</div>}
@@ -157,7 +233,7 @@ function InlineMailEditor({ monatIdx, jahr, monatDaten, emailVorlagen, client, o
         <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
           <button className="btn btn-ghost btn-sm" onClick={onCancel} disabled={sending} style={{ fontSize: '11px' }}>Abbrechen</button>
           <button className="btn btn-primary btn-sm" onClick={handleSend} disabled={sending} style={{ fontSize: '11px' }}>
-            {sending ? '⏳ Wird gesendet…' : '📤 Senden'}
+            {sending ? '⏳ Wird gesendet…' : `📤 Senden${anlagen.length > 0 ? ` (${anlagen.length} Anlage${anlagen.length > 1 ? 'n' : ''})` : ''}`}
           </button>
         </div>
       </div>
@@ -432,7 +508,7 @@ export default function UStTab({ client, onUpdate, emailVorlagen = [] }) {
       <div style={{ display: 'flex', gap: '20px', marginTop: '12px', fontSize: '11px', color: 'var(--text-muted)', flexWrap: 'wrap' }}>
         <span><span style={{ color: '#dc2626', fontWeight: 700 }}>●</span> Zahllast (Betrag fällig)</span>
         <span><span style={{ color: '#16a34a', fontWeight: 700 }}>●</span> Erstattung (Vorsteuerüberhang)</span>
-        <span>💡 Vorlagen-Platzhalter: [MONAT], [JAHR], [ZAHLLAST], [UST], [VORSTEUER], [BEMESSUNGSGRUNDLAGE]</span>
+        <span>💡 Vorlagen-Platzhalter: [MONAT] [JAHR] [ZAHLLAST] [UST] [VORSTEUER] [BEMESSUNGSGRUNDLAGE]</span>
       </div>
     </div>
   )
