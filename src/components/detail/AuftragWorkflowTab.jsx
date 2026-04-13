@@ -181,8 +181,9 @@ function InlineMailEditor({ client, emailVorlagen = [], vorgabe, onSent, onCance
     setSending(true)
     setError('')
     const acc = absenderList.find(a => a.email === von)
+    const account = acc?.konto || 'hostinger'
     try {
-      await sendViaSMTP({ to: an, from: von, subject: betreff, text, account: acc })
+      await sendViaSMTP({ to: an, from: von, subject: betreff, text, account })
       onSent({ von, an, betreff })
     } catch (e) {
       setError('Fehler: ' + e.message)

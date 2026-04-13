@@ -179,9 +179,10 @@ function InlineMailEditor({ monatIdx, jahr, monatDaten, emailVorlagen, emailSign
     if (!von)            { setError('Kein Absender – bitte unter Stammdaten einrichten.'); return }
     setSending(true); setError('')
     const acc = absenderList.find(a => a.email === von)
+    const account = acc?.konto || 'hostinger'
     const attachments = anlagen.map(a => ({ filename: a.filename, content: a.content, contentType: a.contentType }))
     try {
-      await sendViaSMTP({ to: an, from: von, subject: betreff, text, account: acc, attachments })
+      await sendViaSMTP({ to: an, from: von, subject: betreff, text, account, attachments })
       onSent({ von, an, betreff, text, anlagenCount: anlagen.length })
     } catch (e) {
       setError('Fehler: ' + e.message)
