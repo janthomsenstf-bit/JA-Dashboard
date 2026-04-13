@@ -118,6 +118,8 @@ function migrateClient(c) {
     mandatstyp:                  c.mandatstyp                   ?? 'extern',
     manuellerStatus:             c.manuellerStatus              ?? null,
     est:                         c.est                          ?? {},
+    auftraege:                   Array.isArray(c.auftraege)      ? c.auftraege : [],
+    ust:                         c.ust                           ?? {},
   }
 }
 
@@ -279,7 +281,10 @@ export default function App() {
   useEffect(() => {
     if (!authUser) return
     const handleBeforeUnload = () => {
-      cloudSaveNow(STORAGE_KEY, clients).catch(() => {})
+      // Synchron in localStorage schreiben – das klappt immer, auch beim Tab-Schließen
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(clientsRef.current)) } catch {}
+      // Async Cloud-Save mit keepalive (Browser bricht es nicht ab)
+      cloudSaveNow(STORAGE_KEY, clientsRef.current).catch(() => {})
     }
     window.addEventListener('beforeunload', handleBeforeUnload)
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
