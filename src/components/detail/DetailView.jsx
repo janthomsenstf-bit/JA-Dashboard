@@ -12,9 +12,10 @@ import KommunikationTab     from './KommunikationTab.jsx'
 import DokumenteTab         from './DokumenteTab.jsx'
 import EStTab               from './EStTab.jsx'
 import AuftragWorkflowTab   from './AuftragWorkflowTab.jsx'
+import UStTab               from './UStTab.jsx'
 import NewClientModal       from '../NewClientModal.jsx'
 
-const TABS = ['🏠 Übersicht', '🗂 Stammdaten', '📊 Status', '✅ Aufgaben', '📁 Abschluss', '💼 Lohn', '🧠 Beratung', '🔢 Rechner', '✉️ Kommunikation', '📂 Dokumente', '📊 ESt', '⚡ Auftrag']
+const TABS = ['🏠 Übersicht', '🗂 Stammdaten', '📊 Status', '✅ Aufgaben', '📁 Abschluss', '💼 Lohn', '🧠 Beratung', '🔢 Rechner', '✉️ Kommunikation', '📂 Dokumente', '📊 ESt', '⚡ Auftrag', '🧾 USt']
 
 
 export default function DetailView({
@@ -247,6 +248,14 @@ export default function DetailView({
         )}
         {activeTab === 11 && (
           <AuftragWorkflowTab
+            key={client.id}
+            client={client}
+            onUpdate={onUpdate}
+            emailVorlagen={emailVorlagen}
+          />
+        )}
+        {activeTab === 12 && (
+          <UStTab
             key={client.id}
             client={client}
             onUpdate={onUpdate}
