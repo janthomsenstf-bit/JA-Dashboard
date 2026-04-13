@@ -250,7 +250,7 @@ export default function DetailView({
             key={client.id}
             client={client}
             onUpdate={onUpdate}
-            onNavigateToKomm={() => setActiveTab(8)}
+            emailVorlagen={emailVorlagen}
           />
         )}
       </div>
