@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import EmailVorlagenModal   from '../EmailVorlagenModal.jsx'
 import EmailSignaturenModal from '../EmailSignaturenModal.jsx'
 import { sendMailGraph, openAuthPopup } from '../../utils/onedriveClient.js'
