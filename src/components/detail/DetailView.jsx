@@ -13,9 +13,10 @@ import DokumenteTab         from './DokumenteTab.jsx'
 import EStTab               from './EStTab.jsx'
 import AuftragWorkflowTab   from './AuftragWorkflowTab.jsx'
 import UStTab               from './UStTab.jsx'
+import FormularTab          from '../formular/FormularTab.jsx'
 import NewClientModal       from '../NewClientModal.jsx'
 
-const TABS = ['🏠 Übersicht', '🗂 Stammdaten', '📊 Status', '✅ Aufgaben', '📁 Abschluss', '💼 Lohn', '🧠 Beratung', '🔢 Rechner', '✉️ Kommunikation', '📂 Dokumente', '📊 ESt', '⚡ Auftrag', '🧾 USt']
+const TABS = ['🏠 Übersicht', '🗂 Stammdaten', '📊 Status', '✅ Aufgaben', '📁 Abschluss', '💼 Lohn', '🧠 Beratung', '🔢 Rechner', '✉️ Kommunikation', '📂 Dokumente', '📊 ESt', '⚡ Auftrag', '🧾 USt', '📋 Formulare']
 
 
 export default function DetailView({
@@ -42,6 +43,8 @@ export default function DetailView({
   onUpdateEmailVorlagen,
   emailSignaturen = [],
   onUpdateEmailSignaturen,
+  formVorlagen = [],
+  onUpdateFormVorlagen,
   termine = [],
   onAddTermin,
   onUpdateTermin,
@@ -259,6 +262,17 @@ export default function DetailView({
             key={client.id}
             client={client}
             onUpdate={onUpdate}
+            emailVorlagen={emailVorlagen}
+            emailSignaturen={emailSignaturen}
+          />
+        )}
+        {activeTab === 13 && (
+          <FormularTab
+            key={client.id}
+            client={client}
+            onUpdate={onUpdate}
+            formVorlagen={formVorlagen}
+            onUpdateFormVorlagen={onUpdateFormVorlagen}
             emailVorlagen={emailVorlagen}
             emailSignaturen={emailSignaturen}
           />

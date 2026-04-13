@@ -18,6 +18,7 @@ import CommandPalette        from './components/CommandPalette.jsx'
 import { supabase } from './utils/supabaseClient.js'
 import { cloudLoadAll, cloudSave, cloudSaveNow, cloudSnapshot, migrateLocalStorageToCloud } from './utils/cloudStorage.js'
 import LoginPage from './components/LoginPage.jsx'
+import FormularPage from './components/formular/FormularPage.jsx'
 
 const BACKUP_INTERVAL_MS = 30 * 60 * 1000  // 30 Minuten
 
@@ -187,6 +188,9 @@ export default function App() {
   const [emailVorlagen,   setEmailVorlagen]   = useState([])
   const [emailSignaturen, setEmailSignaturen] = useState([])
 
+  // ── Formular-Templates ────────────────────────────────────────────────────────
+  const [formVorlagen, setFormVorlagen] = useState([])
+
   // ── OneDrive-Tokens ───────────────────────────────────────────────────────────
   const [onedriveTokens, setOnedriveTokens] = useState(null)
 
@@ -242,6 +246,7 @@ export default function App() {
         if (Array.isArray(cloudData['email-vorlagen-v1']))    setEmailVorlagen(cloudData['email-vorlagen-v1'])
         if (Array.isArray(cloudData['email-signaturen-v1'])) setEmailSignaturen(cloudData['email-signaturen-v1'])
         if (cloudData['onedrive-tokens-v1'])                 setOnedriveTokens(cloudData['onedrive-tokens-v1'])
+        if (Array.isArray(cloudData['form-vorlagen-v1']))    setFormVorlagen(cloudData['form-vorlagen-v1'])
         if (cloudData['claude-api-key-v1']) {
           setClaudeApiKey(cloudData['claude-api-key-v1'])
           localStorage.setItem('sda-claude-api-key', cloudData['claude-api-key-v1'])
@@ -828,6 +833,16 @@ export default function App() {
     return count
   }, [clients])
 
+  // ── Formular-Templates speichern ──────────────────────────────────────────
+  useEffect(() => {
+    if (!authUser || dataLoading) return
+    cloudSave('form-vorlagen-v1', formVorlagen)
+  }, [formVorlagen])
+
+  // ── Öffentliche Formular-Route (/formular/:token) – kein Login nötig ───────
+  const formularToken = window.location.pathname.match(/^\/formular\/([0-9a-f-]{36})/i)?.[1]
+  if (formularToken) return <FormularPage token={formularToken} />
+
   // Auth wird noch geprüft
   if (authUser === undefined) {
     return (
@@ -1181,6 +1196,8 @@ export default function App() {
               onUpdateOnedriveTokens={setOnedriveTokens}
               claudeApiKey={claudeApiKey}
               onUpdateClaudeApiKey={setClaudeApiKey}
+              formVorlagen={formVorlagen}
+              onUpdateFormVorlagen={setFormVorlagen}
             />
           ) : (
             <StartseiteHome
