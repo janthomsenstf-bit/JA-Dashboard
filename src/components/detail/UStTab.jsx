@@ -71,8 +71,20 @@ function buildMailFromVorlage(vorlage, monatName, jahr, bem, satz, ust, vor, zah
   return { betreff: replace(vorlage.betreff), text: replace(vorlage.text) }
 }
 
+// ── Signatur-Helfer (wie KommunikationTab) ────────────────────────────────────
+const SIG_SEP = '\n\n--\n'
+function insertSig(currentText, sigText) {
+  const idx  = currentText.indexOf(SIG_SEP)
+  const base = idx >= 0 ? currentText.slice(0, idx) : currentText
+  return base + SIG_SEP + sigText
+}
+function removeSig(currentText) {
+  const idx = currentText.indexOf(SIG_SEP)
+  return idx >= 0 ? currentText.slice(0, idx) : currentText
+}
+
 // ── Inline-E-Mail-Editor ──────────────────────────────────────────────────────
-function InlineMailEditor({ monatIdx, jahr, monatDaten, emailVorlagen, client, onSent, onCancel }) {
+function InlineMailEditor({ monatIdx, jahr, monatDaten, emailVorlagen, emailSignaturen = [], client, onSent, onCancel }) {
   const monatName  = MONATE[monatIdx]
   const bem        = parseNum(monatDaten.bem)
   const satz       = parseNum(monatDaten.satz)
@@ -80,28 +92,55 @@ function InlineMailEditor({ monatIdx, jahr, monatDaten, emailVorlagen, client, o
   const vor        = parseNum(monatDaten.vor)
   const zahllast   = calcZahllast(bem, satz, vor)
 
-  const absenderList = loadAbsender()
-  const kontaktEmail = (client.kontakte ?? []).find(k => k.email)?.email ?? ''
-  const defaultMail  = buildDefaultMail(monatName, jahr, zahllast)
+  const absenderList   = loadAbsender()
+  const kontaktEmail   = (client.kontakte ?? []).find(k => k.email)?.email ?? ''
+  const defaultMail    = buildDefaultMail(monatName, jahr, zahllast)
 
-  const [von,        setVon]        = useState(absenderList.find(a => a.isDefault)?.email ?? absenderList[0]?.email ?? '')
-  const [an,         setAn]         = useState(kontaktEmail)
-  const [betreff,    setBetreff]    = useState(defaultMail.betreff)
-  const [text,       setText]       = useState(defaultMail.text)
-  const [vorlageId,  setVorlageId]  = useState('')
-  const [anlagen,    setAnlagen]    = useState([])   // [{ id, filename, content (base64), contentType, size }]
-  const [sending,    setSending]    = useState(false)
-  const [error,      setError]      = useState('')
-  const fileInputRef = useState(null)
+  // Von: 1. standardAbsender des Mandanten, 2. isDefault aus Liste, 3. erster Eintrag
+  const mandantAbsender = client.kommunikation?.standardAbsender ?? ''
+  const defaultVon = mandantAbsender
+    || absenderList.find(a => a.isDefault)?.email
+    || absenderList[0]?.email
+    || ''
+
+  // Standardsignatur ermitteln
+  const defaultSig = emailSignaturen.find(s => s.isDefault)
+
+  const [von,          setVon]          = useState(defaultVon)
+  const [an,           setAn]           = useState(kontaktEmail)
+  const [betreff,      setBetreff]      = useState(defaultMail.betreff)
+  const [text,         setText]         = useState(
+    defaultSig ? insertSig(defaultMail.text, defaultSig.text) : defaultMail.text
+  )
+  const [signaturId,   setSignaturId]   = useState(defaultSig?.id ?? '')
+  const [vorlageId,    setVorlageId]    = useState('')
+  const [anlagen,      setAnlagen]      = useState([])
+  const [sending,      setSending]      = useState(false)
+  const [error,        setError]        = useState('')
+
+  function applySignatur(id) {
+    setSignaturId(id)
+    if (!id) { setText(prev => removeSig(prev)); return }
+    const sig = emailSignaturen.find(s => s.id === id)
+    if (sig) setText(prev => insertSig(removeSig(prev), sig.text))
+  }
 
   function applyVorlage(id) {
     setVorlageId(id)
-    if (!id) { setBetreff(defaultMail.betreff); setText(defaultMail.text); return }
+    const currentSig = emailSignaturen.find(s => s.id === signaturId)
+    if (!id) {
+      const base = defaultMail.text
+      setText(currentSig ? insertSig(base, currentSig.text) : base)
+      setBetreff(defaultMail.betreff)
+      return
+    }
     const v = emailVorlagen.find(v => v.id === id)
     if (!v) return
     const filled = buildMailFromVorlage(v, monatName, jahr, bem, satz, ust, vor, zahllast)
     setBetreff(filled.betreff)
-    setText(filled.text)
+    // Signatur nach Vorlage wieder anhängen
+    const activeSig = emailSignaturen.find(s => s.id === signaturId)
+    setText(activeSig ? insertSig(filled.text, activeSig.text) : filled.text)
   }
 
   async function handleFileAdd(e) {
@@ -157,16 +196,27 @@ function InlineMailEditor({ monatIdx, jahr, monatDaten, emailVorlagen, client, o
           📧 E-Mail für {monatName} {jahr} · Zahllast: <strong>{fmtEur(zahllast)}</strong>
         </div>
 
-        {/* Vorlage */}
-        {emailVorlagen.length > 0 && (
-          <div style={{ marginBottom: '10px' }}>
-            <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Vorlage laden</label>
-            <select className="input" value={vorlageId} onChange={e => applyVorlage(e.target.value)} style={{ fontSize: '12px', padding: '4px 8px', width: '100%' }}>
-              <option value="">– Standard-Vorlage (Dänisch) –</option>
-              {emailVorlagen.map(v => <option key={v.id} value={v.id}>{v.name ?? v.betreff}</option>)}
+        {/* Vorlage + Signatur (eine Zeile) */}
+        <div style={{ display: 'grid', gridTemplateColumns: emailVorlagen.length > 0 ? '1fr 1fr' : '1fr', gap: '8px', marginBottom: '10px' }}>
+          {emailVorlagen.length > 0 && (
+            <div>
+              <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Vorlage</label>
+              <select className="input" value={vorlageId} onChange={e => applyVorlage(e.target.value)} style={{ fontSize: '12px', padding: '4px 8px', width: '100%' }}>
+                <option value="">– Standard (Dänisch) –</option>
+                {emailVorlagen.map(v => <option key={v.id} value={v.id}>{v.name ?? v.betreff}</option>)}
+              </select>
+            </div>
+          )}
+          <div>
+            <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Signatur</label>
+            <select className="input" value={signaturId} onChange={e => applySignatur(e.target.value)} style={{ fontSize: '12px', padding: '4px 8px', width: '100%' }}>
+              <option value="">– Keine Signatur –</option>
+              {emailSignaturen.map(s => (
+                <option key={s.id} value={s.id}>{s.name}{s.isDefault ? ' ★' : ''}</option>
+              ))}
             </select>
           </div>
-        )}
+        </div>
 
         {/* Von / An */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
@@ -176,7 +226,7 @@ function InlineMailEditor({ monatIdx, jahr, monatDaten, emailVorlagen, client, o
               ? <select className="input" value={von} onChange={e => setVon(e.target.value)} style={{ fontSize: '12px', padding: '4px 8px', width: '100%' }}>
                   {absenderList.map(a => <option key={a.email} value={a.email}>{a.name ? `${a.name} <${a.email}>` : a.email}</option>)}
                 </select>
-              : <input className="input" value={von} readOnly style={{ fontSize: '12px', padding: '4px 8px', width: '100%', background: 'var(--bg)' }} />
+              : <input className="input" value={von} onChange={e => setVon(e.target.value)} placeholder="absender@beispiel.de" style={{ fontSize: '12px', padding: '4px 8px', width: '100%' }} />
             }
           </div>
           <div>
@@ -272,7 +322,7 @@ function NumInput({ value, onChange, placeholder = '0,00' }) {
 }
 
 // ── Haupt-Komponente ──────────────────────────────────────────────────────────
-export default function UStTab({ client, onUpdate, emailVorlagen = [] }) {
+export default function UStTab({ client, onUpdate, emailVorlagen = [], emailSignaturen = [] }) {
   const currentYear = new Date().getFullYear()
   const [jahr, setJahr] = useState(parseInt(client.veranlagungsjahr) || currentYear)
   const [mailOffenIdx, setMailOffenIdx] = useState(null)   // welche Monatszeile hat Mail offen
@@ -459,6 +509,7 @@ export default function UStTab({ client, onUpdate, emailVorlagen = [] }) {
                     jahr={jahr}
                     monatDaten={m}
                     emailVorlagen={emailVorlagen}
+                    emailSignaturen={emailSignaturen}
                     client={client}
                     onSent={meta => handleMailSent(i, meta)}
                     onCancel={() => setMailOffenIdx(null)}

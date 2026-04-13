@@ -260,6 +260,7 @@ export default function DetailView({
             client={client}
             onUpdate={onUpdate}
             emailVorlagen={emailVorlagen}
+            emailSignaturen={emailSignaturen}
           />
         )}
       </div>
