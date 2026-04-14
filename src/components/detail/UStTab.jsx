@@ -56,6 +56,23 @@ Husk at du skriver dit skattenummer med på overføring så Skattevæsen (Finanz
   }
 }
 
+// Standard-E-Mail für Schnellerfassung (nur Zahllast)
+function buildDefaultMailSchnell(periodenLabel, jahr, zahllast) {
+  return {
+    betreff: `UStVA – ${periodenLabel} ${jahr}`,
+    text:
+`Guten Tag,
+
+Ihre Umsatzsteuer-Voranmeldung für den Zeitraum ${periodenLabel} ${jahr} wurde beim Finanzamt eingereicht.
+
+Die Zahllast beträgt: ${fmtEurShort(zahllast)} EUR
+
+Bitte überweisen Sie den Betrag fristgerecht an das Finanzamt und geben Sie dabei Ihr Steuerkennzeichen an.
+
+Mit freundlichen Grüßen`,
+  }
+}
+
 function buildMailFromVorlage(vorlage, monatName, jahr, bem, satz, ust, vor, zahllast) {
   const replacements = {
     '[MONAT]':              monatName,
@@ -86,17 +103,23 @@ function removeSig(currentText) {
 
 // ── Inline-E-Mail-Editor ──────────────────────────────────────────────────────
 // periodenLabel: optionales Override (z. B. "Q2 (Apr–Jun)") statt Monatsname
-function InlineMailEditor({ monatIdx, periodenLabel, jahr, monatDaten, emailVorlagen, emailSignaturen = [], client, onSent, onCancel }) {
+// zahllastDirekt: wenn gesetzt → direkte Zahllast (Schnellerfassung), keine Berechnung
+function InlineMailEditor({ monatIdx, periodenLabel, jahr, monatDaten, zahllastDirekt, emailVorlagen, emailSignaturen = [], client, onSent, onCancel }) {
   const monatName  = periodenLabel ?? MONATE[monatIdx]
-  const bem        = parseNum(monatDaten.bem)
-  const satz       = parseNum(monatDaten.satz)
-  const ust        = calcUSt(bem, satz)
-  const vor        = parseNum(monatDaten.vor)
-  const zahllast   = calcZahllast(bem, satz, vor)
+
+  // Entweder direkte Zahllast (Schnellerfassung) oder berechnete (Normal)
+  const istSchnell = zahllastDirekt !== undefined
+  const bem        = istSchnell ? 0 : parseNum(monatDaten.bem)
+  const satz       = istSchnell ? 0 : parseNum(monatDaten.satz)
+  const ust        = istSchnell ? 0 : calcUSt(bem, satz)
+  const vor        = istSchnell ? 0 : parseNum(monatDaten.vor)
+  const zahllast   = istSchnell ? zahllastDirekt : calcZahllast(bem, satz, vor)
 
   const absenderList   = loadAbsender()
   const kontaktEmail   = (client.kontakte ?? []).find(k => k.email)?.email ?? ''
-  const defaultMail    = buildDefaultMail(monatName, jahr, zahllast)
+  const defaultMail    = istSchnell
+    ? buildDefaultMailSchnell(monatName, jahr, zahllast)
+    : buildDefaultMail(monatName, jahr, zahllast)
 
   // Von: 1. standardAbsender des Mandanten, 2. isDefault aus Liste, 3. erster Eintrag
   const mandantAbsender = client.kommunikation?.standardAbsender ?? ''
@@ -140,7 +163,6 @@ function InlineMailEditor({ monatIdx, periodenLabel, jahr, monatDaten, emailVorl
     if (!v) return
     const filled = buildMailFromVorlage(v, monatName, jahr, bem, satz, ust, vor, zahllast)
     setBetreff(filled.betreff)
-    // Signatur nach Vorlage wieder anhängen
     const activeSig = emailSignaturen.find(s => s.id === signaturId)
     setText(activeSig ? insertSig(filled.text, activeSig.text) : filled.text)
   }
@@ -205,7 +227,7 @@ function InlineMailEditor({ monatIdx, periodenLabel, jahr, monatDaten, emailVorl
             <div>
               <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Vorlage</label>
               <select className="input" value={vorlageId} onChange={e => applyVorlage(e.target.value)} style={{ fontSize: '12px', padding: '4px 8px', width: '100%' }}>
-                <option value="">– Standard (Dänisch) –</option>
+                <option value="">– Standard –</option>
                 {emailVorlagen.map(v => <option key={v.id} value={v.id}>{v.name ?? v.betreff}</option>)}
               </select>
             </div>
@@ -332,6 +354,228 @@ function NumInput({ value, onChange, placeholder = '0,00' }) {
       placeholder={placeholder}
       style={{ width: '100%', fontSize: '12px', padding: '4px 7px', textAlign: 'right', fontFamily: 'var(--font-mono)' }}
     />
+  )
+}
+
+// ── Zahllast-Schnellerfassung ─────────────────────────────────────────────────
+function ZahllastSchnellBlock({ client, jahr, ust, onUpdate, emailVorlagen, emailSignaturen }) {
+  const [periodeTyp,  setPeriodeTyp]  = useState('monat')   // 'monat' | 'quartal'
+  const [periodeIdx,  setPeriodeIdx]  = useState(0)
+  const [zahllast,    setZahllast]    = useState('')
+  const [mailOffen,   setMailOffen]   = useState(false)
+
+  const periodeLabel = periodeTyp === 'monat' ? MONATE[periodeIdx] : QUARTALE[periodeIdx]
+  const zlNum        = parseNum(zahllast)
+
+  // Historie (gespeicherte Schnelleinträge für dieses Jahr)
+  const schnellKey = String(jahr) + '_schnell'
+  const historie   = Array.isArray(ust[schnellKey]) ? ust[schnellKey] : []
+
+  function handleMailSentSchnell(meta) {
+    setMailOffen(false)
+    // Eintrag in Historie speichern
+    const entry = {
+      id:         'zl_' + Date.now().toString(36) + Math.random().toString(36).slice(2),
+      periodeTyp,
+      periodeIdx,
+      zahllast,
+      datum: new Date().toISOString(),
+    }
+    const neueHistorie = [entry, ...historie].slice(0, 24)
+    // Kommunikations-Event
+    const newEvent = {
+      id:          'ust_schnell_' + Date.now().toString(36),
+      typ:         'email',
+      datum:        new Date().toISOString(),
+      erstelltAm:   new Date().toISOString(),
+      gesendetAm:   new Date().toISOString(),
+      betreff:      meta.betreff ?? '',
+      absender:     meta.von     ?? '',
+      empfaenger:   meta.an      ?? '',
+      text:         meta.text    ?? '',
+      anlagen:      [],
+      quelle:       'ust',
+      ustMonat:     periodeLabel,
+      ustJahr:      String(jahr),
+    }
+    const komm = client.kommunikation ?? { events: [] }
+    onUpdate({
+      ust:          { ...ust, [schnellKey]: neueHistorie },
+      kommunikation: { ...komm, events: [newEvent, ...(komm.events ?? [])] },
+    })
+  }
+
+  function loescheHistorieEintrag(id) {
+    const rest = historie.filter(h => h.id !== id)
+    onUpdate({ ust: { ...ust, [schnellKey]: rest } })
+  }
+
+  return (
+    <div style={{ marginTop: '28px', border: '1px solid var(--border)', borderRadius: '10px', overflow: 'hidden' }}>
+
+      {/* Header */}
+      <div style={{
+        padding: '12px 16px',
+        background: 'var(--surface)',
+        borderBottom: '1px solid var(--border)',
+        display: 'flex', alignItems: 'center', gap: '10px',
+      }}>
+        <span style={{ fontSize: '16px' }}>⚡</span>
+        <div>
+          <div style={{ fontWeight: 700, fontSize: '13px' }}>Zahllast direkt erfassen</div>
+          <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '1px' }}>
+            Schnellerfassung ohne Bemessungsgrundlage · direkt per E-Mail versenden
+          </div>
+        </div>
+      </div>
+
+      {/* Eingabe-Zeile */}
+      <div style={{
+        padding: '14px 16px',
+        display: 'flex', alignItems: 'flex-end', gap: '14px', flexWrap: 'wrap',
+        background: 'var(--bg)',
+        borderBottom: mailOffen ? '1px solid var(--border)' : 'none',
+      }}>
+
+        {/* Typ-Umschalter */}
+        <div>
+          <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '5px' }}>Zeitraum-Typ</label>
+          <div style={{ display: 'flex', gap: '3px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '7px', padding: '3px' }}>
+            {[['monat', '📅 Monat'], ['quartal', '📊 Quartal']].map(([v, label]) => (
+              <button
+                key={v}
+                className={`btn btn-sm ${periodeTyp === v ? 'btn-primary' : 'btn-ghost'}`}
+                onClick={() => { setPeriodeTyp(v); setPeriodeIdx(0); setMailOffen(false) }}
+                style={{ fontSize: '11px', padding: '3px 10px' }}
+              >{label}</button>
+            ))}
+          </div>
+        </div>
+
+        {/* Periode auswählen */}
+        <div>
+          <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '5px' }}>
+            {periodeTyp === 'monat' ? 'Monat' : 'Quartal'}
+          </label>
+          <select
+            className="input"
+            value={periodeIdx}
+            onChange={e => { setPeriodeIdx(parseInt(e.target.value)); setMailOffen(false) }}
+            style={{ fontSize: '12px', padding: '5px 9px', minWidth: '155px' }}
+          >
+            {(periodeTyp === 'monat' ? MONATE : QUARTALE).map((name, i) => (
+              <option key={i} value={i}>{name}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Zahllast-Eingabe */}
+        <div>
+          <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '5px' }}>
+            Zahllast
+          </label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <input
+              type="text"
+              inputMode="decimal"
+              className="input"
+              value={zahllast}
+              onChange={e => { setZahllast(e.target.value); setMailOffen(false) }}
+              placeholder="0,00"
+              style={{
+                width: '130px', fontSize: '14px', padding: '5px 9px',
+                textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 700,
+              }}
+            />
+            <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>€</span>
+            {zahllast.trim() && zlNum !== 0 && (
+              <span style={{
+                fontSize: '13px', fontWeight: 800, fontFamily: 'var(--font-mono)',
+                color: zlNum > 0 ? '#dc2626' : '#16a34a',
+                whiteSpace: 'nowrap', minWidth: '90px',
+              }}>
+                {fmtEur(zlNum)}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* E-Mail Button */}
+        <div>
+          {/* Invisible label to align button to bottom */}
+          <div style={{ height: '16px', marginBottom: '5px' }} />
+          <button
+            className={`btn btn-sm ${mailOffen ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={() => setMailOffen(v => !v)}
+            disabled={!zahllast.trim() || zlNum === 0}
+            style={{ fontSize: '12px', padding: '6px 16px', whiteSpace: 'nowrap' }}
+          >
+            {mailOffen ? '✕ Schließen' : '📧 E-Mail senden'}
+          </button>
+        </div>
+      </div>
+
+      {/* Inline-Mail-Editor */}
+      {mailOffen && (
+        <InlineMailEditor
+          monatIdx={periodeIdx}
+          periodenLabel={periodeLabel}
+          jahr={jahr}
+          monatDaten={{ bem: '', satz: 19, vor: '' }}
+          zahllastDirekt={zlNum}
+          emailVorlagen={emailVorlagen}
+          emailSignaturen={emailSignaturen}
+          client={client}
+          onSent={handleMailSentSchnell}
+          onCancel={() => setMailOffen(false)}
+        />
+      )}
+
+      {/* Historie */}
+      {historie.length > 0 && (
+        <div style={{ borderTop: '1px solid var(--border)', background: 'var(--surface)' }}>
+          <div style={{
+            padding: '10px 16px 6px',
+            fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)',
+            textTransform: 'uppercase', letterSpacing: '0.06em',
+          }}>
+            Zuletzt erfasst – {String(jahr)}
+          </div>
+          <div style={{ padding: '0 16px 12px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+            {historie.slice(0, 8).map(e => {
+              const label = e.periodeTyp === 'monat' ? MONATE[e.periodeIdx] ?? '?' : QUARTALE[e.periodeIdx] ?? '?'
+              const zl    = parseNum(e.zahllast)
+              const datum = new Date(e.datum)
+              const datumStr = datum.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
+                             + ' ' + datum.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
+              return (
+                <div key={e.id} style={{
+                  display: 'flex', alignItems: 'center', gap: '12px',
+                  padding: '5px 8px', borderRadius: '6px',
+                  background: 'var(--bg)',
+                  border: '1px solid var(--border)',
+                  fontSize: '12px',
+                }}>
+                  <span style={{ fontSize: '13px' }}>{e.periodeTyp === 'monat' ? '📅' : '📊'}</span>
+                  <span style={{ fontWeight: 600, minWidth: '145px' }}>{label} {String(jahr)}</span>
+                  <span style={{
+                    fontFamily: 'var(--font-mono)', fontWeight: 800,
+                    color: zl > 0 ? '#dc2626' : '#16a34a',
+                    minWidth: '100px',
+                  }}>{fmtEur(zl)}</span>
+                  <span style={{ color: 'var(--text-muted)', fontSize: '11px', marginLeft: 'auto', whiteSpace: 'nowrap' }}>{datumStr}</span>
+                  <button
+                    onClick={() => loescheHistorieEintrag(e.id)}
+                    title="Eintrag entfernen"
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: '13px', padding: '0 3px', flexShrink: 0 }}
+                  >✕</button>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -587,7 +831,6 @@ export default function UStTab({ client, onUpdate, emailVorlagen = [], emailSign
               </div>
             </>)
           })()}
-
           <div />  {/* Aktion */}
         </div>
       </div>
@@ -598,6 +841,17 @@ export default function UStTab({ client, onUpdate, emailVorlagen = [], emailSign
         <span><span style={{ color: '#16a34a', fontWeight: 700 }}>●</span> Erstattung (Vorsteuerüberhang)</span>
         <span>💡 Vorlagen-Platzhalter: [MONAT] [JAHR] [ZAHLLAST] [UST] [VORSTEUER] [BEMESSUNGSGRUNDLAGE]</span>
       </div>
+
+      {/* ── Zahllast-Schnellerfassung ── */}
+      <ZahllastSchnellBlock
+        client={client}
+        jahr={jahr}
+        ust={ust}
+        onUpdate={onUpdate}
+        emailVorlagen={emailVorlagen}
+        emailSignaturen={emailSignaturen}
+      />
+
     </div>
   )
 }
