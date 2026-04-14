@@ -121,6 +121,7 @@ function migrateClient(c) {
     est:                         c.est                          ?? {},
     auftraege:                   Array.isArray(c.auftraege)      ? c.auftraege : [],
     ust:                         c.ust                           ?? {},
+    struktur:                    c.struktur                      ?? null,
   }
 }
 

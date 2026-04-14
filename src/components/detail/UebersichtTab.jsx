@@ -1,5 +1,6 @@
 import { getMandantStatus, calculateProgress, MANDANT_STATUS_CONFIG } from '../../utils/progress.js'
 import { getLastEmail, getOpenRueckfragen, getLastAnlagen, getUpcomingDeadlines, fmtDate } from '../../utils/search.js'
+import StrukturPanel from './StrukturPanel.jsx'
 
 function truncate(str, max) {
   const s = String(str ?? '')
@@ -35,7 +36,7 @@ function Tile({ title, color, warn, ok, onClick, children }) {
 // 0 Übersicht, 1 Auftrag, 2 Status & Arbeit, 3 Aufgaben,
 // 4 Abschluss, 5 Lohn, 6 Beratung, 7 Rechner, 8 Kommunikation
 
-export default function UebersichtTab({ client, onNavigateToTab }) {
+export default function UebersichtTab({ client, onNavigateToTab, onUpdate }) {
   const status    = getMandantStatus(client)
   const progress  = calculateProgress(client)
   const cfg       = MANDANT_STATUS_CONFIG[status] ?? MANDANT_STATUS_CONFIG['in_bearbeitung']
@@ -164,6 +165,11 @@ export default function UebersichtTab({ client, onNavigateToTab }) {
           )}
         </Tile>
 
+      </div>
+
+      {/* ── Steuerliche Strukturübersicht ── */}
+      <div style={{ marginTop: '20px' }}>
+        <StrukturPanel client={client} onUpdate={onUpdate} />
       </div>
     </div>
   )

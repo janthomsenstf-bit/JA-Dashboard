@@ -209,7 +209,7 @@ export default function DetailView({
       {/* Tab content */}
       <div style={{ flex: 1 }}>
         {activeTab === 0 && (
-          <UebersichtTab key={client.id} client={client} onNavigateToTab={setActiveTab} />
+          <UebersichtTab key={client.id} client={client} onNavigateToTab={setActiveTab} onUpdate={onUpdate} />
         )}
         {activeTab === 1 && (
           <AuftragTab key={client.id} client={client} onUpdate={onUpdate} claudeApiKey={claudeApiKey} onUpdateClaudeApiKey={onUpdateClaudeApiKey} />
