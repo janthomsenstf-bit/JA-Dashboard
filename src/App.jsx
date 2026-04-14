@@ -122,6 +122,9 @@ function migrateClient(c) {
     auftraege:                   Array.isArray(c.auftraege)      ? c.auftraege : [],
     ust:                         c.ust                           ?? {},
     struktur:                    c.struktur                      ?? null,
+    steuernummer:                c.steuernummer                  ?? '',
+    gesellschafter:              Array.isArray(c.gesellschafter)  ? c.gesellschafter : [],
+    geschaeftsfuehrer:           Array.isArray(c.geschaeftsfuehrer) ? c.geschaeftsfuehrer : [],
   }
 }
 

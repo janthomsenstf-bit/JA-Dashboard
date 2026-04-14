@@ -240,6 +240,153 @@ function SetupRow({ label, children }) {
   )
 }
 
+// ── Steuerliche Stammdaten (Steuernummer, Gesellschafter, GF, Gegenstand) ─────
+function StammdatenErweitertSection({ client, onUpdate }) {
+  const gesellschafter = Array.isArray(client.gesellschafter) ? client.gesellschafter : []
+  const geschaeftsfuehrer = Array.isArray(client.geschaeftsfuehrer) ? client.geschaeftsfuehrer : []
+
+  function genId() { return 's' + Date.now().toString(36) + Math.random().toString(36).slice(2, 4) }
+
+  function addGesellschafter() {
+    onUpdate({ gesellschafter: [...gesellschafter, { id: genId(), name: '', anteil: '' }] })
+  }
+  function updateGesellschafter(id, patch) {
+    onUpdate({ gesellschafter: gesellschafter.map(g => g.id === id ? { ...g, ...patch } : g) })
+  }
+  function deleteGesellschafter(id) {
+    onUpdate({ gesellschafter: gesellschafter.filter(g => g.id !== id) })
+  }
+
+  function addGF() {
+    onUpdate({ geschaeftsfuehrer: [...geschaeftsfuehrer, { id: genId(), name: '' }] })
+  }
+  function updateGF(id, name) {
+    onUpdate({ geschaeftsfuehrer: geschaeftsfuehrer.map(g => g.id === id ? { ...g, name } : g) })
+  }
+  function deleteGF(id) {
+    onUpdate({ geschaeftsfuehrer: geschaeftsfuehrer.filter(g => g.id !== id) })
+  }
+
+  const inputStyle = {
+    padding: '4px 8px', border: '1px solid var(--border)', borderRadius: '6px',
+    background: 'var(--surface2)', color: 'var(--text)', fontSize: '12px', outline: 'none',
+  }
+
+  const sumAnteil = gesellschafter.reduce((a, g) => a + (parseFloat(g.anteil) || 0), 0)
+
+  return (
+    <div style={{ marginTop: '10px', borderTop: '2px solid var(--border)', paddingTop: '10px' }}>
+      <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>
+        📋 Steuerliche Stammdaten
+      </div>
+
+      {/* Steuernummer */}
+      <SetupRow label="Steuernummer">
+        <input
+          className="input"
+          value={client.steuernummer ?? ''}
+          onChange={e => onUpdate({ steuernummer: e.target.value })}
+          placeholder="z. B. 12/345/67890"
+          style={{ ...inputStyle, width: '200px' }}
+        />
+      </SetupRow>
+
+      {/* Unternehmensgegenstand */}
+      <SetupRow label="Unternehmensgegenstand">
+        <input
+          className="input"
+          value={client.unternehmensgegenstand ?? ''}
+          onChange={e => onUpdate({ unternehmensgegenstand: e.target.value })}
+          placeholder="z. B. Handel mit Elektronikwaren"
+          style={{ ...inputStyle, width: '320px' }}
+        />
+      </SetupRow>
+
+      {/* Geschäftsführer */}
+      <div style={{ padding: '7px 0', borderBottom: '1px solid var(--border)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', minWidth: '130px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            Geschäftsführer
+          </span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', flex: 1 }}>
+            {geschaeftsfuehrer.map(gf => (
+              <div key={gf.id} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <input
+                  className="input"
+                  value={gf.name}
+                  onChange={e => updateGF(gf.id, e.target.value)}
+                  placeholder="Name des Geschäftsführers"
+                  style={{ ...inputStyle, width: '240px' }}
+                />
+                <button
+                  onClick={() => deleteGF(gf.id)}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: '16px', padding: '0 2px', lineHeight: 1 }}
+                >✕</button>
+              </div>
+            ))}
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={addGF}
+              style={{ fontSize: '11px', alignSelf: 'flex-start', marginTop: geschaeftsfuehrer.length > 0 ? '2px' : '0' }}
+            >
+              ➕ Geschäftsführer
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Gesellschafter */}
+      <div style={{ padding: '7px 0', borderBottom: '1px solid var(--border)' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', minWidth: '130px', textTransform: 'uppercase', letterSpacing: '0.05em', paddingTop: '4px' }}>
+            Gesellschafter
+          </span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', flex: 1 }}>
+            {gesellschafter.map(g => (
+              <div key={g.id} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <input
+                  className="input"
+                  value={g.name}
+                  onChange={e => updateGesellschafter(g.id, { name: e.target.value })}
+                  placeholder="Name des Gesellschafters"
+                  style={{ ...inputStyle, width: '200px' }}
+                />
+                <input
+                  type="number"
+                  min={0} max={100} step={0.01}
+                  className="input"
+                  value={g.anteil}
+                  onChange={e => updateGesellschafter(g.id, { anteil: e.target.value })}
+                  placeholder="0"
+                  style={{ ...inputStyle, width: '72px', textAlign: 'right', fontFamily: 'var(--font-mono)' }}
+                />
+                <span style={{ fontSize: '12px', color: 'var(--text-muted)', flexShrink: 0 }}>%</span>
+                <button
+                  onClick={() => deleteGesellschafter(g.id)}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: '16px', padding: '0 2px', lineHeight: 1 }}
+                >✕</button>
+              </div>
+            ))}
+            {/* Summen-Prüfung */}
+            {gesellschafter.length > 0 && (
+              <div style={{ fontSize: '11px', color: Math.abs(sumAnteil - 100) < 0.01 ? '#16a34a' : sumAnteil > 0 ? '#d97706' : 'var(--text-muted)', marginTop: '2px' }}>
+                {Math.abs(sumAnteil - 100) < 0.01 ? '✓ Gesamt: 100 %' : `Gesamt: ${sumAnteil.toFixed(1)} %`}
+              </div>
+            )}
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={addGesellschafter}
+              style={{ fontSize: '11px', alignSelf: 'flex-start', marginTop: gesellschafter.length > 0 ? '2px' : '0' }}
+            >
+              ➕ Gesellschafter
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function CategoryCard({ cat, auftrag, onToggle, setup, defaultOpen = true }) {
   const [open, setOpen] = useState(defaultOpen)
 
@@ -896,6 +1043,9 @@ export default function AuftragTab({ client, onUpdate, claudeApiKey, onUpdateCla
                 ℹ️ Quartalsweise USt-Voranmeldungen werden nur in <strong>März · Juni · September · Dezember</strong> als Aufgabe angezeigt.
               </div>
             )}
+
+            {/* ── Steuerliche Stammdaten ── */}
+            <StammdatenErweitertSection client={client} onUpdate={onUpdate} />
           </div>
         )}
       </div>
