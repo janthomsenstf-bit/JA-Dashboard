@@ -1050,51 +1050,13 @@ export default function AuftragTab({ client, onUpdate, claudeApiKey, onUpdateCla
         )}
       </div>
 
-      {/* ══════════════════ 2. AUTOMATISCHE HINWEISE ══════════════════ */}
-      {hinweise.length > 0 && (
-        <div style={{ marginBottom: '14px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-          {hinweise.map((h, i) => (
-            <div key={i} style={{
-              display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '9px 14px',
-              borderRadius: '8px',
-              background: h.sev === 'crit' ? 'rgba(239,68,68,0.07)' : h.sev === 'warn' ? 'rgba(217,119,6,0.07)' : 'rgba(37,99,235,0.07)',
-              border: `1px solid ${h.sev === 'crit' ? 'rgba(239,68,68,0.25)' : h.sev === 'warn' ? 'rgba(217,119,6,0.25)' : 'rgba(37,99,235,0.2)'}`,
-            }}>
-              <span style={{ fontSize: '15px', flexShrink: 0 }}>{h.icon}</span>
-              <span style={{
-                fontSize: '12px', lineHeight: 1.5,
-                color: h.sev === 'crit' ? '#b91c1c' : h.sev === 'warn' ? '#92400e' : '#1e40af',
-                fontWeight: h.sev === 'crit' ? 700 : 400,
-              }}>{h.text}</span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* ══════════════════ 3. INTELLIGENTE CHECKLISTE ══════════════════ */}
-      <div>
-        {ALL_CATS.map(cat => (
-          <CategoryCard
-            key={cat.id}
-            cat={cat}
-            auftrag={auftrag}
-            onToggle={toggleKey}
-            setup={setup}
-            defaultOpen={false}
-          />
-        ))}
-
-        {/* Veranlagung / Einkünfte (ER/SIE) */}
-        <VejCard auftrag={auftrag} onToggle={toggleKey} setup={setup} />
-      </div>
-
-      {/* ══════════════════ 4. KONTAKTPERSONEN ══════════════════ */}
+      {/* ══════════════════ 2. KONTAKTPERSONEN ══════════════════ */}
       <KontaktpersonenSection client={client} onUpdate={onUpdate} />
 
-      {/* ══════════════════ 5. ABSENDER ══════════════════ */}
+      {/* ══════════════════ 3. ABSENDER ══════════════════ */}
       <AbsenderSection client={client} onUpdate={onUpdate} />
 
-      {/* ══════════════════ 6. API-SCHLÜSSEL ══════════════════ */}
+      {/* ══════════════════ 4. API-SCHLÜSSEL ══════════════════ */}
       <ApiKeySection claudeApiKey={claudeApiKey} onUpdateClaudeApiKey={onUpdateClaudeApiKey} />
 
     </div>

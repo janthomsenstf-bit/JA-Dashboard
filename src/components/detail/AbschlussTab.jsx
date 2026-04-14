@@ -1,6 +1,252 @@
 import { useState, useRef } from 'react'
 import ChecklisteView from './abschluss/ChecklisteView.jsx'
 
+// ══════════════════════════════════════════════════════════════════════════════
+// AUFTRAGS-CHECKLISTE – Konstanten, Daten und Komponenten
+// (gleiche Logik wie Stammdaten-Tab, hier als oberer Bereich eingebunden)
+// ══════════════════════════════════════════════════════════════════════════════
+
+const AC_CAT_FORMALIEN = {
+  id: 'formalien', titel: 'Auftrag & Formalien', icon: '🔵', color: '#1d4ed8',
+  items: [
+    { key: 'basics_steuervertrag',   label: 'Steuerberatungsvertrag unterschrieben' },
+    { key: 'basics_vollmacht',       label: 'Vollmacht' },
+    { key: 'basics_vorschuss',       label: 'Vorschuss / Honorar' },
+    { key: 'basics_identifizierung', label: 'Identifizierung (Ausweis / Geldwäsche)' },
+    { key: 'basics_verfahrensdoku',  label: 'Verfahrensdokumentation' },
+    { key: 'besonderheiten_bp',             label: 'BP zu beachten', warn: true },
+    { key: 'besonderheiten_rechtsbehelfe',  label: 'Aktuelle Rechtsbehelfe', warn: true },
+    { key: 'besonderheiten_schriftwechsel', label: 'Aktueller Schriftwechsel FA', warn: true },
+    { key: 'besonderheiten_vertraege',      label: 'Verträge' },
+    { key: 'besonderheiten_existenzgruend', label: 'Existenzgründer (lfd. Jahr)', warn: true },
+    { key: 'vorsysteme_selbstbucher',       label: 'Selbstbucher (Lexware o.ä.)', warn: true },
+    { key: 'rechnung_kein_fibu',            label: 'Selbstbucher – keine FiBu abrechnen' },
+    { key: 'rechnung_preisabspr',           label: 'Preisabsprache vorhanden' },
+    { key: 'rechnung_mittelsatz',           label: 'Normal Mittelsatz' },
+    { key: 'rechnung_vorkasse',             label: 'Vorkasse #20000' },
+  ],
+}
+
+const AC_CAT_UST_BESONDERHEITEN = {
+  id: 'ust_besonderheiten', titel: 'Umsatzsteuer – Besonderheiten', icon: '🟡', color: '#b45309',
+  filter: (s) => s.hatUSt && !s.istKleinunternehmer,
+  items: [
+    { key: 'ust_organschaft',   label: 'Organschaft', warn: true },
+    { key: 'ust_diffbesteuer',  label: 'Differenzbesteuerung', warn: true },
+    { key: 'ust_par13b',        label: 'Umkehr Steuerschuldnerschaft §13b UStG', warn: true },
+    { key: 'ust_par12abs3',     label: '§12 Abs.3 UStG (PV-Anlagen < 30 kW)' },
+    { key: 'ust_auft_vorst',    label: 'Aufteilung Vorsteuer' },
+    { key: 'ust_reiseleist',    label: 'Reiseleistungen §25 UStG', warn: true },
+    { key: 'ust_geschaeftsver', label: 'Geschäftsveräußerung im Ganzen' },
+    { key: 'ust_konsol_ust',    label: 'Konsolidierte USt (mehrere Betriebe)' },
+    { key: 'ust_befreiungen',   label: 'Befreiungen §4 Nr. …' },
+    { key: 'ust_zm',            label: 'ZM beachten', warn: true },
+    { key: 'ust_dauerfrist',    label: 'Dauerfristverlängerung' },
+  ],
+}
+
+const AC_CAT_GEWINNERMITTLUNG = {
+  id: 'gewinnermittlung', titel: 'Gewinnermittlung & Abschluss', icon: '🟠', color: '#c2410c',
+  items: [
+    { key: 'aufgaben_gew_4abs3',    label: 'Gewinnermittlung §4 Abs.3 EStG', filter: (s) => s.gewinnermittlung !== 'Bilanz' },
+    { key: 'aufgaben_gew_4abs1',    label: 'Gewinnermittlung §4 Abs.1 EStG', filter: (s) => s.gewinnermittlung === 'Bilanz' },
+    { key: 'aufgaben_ges_festst',   label: 'Gesonderte Feststellungen',       filter: (s) => s.istPers },
+    { key: 'aufgaben_einheitsbil',  label: 'Einheitsbilanz',                  filter: (s) => s.istPers },
+    { key: 'aufgaben_steuerbil',    label: 'Eigene Steuerbilanz' },
+    { key: 'aufgaben_eroeffbil',    label: 'Eröffnungsbilanz' },
+    { key: 'aufgaben_betr_steuerk', label: 'Betriebliche Steuererklärungen' },
+    { key: 'aufgaben_ebilanz',      label: 'E-Bilanz',                        filter: (s) => s.gewinnermittlung === 'Bilanz' },
+    { key: 'aufgaben_offen_hinter', label: 'Offen / Hinterlegung' },
+    { key: 'aufgaben_anhang',       label: 'Anhang' },
+    { key: 'aufgaben_priv_steuerk', label: 'Private Steuererklärung',         filter: (s) => !s.istGmbH },
+    { key: 'besonderheiten_datenimport',  label: 'Datenimport extern' },
+    { key: 'besonderheiten_aend_gewinn',  label: 'Änderung Gewinnermittlung', warn: true },
+    { key: 'besonderheiten_verlust',      label: 'Verlustsituation', warn: true },
+    { key: 'umwandlung_eu_gmbh',          label: 'Umwandlung EU → GmbH', warn: true },
+    { key: 'hinweise_fibu_kfz_nutzung',   label: 'Änderung KFZ-Nutzung (1%)' },
+    { key: 'hinweise_fibu_erloesekonten', label: 'Erlösekonten (ZM)' },
+  ],
+}
+
+const AC_CAT_VORJAHR = {
+  id: 'vorjahr', titel: 'Vorjahr & Historie', icon: '🟣', color: '#7c3aed',
+  items: [
+    { key: 'vorjahr_verlustvortrag', label: 'Verlustvortrag vorhanden', warn: true },
+    { key: 'vorjahr_iab',            label: 'IAB aus Vorjahren zu berücksichtigen', warn: true },
+    { key: 'vorjahr_par6b',          label: '§6b oder R6.6 aus Vorjahren', warn: true },
+  ],
+}
+
+const AC_CAT_KAPITAL = {
+  id: 'kapital', titel: 'Kapitalgesellschaft (GmbH / UG)', icon: '🏢', color: '#0f766e',
+  filter: (s) => s.istGmbH,
+  items: [
+    { key: 'koerperschaft_geswechsel_kst', label: 'Gesellschafterwechsel §8c KStG', warn: true },
+    { key: 'kapital_gewinnaussch',         label: 'Offene Gewinnausschüttung', warn: true },
+    { key: 'kapital_tantieme',             label: 'Tantieme vorhanden' },
+    { key: 'gewerbesteuer_zerlegung',      label: 'GewSt-Zerlegung' },
+    { key: 'gewerbesteuer_neugruendung',   label: 'Neugründung (GewSt-Beginn)' },
+  ],
+}
+
+const AC_CAT_PERS = {
+  id: 'personengesellschaft', titel: 'Personengesellschaft', icon: '👥', color: '#1d4ed8',
+  filter: (s) => s.istPers,
+  items: [
+    { key: 'personen_neuer_ges',   label: 'Neuer Gesellschafter (Eintritt)', warn: true },
+    { key: 'personen_geswechsel',  label: 'Gesellschafterwechsel', warn: true },
+    { key: 'personen_gesaustritt', label: 'Gesellschafteraustritt', warn: true },
+    { key: 'personen_realteilung', label: 'Realteilung', warn: true },
+    { key: 'personen_vertraege_p', label: 'Gesellschaftsverträge prüfen' },
+    { key: 'gewerbesteuer_zerlegung',    label: 'GewSt-Zerlegung' },
+    { key: 'gewerbesteuer_neugruendung', label: 'Neugründung (GewSt-Beginn)' },
+  ],
+}
+
+const AC_ALL_CATS = [
+  AC_CAT_FORMALIEN,
+  AC_CAT_UST_BESONDERHEITEN,
+  AC_CAT_GEWINNERMITTLUNG,
+  AC_CAT_KAPITAL,
+  AC_CAT_PERS,
+  AC_CAT_VORJAHR,
+]
+
+const AC_VEJ_ITEMS = [
+  { id: 'mandat_vorschuss', label: '#20000 Mandat (Vorschuss)' },
+  { id: 'zusammenveranl',   label: 'Zusammenveranlagung' },
+  { id: 'stammdaten',       label: 'Änderungen Stammdaten (Kirche, Bank, Heirat …)' },
+  { id: 'begruessung',      label: 'Begrüßungsmail + Beiblatt ESt gesendet' },
+  { id: 'gewerbebetrieb1',  label: 'Gewerbebetrieb 1' },
+  { id: 'gewerbebetrieb2',  label: 'Gewerbebetrieb 2' },
+  { id: 'freiberuflich1',   label: 'Freiberuflich 1' },
+  { id: 'freiberuflich2',   label: 'Freiberuflich 2 (Filiale)' },
+  { id: 'nichtselbst',      label: 'Nicht selbständige Arbeit' },
+  { id: 'vermietungen',     label: 'Vermietungen' },
+  { id: 'sonstige',         label: 'Sonstige Einkünfte' },
+  { id: 'priv_veraeuss',    label: 'Privates Veräußerungsgeschäft' },
+]
+
+function acBuildHinweise(setup, auftrag) {
+  const hints = []
+  const add = (sev, icon, text) => hints.push({ sev, icon, text })
+  if (setup.istKleinunternehmer)
+    add('info', 'ℹ️', 'Kleinunternehmer: Keine USt auf Rechnungen, keine USt-Voranmeldung erforderlich.')
+  if (auftrag['ust_diffbesteuer'])
+    add('warn', '⚠️', 'Differenzbesteuerung: Besondere Behandlung der Erlöse – keine offene USt-Ausweisung möglich.')
+  if (auftrag['ust_organschaft'])
+    add('warn', '⚠️', 'Organschaft: Prüfung der Organträger-/Organgesellschaft-Verhältnisse erforderlich.')
+  if (auftrag['vorsysteme_selbstbucher'])
+    add('warn', '⚠️', 'Selbstbucher: Erhöhte Prüfpflicht der übernommenen Buchungen.')
+  if (auftrag['besonderheiten_bp'])
+    add('crit', '🚨', 'Betriebsprüfung: Prüfungssachverhalte aktiv im Blick halten.')
+  if (auftrag['vorjahr_verlustvortrag'])
+    add('info', 'ℹ️', 'Verlustvortrag vorhanden – Nutzung prüfen, gesonderte Feststellung ggf. erforderlich.')
+  if (auftrag['vorjahr_iab'])
+    add('warn', '⚠️', 'IAB aus Vorjahren: Investitionsabzugsbetrag – Investitionsfrist und Auflösung prüfen.')
+  if (auftrag['personen_geswechsel'] || auftrag['personen_neuer_ges'] || auftrag['personen_gesaustritt'])
+    add('warn', '⚠️', 'Gesellschafterwechsel/-eintritt/-austritt: Steuerliche Konsequenzen und Vertragsanpassungen prüfen.')
+  if (auftrag['ust_par13b'])
+    add('warn', '⚠️', '§13b UStG: Umkehr der Steuerschuldnerschaft – Eingangsrechnungen prüfen.')
+  if (auftrag['ust_zm'])
+    add('info', 'ℹ️', 'Zusammenfassende Meldung (ZM): Fristen und Vollständigkeit prüfen.')
+  if (auftrag['besonderheiten_verlust'])
+    add('warn', '⚠️', 'Verlustsituation: Mindestbesteuerung und Verlustverrechnungsbeschränkungen beachten.')
+  if (auftrag['umwandlung_eu_gmbh'])
+    add('crit', '🚨', 'Umwandlung EU → GmbH: Steuerliche Sonderbehandlung, ggf. Einbringungsgewinn prüfen.')
+  return hints
+}
+
+// ── CategoryCard (Auftragscheckliste) ─────────────────────────────────────────
+function AcCategoryCard({ cat, auftrag, onToggle, setup, defaultOpen = false }) {
+  const [open, setOpen] = useState(defaultOpen)
+  if (cat.filter && !cat.filter(setup)) return null
+  const visibleItems = cat.items.filter(item => !item.filter || item.filter(setup))
+  if (visibleItems.length === 0) return null
+  const checked  = visibleItems.filter(i => auftrag[i.key]).length
+  const hasWarn  = visibleItems.some(i => i.warn && auftrag[i.key])
+  const allDone  = checked === visibleItems.length && checked > 0
+  return (
+    <div style={{ border: `1px solid ${hasWarn ? cat.color + '60' : 'var(--border)'}`, borderRadius: '10px', overflow: 'hidden', marginBottom: '8px', background: hasWarn ? cat.color + '05' : 'var(--surface2)' }}>
+      <button onClick={() => setOpen(o => !o)} style={{ width: '100%', padding: '9px 14px', display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--surface)', border: 'none', cursor: 'pointer', textAlign: 'left', borderBottom: open ? '1px solid var(--border)' : 'none' }}>
+        <span style={{ fontSize: '14px' }}>{cat.icon}</span>
+        <span style={{ fontWeight: 700, fontSize: '13px', flex: 1, color: 'var(--text)' }}>{cat.titel}</span>
+        <span style={{ fontSize: '11px', fontWeight: 700, padding: '1px 9px', borderRadius: '10px', background: allDone ? 'rgba(22,163,74,0.15)' : checked > 0 ? cat.color + '18' : 'var(--surface2)', color: allDone ? '#16a34a' : checked > 0 ? cat.color : 'var(--text-muted)', border: `1px solid ${allDone ? 'rgba(22,163,74,0.3)' : checked > 0 ? cat.color + '40' : 'var(--border)'}` }}>
+          {allDone ? '✓ Alle' : `${checked}/${visibleItems.length}`}
+        </span>
+        {hasWarn && !allDone && (
+          <span style={{ fontSize: '11px', fontWeight: 600, color: cat.color, background: cat.color + '15', padding: '1px 7px', borderRadius: '8px' }}>⚠ Relevant</span>
+        )}
+        <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{open ? '▲' : '▼'}</span>
+      </button>
+      {open && (
+        <div style={{ padding: '6px 4px' }}>
+          {visibleItems.map(item => {
+            const isChecked = !!auftrag[item.key]
+            return (
+              <label key={item.key} style={{ display: 'flex', alignItems: 'flex-start', gap: '9px', padding: '5px 10px', cursor: 'pointer', borderRadius: '6px', background: isChecked && item.warn ? cat.color + '08' : 'transparent', transition: 'background 0.1s' }}
+                onMouseEnter={e => { if (!isChecked) e.currentTarget.style.background = 'var(--surface)' }}
+                onMouseLeave={e => { e.currentTarget.style.background = isChecked && item.warn ? cat.color + '08' : 'transparent' }}
+              >
+                <input type="checkbox" checked={isChecked} onChange={() => onToggle(item.key)} style={{ marginTop: '2px', accentColor: cat.color, cursor: 'pointer', flexShrink: 0, width: '15px', height: '15px' }} />
+                <span style={{ fontSize: '12px', lineHeight: 1.5, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '5px', flex: 1 }}>
+                  {item.label}
+                  {item.warn && isChecked && (
+                    <span style={{ fontSize: '10px', color: cat.color, fontWeight: 600, background: cat.color + '15', padding: '0 5px', borderRadius: '6px', whiteSpace: 'nowrap' }}>zu beachten</span>
+                  )}
+                </span>
+              </label>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── VejCard (Veranlagung / Einkünfte) ─────────────────────────────────────────
+function AcVejCard({ auftrag, onToggle, setup }) {
+  const [open, setOpen] = useState(false)
+  if (setup.istGmbH) return null
+  const checked = AC_VEJ_ITEMS.filter(i => auftrag[`vej_${i.id}_er`] || auftrag[`vej_${i.id}_sie`]).length
+  return (
+    <div style={{ border: '1px solid var(--border)', borderRadius: '10px', overflow: 'hidden', marginBottom: '8px' }}>
+      <button onClick={() => setOpen(o => !o)} style={{ width: '100%', padding: '9px 14px', display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--surface)', border: 'none', cursor: 'pointer', textAlign: 'left', borderBottom: open ? '1px solid var(--border)' : 'none' }}>
+        <span style={{ fontSize: '14px' }}>📝</span>
+        <span style={{ fontWeight: 700, fontSize: '13px', flex: 1 }}>Veranlagung / Einkünfte (ER / SIE)</span>
+        <span style={{ fontSize: '11px', color: 'var(--text-muted)', background: 'var(--surface2)', padding: '1px 9px', borderRadius: '10px', border: '1px solid var(--border)' }}>
+          {checked > 0 ? `${checked} aktiv` : '–'}
+        </span>
+        <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{open ? '▲' : '▼'}</span>
+      </button>
+      {open && (
+        <div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 34px 34px', padding: '4px 14px', background: '#f0f6ff', borderBottom: '1px solid var(--border)' }}>
+            <span />
+            <span style={{ fontSize: '10px', fontWeight: 800, color: '#1e3a5f', textAlign: 'center' }}>ER</span>
+            <span style={{ fontSize: '10px', fontWeight: 800, color: '#1e3a5f', textAlign: 'center' }}>SIE</span>
+          </div>
+          {AC_VEJ_ITEMS.map(item => {
+            const kEr  = `vej_${item.id}_er`
+            const kSie = `vej_${item.id}_sie`
+            return (
+              <div key={item.id} style={{ display: 'grid', gridTemplateColumns: '1fr 34px 34px', alignItems: 'center', padding: '5px 14px', borderBottom: '1px solid var(--border)' }}>
+                <span style={{ fontSize: '12px', color: 'var(--text)', lineHeight: 1.4 }}>{item.label}</span>
+                <div style={{ display: 'flex', justifyContent: 'center' }}>
+                  <input type="checkbox" checked={!!auftrag[kEr]}  onChange={() => onToggle(kEr)}  style={{ accentColor: '#1e3a5f', cursor: 'pointer', width: '15px', height: '15px' }} />
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'center' }}>
+                  <input type="checkbox" checked={!!auftrag[kSie]} onChange={() => onToggle(kSie)} style={{ accentColor: '#1e3a5f', cursor: 'pointer', width: '15px', height: '15px' }} />
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── API ──────────────────────────────────────────────────────────────────────
 const APIKEY_STORAGE = 'sda-claude-api-key'
 function loadApiKey() { return (localStorage.getItem(APIKEY_STORAGE) ?? '').replace(/\s/g, '') }
@@ -270,9 +516,40 @@ function PunktKarte({ punkt, onStatusChange, onDelete, onNotizChange }) {
 
 // ── Haupt-Komponente ──────────────────────────────────────────────────────────
 export default function AbschlussTab({ client, onUpdate }) {
-  const [innerTab, setInnerTab] = useState(0) // 0=Prüfcheckliste, 1=Schnellerfassung
+  const [innerTab,      setInnerTab]      = useState(0) // 0=Prüfcheckliste, 1=Schnellerfassung
+  const [checklistOpen, setChecklistOpen] = useState(false) // Auftrags-Checkliste auf-/zuklappen
 
   const data   = client.abschluss ?? { punkte: [] }
+
+  // ── Auftrags-Checkliste: Setup-Flags (identisch mit AuftragTab) ──────────────
+  const auftrag        = client.auftrag        ?? {}
+  const rechtsform     = client.rechtsform     ?? ''
+  const gewinnermittl  = client.gewinnermittlung ?? ''
+  const steuerarten    = client.steuerarten    ?? {}
+  const ustIntervall   = client.ustZahlerTyp   ?? 'keine'
+  const ustSystem      = client.ustSystem      ?? ''
+  const istGmbH            = rechtsform === 'GmbH'
+  const istPers            = rechtsform === 'Personengesellschaft'
+  const istKleinunternehmer= ustSystem  === 'kleinunternehmer'
+  const hatUSt             = steuerarten.ust === true || (ustIntervall !== 'keine')
+  const acSetup = { rechtsform, gewinnermittlung: gewinnermittl, istGmbH, istPers, hatUSt, istKleinunternehmer, ustIntervall }
+
+  const acHinweise = acBuildHinweise(acSetup, auftrag)
+
+  function acToggleKey(key) {
+    onUpdate({ auftrag: { ...auftrag, [key]: !auftrag[key] } })
+  }
+
+  // ── Auftrags-Checkliste: Fortschrittszählung ─────────────────────────────────
+  const acTotalItems = AC_ALL_CATS.flatMap(cat => {
+    if (cat.filter && !cat.filter(acSetup)) return []
+    return cat.items.filter(item => !item.filter || item.filter(acSetup))
+  })
+  const acCheckedN = acTotalItems.filter(item => auftrag[item.key]).length
+  const acVejChecked = AC_VEJ_ITEMS.filter(i => auftrag[`vej_${i.id}_er`] || auftrag[`vej_${i.id}_sie`]).length
+  const acTotalN = acTotalItems.length + (istGmbH ? 0 : AC_VEJ_ITEMS.length * 2)
+  const acCritN = acHinweise.filter(h => h.sev === 'crit').length
+  const acWarnN = acHinweise.filter(h => h.sev === 'warn').length
   const punkte = data.punkte ?? []
 
   // ── Checkliste Rückfragen-Zähler für Badge ──
@@ -452,6 +729,101 @@ export default function AbschlussTab({ client, onUpdate }) {
           {toast}
         </div>
       )}
+
+      {/* ══════════════════════════════════════════════════════════════════════
+          AUFTRAGS-CHECKLISTE – Auftrag & Formalien, USt, Gewinn, Vorjahr, VEJ
+          ════════════════════════════════════════════════════════════════════ */}
+      <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflow: 'hidden' }}>
+
+        {/* Akkordeon-Header */}
+        <button
+          onClick={() => setChecklistOpen(o => !o)}
+          style={{
+            width: '100%', padding: '11px 16px',
+            display: 'flex', alignItems: 'center', gap: '10px',
+            background: 'var(--surface)', border: 'none', cursor: 'pointer', textAlign: 'left',
+            borderBottom: checklistOpen ? '1px solid var(--border)' : 'none',
+          }}
+        >
+          <span style={{ fontSize: '15px' }}>📋</span>
+          <span style={{ fontWeight: 700, fontSize: '13px', color: 'var(--text)', flex: 1 }}>
+            Auftrag & Checkliste
+          </span>
+
+          {/* Fortschritt-Badge */}
+          {acTotalItems.length > 0 && (
+            <span style={{
+              fontSize: '11px', fontWeight: 700, padding: '1px 9px', borderRadius: '10px',
+              background: acCheckedN === acTotalItems.length ? 'rgba(22,163,74,0.15)' : 'var(--surface2)',
+              color: acCheckedN === acTotalItems.length ? '#16a34a' : 'var(--text-muted)',
+              border: `1px solid ${acCheckedN === acTotalItems.length ? 'rgba(22,163,74,0.3)' : 'var(--border)'}`,
+            }}>
+              {acCheckedN === acTotalItems.length ? '✓ Fertig' : `${acCheckedN}/${acTotalItems.length}`}
+            </span>
+          )}
+
+          {/* Risiko-Badge */}
+          {acCritN > 0 && (
+            <span style={{ fontSize: '11px', fontWeight: 700, color: '#b91c1c', background: 'rgba(239,68,68,0.1)', padding: '1px 9px', borderRadius: '10px' }}>
+              🚨 {acCritN} kritisch
+            </span>
+          )}
+          {acCritN === 0 && acWarnN > 0 && (
+            <span style={{ fontSize: '11px', fontWeight: 700, color: '#92400e', background: 'rgba(217,119,6,0.1)', padding: '1px 9px', borderRadius: '10px' }}>
+              ⚠ {acWarnN} Hinweis{acWarnN > 1 ? 'e' : ''}
+            </span>
+          )}
+
+          <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginLeft: '4px' }}>
+            {checklistOpen ? '▲' : '▼'}
+          </span>
+        </button>
+
+        {/* Aufgeklappter Inhalt */}
+        {checklistOpen && (
+          <div style={{ padding: '14px 16px', background: 'var(--bg)' }}>
+
+            {/* Automatische Hinweise */}
+            {acHinweise.length > 0 && (
+              <div style={{ marginBottom: '14px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                {acHinweise.map((h, i) => (
+                  <div key={i} style={{
+                    display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '8px 12px',
+                    borderRadius: '8px',
+                    background: h.sev === 'crit' ? 'rgba(239,68,68,0.07)' : h.sev === 'warn' ? 'rgba(217,119,6,0.07)' : 'rgba(37,99,235,0.07)',
+                    border: `1px solid ${h.sev === 'crit' ? 'rgba(239,68,68,0.25)' : h.sev === 'warn' ? 'rgba(217,119,6,0.25)' : 'rgba(37,99,235,0.2)'}`,
+                  }}>
+                    <span style={{ fontSize: '14px', flexShrink: 0 }}>{h.icon}</span>
+                    <span style={{
+                      fontSize: '12px', lineHeight: 1.5,
+                      color: h.sev === 'crit' ? '#b91c1c' : h.sev === 'warn' ? '#92400e' : '#1e40af',
+                      fontWeight: h.sev === 'crit' ? 700 : 400,
+                    }}>{h.text}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Die 5 Kategorien-Blöcke */}
+            {AC_ALL_CATS.map(cat => (
+              <AcCategoryCard
+                key={cat.id}
+                cat={cat}
+                auftrag={auftrag}
+                onToggle={acToggleKey}
+                setup={acSetup}
+                defaultOpen={false}
+              />
+            ))}
+
+            {/* Veranlagung / Einkünfte */}
+            <AcVejCard auftrag={auftrag} onToggle={acToggleKey} setup={acSetup} />
+          </div>
+        )}
+      </div>
+
+      {/* Trennlinie */}
+      <div style={{ height: '1px', background: 'var(--border)', margin: '0 -4px' }} />
 
       {/* ── Inner Tab-Switcher ────────────────────────────────────────── */}
       <div style={{ display: 'flex', gap: '4px', background: 'var(--surface2)', padding: '4px', borderRadius: '10px', border: '1px solid var(--border)' }}>
