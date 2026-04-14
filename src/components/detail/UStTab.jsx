@@ -1,7 +1,8 @@
 import { useState, useMemo } from 'react'
 
 // ── Konstanten ────────────────────────────────────────────────────────────────
-const MONATE = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember']
+const MONATE   = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember']
+const QUARTALE = ['Q1 (Jan–Mär)', 'Q2 (Apr–Jun)', 'Q3 (Jul–Sep)', 'Q4 (Okt–Dez)']
 const ABSENDER_KEY = 'kommunikation-absender'
 
 function loadAbsender() {
@@ -84,8 +85,9 @@ function removeSig(currentText) {
 }
 
 // ── Inline-E-Mail-Editor ──────────────────────────────────────────────────────
-function InlineMailEditor({ monatIdx, jahr, monatDaten, emailVorlagen, emailSignaturen = [], client, onSent, onCancel }) {
-  const monatName  = MONATE[monatIdx]
+// periodenLabel: optionales Override (z. B. "Q2 (Apr–Jun)") statt Monatsname
+function InlineMailEditor({ monatIdx, periodenLabel, jahr, monatDaten, emailVorlagen, emailSignaturen = [], client, onSent, onCancel }) {
+  const monatName  = periodenLabel ?? MONATE[monatIdx]
   const bem        = parseNum(monatDaten.bem)
   const satz       = parseNum(monatDaten.satz)
   const ust        = calcUSt(bem, satz)
@@ -301,10 +303,21 @@ function getJahrDaten(ust, jahr) {
   const key = String(jahr)
   if (ust?.[key]) {
     const m = ust[key]
-    // Sicherstellen dass 12 Einträge da sind
     if (m.length === 12) return m
   }
   return emptyMonate()
+}
+
+// ── Leere Quartalsdaten ───────────────────────────────────────────────────────
+function emptyQuartale() {
+  return Array.from({ length: 4 }, (_, i) => ({ quartalIdx: i, bem: '', satz: 19, vor: '' }))
+}
+
+function getQuartalDaten(ust, jahr) {
+  const key = String(jahr) + '_q'
+  const m = ust?.[key]
+  if (Array.isArray(m) && m.length === 4) return m
+  return emptyQuartale()
 }
 
 // ── Zahl-Eingabe-Komponente ───────────────────────────────────────────────────
@@ -325,22 +338,30 @@ function NumInput({ value, onChange, placeholder = '0,00' }) {
 // ── Haupt-Komponente ──────────────────────────────────────────────────────────
 export default function UStTab({ client, onUpdate, emailVorlagen = [], emailSignaturen = [] }) {
   const currentYear = new Date().getFullYear()
-  const [jahr, setJahr] = useState(parseInt(client.veranlagungsjahr) || currentYear)
-  const [mailOffenIdx, setMailOffenIdx] = useState(null)   // welche Monatszeile hat Mail offen
+  const [jahr,        setJahr]        = useState(parseInt(client.veranlagungsjahr) || currentYear)
+  const [mailOffenIdx, setMailOffenIdx] = useState(null)
+  const [intervall,   setIntervall]   = useState('monatlich')   // 'monatlich' | 'quartal'
 
-  const ust     = client.ust ?? {}
-  const monate  = getJahrDaten(ust, jahr)
+  const ust          = client.ust ?? {}
+  const monate       = getJahrDaten(ust, jahr)
+  const quartalDaten = getQuartalDaten(ust, jahr)
 
-  // ── Wert ändern ─────────────────────────────────────────────────────────────
+  // ── Wert ändern (Monat) ──────────────────────────────────────────────────────
   function patchMonat(monatIdx, field, value) {
     const neueM = monate.map((m, i) => i !== monatIdx ? m : { ...m, [field]: value })
     onUpdate({ ust: { ...ust, [String(jahr)]: neueM } })
   }
 
+  // ── Wert ändern (Quartal) ────────────────────────────────────────────────────
+  function patchQuartal(quartalIdx, field, value) {
+    const neueQ = quartalDaten.map((q, i) => i !== quartalIdx ? q : { ...q, [field]: value })
+    onUpdate({ ust: { ...ust, [String(jahr) + '_q']: neueQ } })
+  }
+
   // ── Mail gesendet ────────────────────────────────────────────────────────────
-  function handleMailSent(monatIdx, meta) {
+  function handleMailSent(idx, meta, isQuartal = false) {
     setMailOffenIdx(null)
-    // Eintrag in Kommunikation
+    const periodenLabel = isQuartal ? QUARTALE[idx] : MONATE[idx]
     const newEvent = {
       id:          'ust_' + Date.now().toString(36),
       typ:         'email',
@@ -353,26 +374,30 @@ export default function UStTab({ client, onUpdate, emailVorlagen = [], emailSign
       text:         meta.text    ?? '',
       anlagen:      [],
       quelle:       'ust',
-      ustMonat:     MONATE[monatIdx],
+      ustMonat:     periodenLabel,
       ustJahr:      String(jahr),
     }
     const komm = client.kommunikation ?? { events: [] }
     onUpdate({ kommunikation: { ...komm, events: [newEvent, ...(komm.events ?? [])] } })
   }
 
-  // ── Jahressummen ─────────────────────────────────────────────────────────────
+  // ── Jahressummen (Monat) ─────────────────────────────────────────────────────
   const summen = useMemo(() => {
     return monate.reduce((acc, m) => {
       const ust = calcUSt(m.bem, m.satz)
       const zl  = calcZahllast(m.bem, m.satz, m.vor)
-      return {
-        bem: acc.bem + parseNum(m.bem),
-        ust: acc.ust + ust,
-        vor: acc.vor + parseNum(m.vor),
-        zl:  acc.zl  + zl,
-      }
+      return { bem: acc.bem + parseNum(m.bem), ust: acc.ust + ust, vor: acc.vor + parseNum(m.vor), zl: acc.zl + zl }
     }, { bem: 0, ust: 0, vor: 0, zl: 0 })
   }, [monate])
+
+  // ── Jahressummen (Quartal) ───────────────────────────────────────────────────
+  const summenQ = useMemo(() => {
+    return quartalDaten.reduce((acc, q) => {
+      const u  = calcUSt(q.bem, q.satz)
+      const zl = calcZahllast(q.bem, q.satz, q.vor)
+      return { bem: acc.bem + parseNum(q.bem), ust: acc.ust + u, vor: acc.vor + parseNum(q.vor), zl: acc.zl + zl }
+    }, { bem: 0, ust: 0, vor: 0, zl: 0 })
+  }, [quartalDaten])
 
   // ── Spaltenbreiten ───────────────────────────────────────────────────────────
   const COL = '80px 1fr 90px 110px 1fr 110px 90px'
@@ -391,15 +416,29 @@ export default function UStTab({ client, onUpdate, emailVorlagen = [], emailSign
         <div>
           <h2 style={{ fontSize: '16px', fontWeight: 700, margin: 0 }}>🧾 Umsatzsteuer-Voranmeldung</h2>
           <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
-            Monatsübersicht · Zahllast · E-Mail-Versand
+            {intervall === 'monatlich' ? 'Monatsübersicht' : 'Quartalsübersicht'} · Zahllast · E-Mail-Versand
           </div>
         </div>
 
-        {/* Jahr-Auswahl */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <button className="btn btn-ghost btn-sm" onClick={() => { setJahr(j => j - 1); setMailOffenIdx(null) }} style={{ fontSize: '12px', padding: '4px 10px' }}>◀</button>
-          <span style={{ fontWeight: 700, fontSize: '15px', minWidth: '48px', textAlign: 'center' }}>{jahr}</span>
-          <button className="btn btn-ghost btn-sm" onClick={() => { setJahr(j => j + 1); setMailOffenIdx(null) }} style={{ fontSize: '12px', padding: '4px 10px' }}>▶</button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          {/* Intervall-Umschalter */}
+          <div style={{ display: 'flex', gap: '3px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '8px', padding: '3px' }}>
+            {[['monatlich', '📅 Monatlich'], ['quartal', '📊 Quartal']].map(([v, label]) => (
+              <button
+                key={v}
+                className={`btn btn-sm ${intervall === v ? 'btn-primary' : 'btn-ghost'}`}
+                onClick={() => { setIntervall(v); setMailOffenIdx(null) }}
+                style={{ fontSize: '11px', padding: '4px 12px' }}
+              >{label}</button>
+            ))}
+          </div>
+
+          {/* Jahr-Auswahl */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <button className="btn btn-ghost btn-sm" onClick={() => { setJahr(j => j - 1); setMailOffenIdx(null) }} style={{ fontSize: '12px', padding: '4px 10px' }}>◀</button>
+            <span style={{ fontWeight: 700, fontSize: '15px', minWidth: '48px', textAlign: 'center' }}>{jahr}</span>
+            <button className="btn btn-ghost btn-sm" onClick={() => { setJahr(j => j + 1); setMailOffenIdx(null) }} style={{ fontSize: '12px', padding: '4px 10px' }}>▶</button>
+          </div>
         </div>
       </div>
 
@@ -409,7 +448,7 @@ export default function UStTab({ client, onUpdate, emailVorlagen = [], emailSign
         {/* Spalten-Header */}
         <div style={{ display: 'grid', gridTemplateColumns: COL, background: 'var(--surface)', borderBottom: '2px solid var(--border)' }}>
           {[
-            ['Monat',                  'left'],
+            [intervall === 'monatlich' ? 'Monat' : 'Quartal', 'left'],
             ['Bemessungsgrundlage',    'right'],
             ['Satz',                   'center'],
             ['Umsatzsteuer',           'right'],
@@ -421,12 +460,14 @@ export default function UStTab({ client, onUpdate, emailVorlagen = [], emailSign
           ))}
         </div>
 
-        {/* Monatszeilen */}
-        {monate.map((m, i) => {
-          const ust_val  = calcUSt(m.bem, m.satz)
-          const zl       = calcZahllast(m.bem, m.satz, m.vor)
+        {/* ── Zeilen (Monat ODER Quartal) ── */}
+        {(intervall === 'monatlich' ? monate : quartalDaten).map((row, i) => {
+          const isQ      = intervall === 'quartal'
+          const label    = isQ ? QUARTALE[i] : MONATE[i]
+          const ust_val  = calcUSt(row.bem, row.satz)
+          const zl       = calcZahllast(row.bem, row.satz, row.vor)
           const mailOffen = mailOffenIdx === i
-          const hatWerte  = !!m.bem || !!m.vor
+          const hatWerte  = !!row.bem || !!row.vor
 
           return (
             <div key={i}>
@@ -438,22 +479,22 @@ export default function UStTab({ client, onUpdate, emailVorlagen = [], emailSign
                 transition: 'background 0.1s',
               }}>
 
-                {/* Monat */}
+                {/* Periode (Monat oder Quartal) */}
                 <div style={{ padding: '7px 8px', display: 'flex', alignItems: 'center' }}>
-                  <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text)' }}>{MONATE[i]}</span>
+                  <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text)' }}>{label}</span>
                 </div>
 
                 {/* Bemessungsgrundlage */}
                 <div style={{ padding: '5px 8px', display: 'flex', alignItems: 'center' }}>
-                  <NumInput value={m.bem} onChange={v => patchMonat(i, 'bem', v)} placeholder="0,00" />
+                  <NumInput value={row.bem} onChange={v => isQ ? patchQuartal(i, 'bem', v) : patchMonat(i, 'bem', v)} placeholder="0,00" />
                 </div>
 
                 {/* Steuersatz */}
                 <div style={{ padding: '5px 8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <select
                     className="input"
-                    value={m.satz}
-                    onChange={e => patchMonat(i, 'satz', parseInt(e.target.value))}
+                    value={row.satz}
+                    onChange={e => isQ ? patchQuartal(i, 'satz', parseInt(e.target.value)) : patchMonat(i, 'satz', parseInt(e.target.value))}
                     style={{ fontSize: '12px', padding: '4px 6px', textAlign: 'center', width: '100%', fontFamily: 'var(--font-mono)' }}
                   >
                     <option value={19}>19 %</option>
@@ -463,29 +504,26 @@ export default function UStTab({ client, onUpdate, emailVorlagen = [], emailSign
 
                 {/* USt (berechnet) */}
                 <div style={{ padding: '7px 8px', display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
-                  <span style={{
-                    fontSize: '12px', fontFamily: 'var(--font-mono)',
-                    color: hatWerte ? 'var(--text)' : 'var(--text-muted)',
-                  }}>
-                    {hatWerte || m.bem ? fmtEur(ust_val) : '–'}
+                  <span style={{ fontSize: '12px', fontFamily: 'var(--font-mono)', color: hatWerte ? 'var(--text)' : 'var(--text-muted)' }}>
+                    {hatWerte || row.bem ? fmtEur(ust_val) : '–'}
                   </span>
                 </div>
 
                 {/* Vorsteuer */}
                 <div style={{ padding: '5px 8px', display: 'flex', alignItems: 'center' }}>
-                  <NumInput value={m.vor} onChange={v => patchMonat(i, 'vor', v)} placeholder="0,00" />
+                  <NumInput value={row.vor} onChange={v => isQ ? patchQuartal(i, 'vor', v) : patchMonat(i, 'vor', v)} placeholder="0,00" />
                 </div>
 
                 {/* Zahllast */}
                 <div style={{ padding: '7px 8px', display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
                   <span style={{
                     fontSize: '12px', fontWeight: 700, fontFamily: 'var(--font-mono)',
-                    color: !hatWerte && !m.bem ? 'var(--text-muted)'
+                    color: !hatWerte && !row.bem ? 'var(--text-muted)'
                          : zl > 0 ? '#dc2626'
                          : zl < 0 ? '#16a34a'
                          : 'var(--text)',
                   }}>
-                    {hatWerte || m.bem ? fmtEur(zl) : '–'}
+                    {hatWerte || row.bem ? fmtEur(zl) : '–'}
                   </span>
                 </div>
 
@@ -494,7 +532,7 @@ export default function UStTab({ client, onUpdate, emailVorlagen = [], emailSign
                   <button
                     className={`btn btn-sm ${mailOffen ? 'btn-primary' : 'btn-ghost'}`}
                     onClick={() => setMailOffenIdx(mailOffen ? null : i)}
-                    title={`E-Mail für ${MONATE[i]} ${jahr}`}
+                    title={`E-Mail für ${label} ${jahr}`}
                     style={{ fontSize: '11px', padding: '3px 10px', whiteSpace: 'nowrap' }}
                   >
                     {mailOffen ? '✕ Schließen' : '📧 E-Mail'}
@@ -507,12 +545,13 @@ export default function UStTab({ client, onUpdate, emailVorlagen = [], emailSign
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr', borderBottom: '1px solid var(--border)' }}>
                   <InlineMailEditor
                     monatIdx={i}
+                    periodenLabel={isQ ? label : undefined}
                     jahr={jahr}
-                    monatDaten={m}
+                    monatDaten={row}
                     emailVorlagen={emailVorlagen}
                     emailSignaturen={emailSignaturen}
                     client={client}
-                    onSent={meta => handleMailSent(i, meta)}
+                    onSent={meta => handleMailSent(i, meta, isQ)}
                     onCancel={() => setMailOffenIdx(null)}
                   />
                 </div>
@@ -527,30 +566,27 @@ export default function UStTab({ client, onUpdate, emailVorlagen = [], emailSign
           background: 'var(--surface)',
           borderTop: '2px solid var(--border)',
         }}>
-          <div style={{ padding: '9px 8px', fontSize: '12px', fontWeight: 700 }}>Gesamt</div>
-
-          <div style={{ padding: '9px 8px', textAlign: 'right' }}>
-            <span style={{ fontSize: '12px', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>{fmtEur(summen.bem)}</span>
-          </div>
-
-          <div />  {/* Satz */}
-
-          <div style={{ padding: '9px 8px', textAlign: 'right' }}>
-            <span style={{ fontSize: '12px', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>{fmtEur(summen.ust)}</span>
-          </div>
-
-          <div style={{ padding: '9px 8px', textAlign: 'right' }}>
-            <span style={{ fontSize: '12px', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>{fmtEur(summen.vor)}</span>
-          </div>
-
-          <div style={{ padding: '9px 8px', textAlign: 'right' }}>
-            <span style={{
-              fontSize: '13px', fontWeight: 800, fontFamily: 'var(--font-mono)',
-              color: summen.zl > 0 ? '#dc2626' : summen.zl < 0 ? '#16a34a' : 'var(--text)',
-            }}>
-              {fmtEur(summen.zl)}
-            </span>
-          </div>
+          {(() => {
+            const s = intervall === 'monatlich' ? summen : summenQ
+            return (<>
+              <div style={{ padding: '9px 8px', fontSize: '12px', fontWeight: 700 }}>Gesamt</div>
+              <div style={{ padding: '9px 8px', textAlign: 'right' }}>
+                <span style={{ fontSize: '12px', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>{fmtEur(s.bem)}</span>
+              </div>
+              <div />
+              <div style={{ padding: '9px 8px', textAlign: 'right' }}>
+                <span style={{ fontSize: '12px', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>{fmtEur(s.ust)}</span>
+              </div>
+              <div style={{ padding: '9px 8px', textAlign: 'right' }}>
+                <span style={{ fontSize: '12px', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>{fmtEur(s.vor)}</span>
+              </div>
+              <div style={{ padding: '9px 8px', textAlign: 'right' }}>
+                <span style={{ fontSize: '13px', fontWeight: 800, fontFamily: 'var(--font-mono)', color: s.zl > 0 ? '#dc2626' : s.zl < 0 ? '#16a34a' : 'var(--text)' }}>
+                  {fmtEur(s.zl)}
+                </span>
+              </div>
+            </>)
+          })()}
 
           <div />  {/* Aktion */}
         </div>
