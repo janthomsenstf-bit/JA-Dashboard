@@ -112,6 +112,7 @@ function migrateClient(c) {
     lohnIntervall:               c.lohnIntervall               ?? 'monatlich',
     beratung:                    c.beratung                    ?? { branche: '', ergebnis: null, erstelltAm: null },
     jaMonat:                     c.jaMonat                     ?? null,
+    jaAuftraege:                 Array.isArray(c.jaAuftraege)   ? c.jaAuftraege    : [],
     zusatzaufgaben:              Array.isArray(c.zusatzaufgaben) ? c.zusatzaufgaben : [],
     aufgaben:                    Array.isArray(c.aufgaben)       ? c.aufgaben       : [],
     rechner:                     Array.isArray(c.rechner)        ? c.rechner        : [],

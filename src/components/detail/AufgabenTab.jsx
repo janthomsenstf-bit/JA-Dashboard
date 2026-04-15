@@ -601,8 +601,7 @@ export default function AufgabenTab({ client, onUpdate, onAddTermin }) {
         </div>
       </div>
 
-      {/* ── Automatische Aufgaben (USt / Lohn / JA) ── */}
-      <GenerierteAufgaben client={client} onUpdate={onUpdate} />
+      {/* Auftragsaufgaben (USt/Lohn/JA) werden im Reiter „Stammdaten" → Block „Auftrag" konfiguriert */}
 
       <style>{`
         @keyframes pulseRec {

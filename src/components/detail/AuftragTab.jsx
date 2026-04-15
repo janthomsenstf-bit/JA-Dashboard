@@ -805,6 +805,336 @@ function ApiKeySection({ claudeApiKey, onUpdateClaudeApiKey }) {
   )
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// AuftragsBlock – laufende / wiederkehrende Aufträge des Mandanten
+// Konfiguriert: USt/Buchhaltung, Lohn, Jahresabschlüsse
+// Wird von generateAufgaben() in aufgaben.js ausgewertet.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function AuftragsToggle({ aktiv, onToggle }) {
+  return (
+    <button
+      onClick={onToggle}
+      style={{
+        padding: '3px 14px', borderRadius: '20px', fontSize: '11px', fontWeight: 700,
+        cursor: 'pointer', border: 'none',
+        background: aktiv ? 'rgba(22,163,74,0.15)' : 'var(--surface2)',
+        color: aktiv ? '#16a34a' : 'var(--text-muted)',
+        outline: aktiv ? '1.5px solid rgba(22,163,74,0.4)' : '1.5px solid var(--border)',
+        transition: 'all 0.15s',
+      }}
+    >
+      {aktiv ? '✓ Aktiv' : '○ Inaktiv'}
+    </button>
+  )
+}
+
+function AuftragsBlock({ client, onUpdate }) {
+  const [open, setOpen] = useState(true)
+
+  // ── USt / Buchhaltung ──
+  const ustAktiv    = !!(client.ustZahlerTyp && client.ustZahlerTyp !== 'keine')
+  const ustIntervall = client.ustZahlerTyp ?? 'keine'
+  const dauerfriv   = client.dauerfriv === true
+
+  // ── Lohn ──
+  const lohnAktiv = client.lohnAktiv === true
+  const lohnArt   = client.lohnArt   ?? 'standard'
+
+  // ── Jahresabschlüsse ──
+  const jaAuftraege = Array.isArray(client.jaAuftraege) ? client.jaAuftraege : []
+
+  function genJaId() { return 'ja' + Date.now().toString(36) + Math.random().toString(36).slice(2, 4) }
+
+  function addJA() {
+    const newJahr = new Date().getFullYear() - 1
+    onUpdate({ jaAuftraege: [...jaAuftraege, { id: genJaId(), geschaeftsjahr: String(newJahr), monat: '9', aktiv: true }] })
+  }
+  function updateJA(id, patch) {
+    onUpdate({ jaAuftraege: jaAuftraege.map(j => j.id === id ? { ...j, ...patch } : j) })
+  }
+  function deleteJA(id) {
+    onUpdate({ jaAuftraege: jaAuftraege.filter(j => j.id !== id) })
+  }
+
+  // Zusammenfassung für eingeklappten Header
+  const summaryParts = []
+  if (ustAktiv) summaryParts.push(`📊 USt ${ustIntervall}${dauerfriv ? ' +DFV' : ''}`)
+  if (lohnAktiv) summaryParts.push(`💼 Lohn`)
+  const jaAktiv = jaAuftraege.filter(j => j.aktiv).length
+  if (jaAktiv > 0) summaryParts.push(`📁 ${jaAktiv} JA`)
+
+  const inStyle = {
+    padding: '5px 9px', border: '1px solid var(--border)', borderRadius: '6px',
+    background: 'var(--surface2)', color: 'var(--text)', fontSize: '12px', outline: 'none',
+  }
+
+  return (
+    <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflow: 'hidden', marginBottom: '14px' }}>
+
+      {/* Akkordeon-Header */}
+      <button
+        onClick={() => setOpen(o => !o)}
+        style={{
+          width: '100%', padding: '11px 16px',
+          display: 'flex', alignItems: 'center', gap: '10px',
+          background: 'var(--surface)', border: 'none', cursor: 'pointer', textAlign: 'left',
+          borderBottom: open ? '1px solid var(--border)' : 'none',
+        }}
+      >
+        <span style={{ fontSize: '15px', flexShrink: 0 }}>📦</span>
+        <span style={{ fontWeight: 700, fontSize: '13px', color: 'var(--text)', flexShrink: 0 }}>Laufende Aufträge</span>
+        {!open && summaryParts.length > 0 && (
+          <span style={{ fontSize: '11px', color: 'var(--text-muted)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {summaryParts.join(' · ')}
+          </span>
+        )}
+        {!open && summaryParts.length === 0 && (
+          <span style={{ fontSize: '11px', color: 'var(--text-muted)', flex: 1 }}>Keine aktiven Aufträge</span>
+        )}
+        <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginLeft: 'auto', flexShrink: 0 }}>{open ? '▲' : '▼'}</span>
+      </button>
+
+      {open && (
+        <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '10px', background: 'var(--bg)' }}>
+
+          {/* ── 1. Buchhaltung / USt-Voranmeldung ── */}
+          <div style={{ border: '1px solid var(--border)', borderRadius: '10px', overflow: 'hidden' }}>
+            <div style={{ padding: '10px 14px', background: 'var(--surface)', display: 'flex', alignItems: 'center', gap: '10px', borderBottom: ustAktiv ? '1px solid var(--border)' : 'none' }}>
+              <span style={{ fontSize: '15px' }}>📊</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700, fontSize: '12px' }}>Buchhaltung / USt-Voranmeldung</div>
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '1px' }}>
+                  Aufgaben erscheinen im Fristmonat (nicht im Leistungsmonat)
+                </div>
+              </div>
+              <AuftragsToggle
+                aktiv={ustAktiv}
+                onToggle={() => onUpdate({ ustZahlerTyp: ustAktiv ? 'keine' : 'monatlich' })}
+              />
+            </div>
+
+            {ustAktiv && (
+              <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+
+                {/* Intervall */}
+                <div>
+                  <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>
+                    Voranmeldungs-Intervall
+                  </div>
+                  <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
+                    {[
+                      { key: 'monatlich',     label: 'Monatlich',      hint: 'Frist: 10. Folgemonat' },
+                      { key: 'quartalsweise', label: 'Quartalsweise',   hint: 'Frist: 10. des Folgequartals' },
+                      { key: 'jährlich',      label: 'Jährlich',        hint: 'Frist: 31. Juli Folgejahr' },
+                    ].map(({ key, label, hint }) => (
+                      <button
+                        key={key}
+                        title={hint}
+                        onClick={() => onUpdate({ ustZahlerTyp: key })}
+                        style={{
+                          padding: '5px 14px', borderRadius: '20px', fontSize: '12px', cursor: 'pointer',
+                          border: `1.5px solid ${ustIntervall === key ? '#1e3a5f' : 'var(--border)'}`,
+                          background: ustIntervall === key ? '#1e3a5f' : 'var(--surface)',
+                          color: ustIntervall === key ? '#fff' : 'var(--text-secondary)',
+                          fontWeight: ustIntervall === key ? 700 : 400,
+                          transition: 'all 0.15s',
+                        }}
+                      >{label}</button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Dauerfristverlängerung */}
+                <div>
+                  <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>
+                    Dauerfristverlängerung
+                  </div>
+                  <div style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>
+                    {[
+                      { v: true,  label: 'Ja',   hint: '+1 Monat Aufschub auf die Frist' },
+                      { v: false, label: 'Nein', hint: 'Standardfrist (10. des Folgemonats)' },
+                    ].map(({ v, label, hint }) => (
+                      <button
+                        key={String(v)}
+                        title={hint}
+                        onClick={() => onUpdate({ dauerfriv: v })}
+                        style={{
+                          padding: '5px 14px', borderRadius: '20px', fontSize: '12px', cursor: 'pointer',
+                          border: `1.5px solid ${dauerfriv === v ? '#b45309' : 'var(--border)'}`,
+                          background: dauerfriv === v ? '#b45309' : 'var(--surface)',
+                          color: dauerfriv === v ? '#fff' : 'var(--text-secondary)',
+                          fontWeight: dauerfriv === v ? 700 : 400,
+                          transition: 'all 0.15s',
+                        }}
+                      >{label}</button>
+                    ))}
+                    {dauerfriv && (
+                      <span style={{ fontSize: '11px', color: '#b45309', marginLeft: '6px' }}>
+                        ℹ️ Frist verschiebt sich um 1 Monat — Aufgaben erscheinen einen Monat später
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Frist-Info */}
+                <div style={{ padding: '7px 10px', background: 'rgba(30,58,95,0.05)', borderRadius: '6px', border: '1px solid rgba(30,58,95,0.12)', fontSize: '11px', color: '#1e3a5f' }}>
+                  {ustIntervall === 'monatlich' && !dauerfriv && '📅 Aufgaben erscheinen im Folgemonat (z. B. April-Voranmeldung → sichtbar im Mai, Frist 10. Mai)'}
+                  {ustIntervall === 'monatlich' &&  dauerfriv && '📅 Aufgaben erscheinen zwei Monate später (z. B. April → sichtbar im Juni, Frist 10. Juni)'}
+                  {ustIntervall === 'quartalsweise' && !dauerfriv && '📅 Aufgaben erscheinen im Folgemonat nach Quartalsende (Q1 → April, Frist 10. April)'}
+                  {ustIntervall === 'quartalsweise' &&  dauerfriv && '📅 Aufgaben erscheinen zwei Monate nach Quartalsende (Q1 → Mai, Frist 10. Mai)'}
+                  {ustIntervall === 'jährlich' && '📅 Aufgabe erscheint im Juli des Folgejahres (Frist 31. Juli)'}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* ── 2. Lohnabrechnung ── */}
+          <div style={{ border: '1px solid var(--border)', borderRadius: '10px', overflow: 'hidden' }}>
+            <div style={{ padding: '10px 14px', background: 'var(--surface)', display: 'flex', alignItems: 'center', gap: '10px', borderBottom: lohnAktiv ? '1px solid var(--border)' : 'none' }}>
+              <span style={{ fontSize: '15px' }}>💼</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700, fontSize: '12px' }}>Lohnabrechnung</div>
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '1px' }}>
+                  Abrechnung (25.) + SV-Beitragsnachweis (26.) pro Monat
+                </div>
+              </div>
+              <AuftragsToggle
+                aktiv={lohnAktiv}
+                onToggle={() => onUpdate({ lohnAktiv: !lohnAktiv })}
+              />
+            </div>
+
+            {lohnAktiv && (
+              <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div>
+                  <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>
+                    Lohn-Art
+                  </div>
+                  <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
+                    {[
+                      { key: 'standard',  label: 'Standardlohn' },
+                      { key: 'baulohn',   label: 'Baulohn'      },
+                      { key: 'sonstiges', label: 'Sonstiges'    },
+                    ].map(({ key, label }) => (
+                      <button
+                        key={key}
+                        onClick={() => onUpdate({ lohnArt: key })}
+                        style={{
+                          padding: '5px 14px', borderRadius: '20px', fontSize: '12px', cursor: 'pointer',
+                          border: `1.5px solid ${lohnArt === key ? '#7c3aed' : 'var(--border)'}`,
+                          background: lohnArt === key ? '#7c3aed' : 'var(--surface)',
+                          color: lohnArt === key ? '#fff' : 'var(--text-secondary)',
+                          fontWeight: lohnArt === key ? 700 : 400,
+                          transition: 'all 0.15s',
+                        }}
+                      >{label}</button>
+                    ))}
+                  </div>
+                </div>
+                <div style={{ padding: '7px 10px', background: 'rgba(124,58,237,0.05)', borderRadius: '6px', border: '1px solid rgba(124,58,237,0.15)', fontSize: '11px', color: '#7c3aed' }}>
+                  📅 Pro Monat zwei Aufgaben: Lohnabrechnung (Frist 25.) + SV-Beitragsnachweis (Frist 26.) — §28f Abs.3 SGB IV
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* ── 3. Jahresabschlüsse ── */}
+          <div style={{ border: '1px solid var(--border)', borderRadius: '10px', overflow: 'hidden' }}>
+            <div style={{ padding: '10px 14px', background: 'var(--surface)', display: 'flex', alignItems: 'center', gap: '10px', borderBottom: jaAuftraege.length > 0 ? '1px solid var(--border)' : 'none' }}>
+              <span style={{ fontSize: '15px' }}>📁</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700, fontSize: '12px' }}>Jahresabschlüsse</div>
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '1px' }}>
+                  Pro Geschäftsjahr: geplanter Bearbeitungsmonat im Folgejahr
+                </div>
+              </div>
+              <button
+                onClick={addJA}
+                className="btn btn-ghost btn-sm"
+                style={{ fontSize: '11px', flexShrink: 0 }}
+              >
+                ➕ Jahresabschluss
+              </button>
+            </div>
+
+            {jaAuftraege.length > 0 && (
+              <div style={{ padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {jaAuftraege.map(ja => (
+                  <div key={ja.id} style={{
+                    display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap',
+                    padding: '8px 12px', borderRadius: '8px',
+                    background: ja.aktiv ? 'rgba(194,65,12,0.04)' : 'var(--surface2)',
+                    border: `1px solid ${ja.aktiv ? 'rgba(194,65,12,0.2)' : 'var(--border)'}`,
+                  }}>
+                    {/* Aktiv-Toggle */}
+                    <AuftragsToggle
+                      aktiv={ja.aktiv}
+                      onToggle={() => updateJA(ja.id, { aktiv: !ja.aktiv })}
+                    />
+
+                    {/* Geschäftsjahr */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                      <span style={{ fontSize: '11px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Geschäftsjahr</span>
+                      <input
+                        type="number"
+                        min="2000" max="2099"
+                        value={ja.geschaeftsjahr ?? ''}
+                        onChange={e => updateJA(ja.id, { geschaeftsjahr: e.target.value })}
+                        style={{ ...inStyle, width: '70px', textAlign: 'center' }}
+                      />
+                    </div>
+
+                    {/* Bearbeitungsmonat */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                      <span style={{ fontSize: '11px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Bearbeitungsmonat</span>
+                      <select
+                        value={ja.monat ?? ''}
+                        onChange={e => updateJA(ja.id, { monat: e.target.value })}
+                        style={{ ...inStyle, minWidth: '110px' }}
+                      >
+                        <option value="">– Monat –</option>
+                        {MONAT_NAMEN.map((m, i) => (
+                          <option key={i + 1} value={String(i + 1)}>{m}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Anzeige-Info */}
+                    {ja.aktiv && ja.geschaeftsjahr && ja.monat && (
+                      <span style={{ fontSize: '11px', color: '#c2410c', marginLeft: 'auto' }}>
+                        → erscheint {MONAT_NAMEN[parseInt(ja.monat, 10) - 1]} {parseInt(ja.geschaeftsjahr, 10) + 1}
+                      </span>
+                    )}
+
+                    {/* Löschen */}
+                    <button
+                      onClick={() => deleteJA(ja.id)}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: '14px', padding: '0 3px', flexShrink: 0, marginLeft: ja.aktiv && ja.geschaeftsjahr && ja.monat ? '0' : 'auto' }}
+                      title="Eintrag löschen"
+                    >🗑</button>
+                  </div>
+                ))}
+
+                <div style={{ padding: '7px 10px', background: 'rgba(194,65,12,0.04)', borderRadius: '6px', border: '1px solid rgba(194,65,12,0.12)', fontSize: '11px', color: '#c2410c' }}>
+                  📅 Aufgabe erscheint im geplanten Monat des Folgejahres (Geschäftsjahr + 1)
+                </div>
+              </div>
+            )}
+
+            {jaAuftraege.length === 0 && (
+              <div style={{ padding: '12px 14px', fontSize: '12px', color: 'var(--text-muted)' }}>
+                Noch kein Jahresabschluss-Auftrag angelegt. Klick auf „➕ Jahresabschluss" zum Hinzufügen.
+              </div>
+            )}
+          </div>
+
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function AuftragTab({ client, onUpdate, claudeApiKey, onUpdateClaudeApiKey }) {
   const auftrag = client.auftrag ?? {}
 
@@ -1050,13 +1380,16 @@ export default function AuftragTab({ client, onUpdate, claudeApiKey, onUpdateCla
         )}
       </div>
 
-      {/* ══════════════════ 2. KONTAKTPERSONEN ══════════════════ */}
+      {/* ══════════════════ 2. LAUFENDE AUFTRÄGE ══════════════════ */}
+      <AuftragsBlock client={client} onUpdate={onUpdate} />
+
+      {/* ══════════════════ 3. KONTAKTPERSONEN ══════════════════ */}
       <KontaktpersonenSection client={client} onUpdate={onUpdate} />
 
-      {/* ══════════════════ 3. ABSENDER ══════════════════ */}
+      {/* ══════════════════ 4. ABSENDER ══════════════════ */}
       <AbsenderSection client={client} onUpdate={onUpdate} />
 
-      {/* ══════════════════ 4. API-SCHLÜSSEL ══════════════════ */}
+      {/* ══════════════════ 5. API-SCHLÜSSEL ══════════════════ */}
       <ApiKeySection claudeApiKey={claudeApiKey} onUpdateClaudeApiKey={onUpdateClaudeApiKey} />
 
     </div>
