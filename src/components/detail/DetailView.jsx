@@ -15,8 +15,9 @@ import AuftragWorkflowTab   from './AuftragWorkflowTab.jsx'
 import UStTab               from './UStTab.jsx'
 import FormularTab          from '../formular/FormularTab.jsx'
 import NewClientModal       from '../NewClientModal.jsx'
+import SusaTab              from './SusaTab.jsx'
 
-const TABS = ['🏠 Übersicht', '🗂 Stammdaten', '📊 Status', '✅ Aufgaben', '📁 Abschluss', '💼 Lohn', '🧠 Beratung', '🔢 Rechner', '✉️ Kommunikation', '📂 Dokumente', '📊 ESt', '⚡ Auftrag', '🧾 USt', '📋 Formulare']
+const TABS = ['🏠 Übersicht', '🗂 Stammdaten', '📊 Status', '✅ Aufgaben', '📁 Abschluss', '💼 Lohn', '🧠 Beratung', '🔢 Rechner', '✉️ Kommunikation', '📂 Dokumente', '📊 ESt', '⚡ Auftrag', '🧾 USt', '📋 Formulare', '📊 Abschluss (SuSa)']
 
 
 export default function DetailView({
@@ -276,6 +277,9 @@ export default function DetailView({
             emailVorlagen={emailVorlagen}
             emailSignaturen={emailSignaturen}
           />
+        )}
+        {activeTab === 14 && (
+          <SusaTab key={client.id} client={client} onUpdate={onUpdate} />
         )}
       </div>
 
