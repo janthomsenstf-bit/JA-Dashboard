@@ -15,7 +15,7 @@ import AuftragWorkflowTab   from './AuftragWorkflowTab.jsx'
 import UStTab               from './UStTab.jsx'
 import FormularTab          from '../formular/FormularTab.jsx'
 import NewClientModal       from '../NewClientModal.jsx'
-import SusaTab              from './SusaTab.jsx'
+import SusaTab              from './SUSATab.jsx'
 
 const TABS = ['🏠 Übersicht', '🗂 Stammdaten', '📊 Status', '✅ Aufgaben', '📁 Abschluss', '💼 Lohn', '🧠 Beratung', '🔢 Rechner', '✉️ Kommunikation', '📂 Dokumente', '📊 ESt', '⚡ Auftrag', '🧾 USt', '📋 Formulare', '📊 Abschluss (SuSa)']
 
