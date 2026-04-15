@@ -3,6 +3,33 @@ import { PUNKT_STATUS, RISIKO_CONFIG } from '../../../utils/checklisteConfig.js'
 import { RECHNER_TEMPLATES, TEMPLATE_LIST, fmtEur, parseZ, newInstanz, newFahrzeug, berechneFahrzeug } from '../../../utils/rechnerConfig.js'
 import KfzRechnerSlideIn from '../rechner/KfzRechnerSlideIn.jsx'
 
+// ── KI-Helfer: Rückfrage-Formulierung ────────────────────────────────────────
+async function callClaudeRueckfrage(stichpunkt) {
+  const key = (localStorage.getItem('sda-claude-api-key') ?? '').replace(/\s/g, '')
+  if (!key) throw new Error('Kein Claude API-Schlüssel hinterlegt (Tab Stammdaten → API-Schlüssel).')
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': key,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true',
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 256,
+      system: 'Du bist Steuerberater-Assistent. Formuliere aus dem Stichpunkt eine höfliche, professionelle Rückfrage an den Mandanten. Antworte NUR mit dem fertigen Satz, keine Erklärungen.',
+      messages: [{ role: 'user', content: stichpunkt }],
+    }),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.error?.message ?? `HTTP ${res.status}`)
+  }
+  const d = await res.json()
+  return (d.content?.[0]?.text ?? '').trim()
+}
+
 // ── Sortierlogik ─────────────────────────────────────────────────────────────
 function sortScore(data) {
   if (data?.relevant === false) return 30       // ganz unten: NEIN
@@ -180,7 +207,9 @@ function PruefPunkt({ blockId, punktCfg, data, blockDisabled, onUpdate, onAddRue
   const relevant    = data?.relevant ?? null   // null | true | false
   const status      = data?.status  ?? 'offen'
   const risiko      = data?.risiko  ?? null
-  const eintraege   = normalizeEintraege(data)  // immer ≥1 Eintrag
+  const eintraege      = normalizeEintraege(data)  // immer ≥1 Eintrag
+  const rueckfrageText = data?.rueckfrageText ?? ''
+  const [kiLoading, setKiLoading] = useState(false)
 
   const isNein      = relevant === false || blockDisabled
   const isErledigt  = status === 'erledigt'
@@ -188,7 +217,7 @@ function PruefPunkt({ blockId, punktCfg, data, blockDisabled, onUpdate, onAddRue
 
   // Kern-Update: schreibt immer das neue eintraege-Format zurück
   function updPunkt(changes) {
-    onUpdate(blockId, punktCfg.id, { status, risiko, relevant, eintraege, ...changes })
+    onUpdate(blockId, punktCfg.id, { status, risiko, relevant, eintraege, rueckfrageText, ...changes })
   }
 
   // Einzelnen Eintrag bearbeiten
@@ -210,9 +239,27 @@ function PruefPunkt({ blockId, punktCfg, data, blockDisabled, onUpdate, onAddRue
     updPunkt({ eintraege: next })
   }
 
+  // KI: Rückfrage-Text formulieren lassen
+  async function handleKiRueckfrage() {
+    if (!rueckfrageText.trim()) return
+    setKiLoading(true)
+    try {
+      const result = await callClaudeRueckfrage(rueckfrageText)
+      updPunkt({ rueckfrageText: result })
+    } catch (e) {
+      alert('KI-Fehler: ' + e.message)
+    } finally {
+      setKiLoading(false)
+    }
+  }
+
   const statusOrder  = ['geprueft', 'rueckfrage', 'erledigt']
   const firstEintrag = eintraege[0]
   const hasMultiple  = eintraege.length > 1
+  const eintraegePreview = hasMultiple ? (() => {
+    const k = eintraege.slice(0, 2).map(e => e.konto).filter(Boolean)
+    return `${eintraege.length} Einträge${k.length ? ' · ' + k.join(', ') + (eintraege.length > 2 ? ', …' : '') : ''}`
+  })() : null
 
   const rowBg = isNein ? 'transparent'
               : isErledigt   ? 'rgba(22,163,74,0.06)'
@@ -292,7 +339,7 @@ function PruefPunkt({ blockId, punktCfg, data, blockDisabled, onUpdate, onAddRue
           {/* Mehrfach-Einträge Badge */}
           {hasMultiple && !expanded && (
             <span style={{ fontSize: '10px', fontWeight: 700, padding: '0 6px', borderRadius: '5px', background: 'rgba(37,99,235,0.1)', color: '#2563eb', flexShrink: 0 }}>
-              {eintraege.length} Einträge
+              {eintraegePreview}
             </span>
           )}
           {risiko && !isNein && (
@@ -304,6 +351,17 @@ function PruefPunkt({ blockId, punktCfg, data, blockDisabled, onUpdate, onAddRue
           {firstEintrag?.notiz && !expanded && !isNein && !hasMultiple && (
             <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontStyle: 'italic' }}>
               · {firstEintrag.notiz.slice(0, 55)}{firstEintrag.notiz.length > 55 ? '…' : ''}
+            </span>
+          )}
+          {/* Rückfrage-Text Preview (collapsed) */}
+          {rueckfrageText && !expanded && !isNein && (
+            <span style={{
+              fontSize: '10px', fontWeight: 600, padding: '0 6px', borderRadius: '5px',
+              background: 'rgba(217,119,6,0.12)', color: '#d97706',
+              flexShrink: 0, maxWidth: '180px',
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>
+              ❓ {rueckfrageText.slice(0, 45)}{rueckfrageText.length > 45 ? '…' : ''}
             </span>
           )}
           {punktCfg.hinweis && !isNein && (
@@ -361,9 +419,19 @@ function PruefPunkt({ blockId, punktCfg, data, blockDisabled, onUpdate, onAddRue
                 <div>
                   {idx === 0 && <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>📝 Notiz / Befund</label>}
                   {idx > 0 && <div style={{ height: '17px' }} />}
-                  <input type="text" value={eintrag.notiz} onChange={e => updEintrag(idx, 'notiz', e.target.value)}
+                  <textarea value={eintrag.notiz} onChange={e => updEintrag(idx, 'notiz', e.target.value)}
                     placeholder="Erläuterung, Befund, Hinweis…"
-                    style={inputStyle} />
+                    rows={2}
+                    style={{
+                      ...inputStyle,
+                      resize: 'vertical',
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-word',
+                      overflowX: 'hidden',
+                      lineHeight: '1.4',
+                      fontFamily: 'inherit',
+                      minHeight: '42px',
+                    }} />
                 </div>
                 {/* Löschen-Button — nur sichtbar wenn mehr als 1 Eintrag */}
                 <div style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: '1px' }}>
@@ -389,6 +457,52 @@ function PruefPunkt({ blockId, punktCfg, data, blockDisabled, onUpdate, onAddRue
               onMouseLeave={e => { e.currentTarget.style.background = 'rgba(37,99,235,0.07)' }}>
               + Eintrag hinzufügen
             </button>
+          </div>
+
+          {/* ── Rückfrage-Text + KI-Button ── */}
+          <div style={{
+            padding: '10px',
+            background: isRueckfrage ? 'rgba(217,119,6,0.05)' : 'rgba(0,0,0,0.02)',
+            border: isRueckfrage ? '1px solid rgba(217,119,6,0.3)' : '1px solid var(--border)',
+            borderRadius: '8px',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+              <label style={{ fontSize: '11px', fontWeight: 700, color: isRueckfrage ? '#d97706' : 'var(--text-muted)', flex: 1 }}>
+                ❓ Rückfrage an Mandant
+              </label>
+              <button
+                onClick={handleKiRueckfrage}
+                disabled={kiLoading || !rueckfrageText.trim()}
+                title="Stichpunkt per KI in professionelle Rückfrage umformulieren"
+                style={{
+                  fontSize: '10px', padding: '3px 9px', borderRadius: '5px',
+                  border: '1px solid rgba(124,58,237,0.4)',
+                  background: kiLoading ? 'rgba(124,58,237,0.04)' : 'rgba(124,58,237,0.08)',
+                  color: '#7c3aed', cursor: (!rueckfrageText.trim() || kiLoading) ? 'not-allowed' : 'pointer',
+                  fontWeight: 700, opacity: (!rueckfrageText.trim() || kiLoading) ? 0.45 : 1,
+                  display: 'flex', alignItems: 'center', gap: '4px', transition: 'all 0.12s',
+                }}
+                onMouseEnter={e => { if (rueckfrageText.trim() && !kiLoading) e.currentTarget.style.background = 'rgba(124,58,237,0.15)' }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'rgba(124,58,237,0.08)' }}
+              >
+                {kiLoading ? '⏳' : '🤖'} KI formulieren
+              </button>
+            </div>
+            <textarea
+              value={rueckfrageText}
+              onChange={e => updPunkt({ rueckfrageText: e.target.value })}
+              placeholder="Stichpunkte eingeben → KI formuliert daraus eine Rückfrage. Z.B.: Betrag 1520 unklar, Beleg fehlt"
+              rows={2}
+              style={{
+                width: '100%', boxSizing: 'border-box', padding: '6px 10px',
+                borderRadius: '6px',
+                border: isRueckfrage ? '1px solid rgba(217,119,6,0.45)' : '1px solid var(--border)',
+                background: isRueckfrage ? 'rgba(255,255,255,0.6)' : 'var(--surface)',
+                color: 'var(--text)', fontSize: '12px',
+                resize: 'vertical', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                overflowX: 'hidden', lineHeight: '1.5', fontFamily: 'inherit', minHeight: '44px',
+              }}
+            />
           </div>
 
           {/* Risikobewertung */}
