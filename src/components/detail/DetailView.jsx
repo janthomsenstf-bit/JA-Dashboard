@@ -17,7 +17,23 @@ import FormularTab          from '../formular/FormularTab.jsx'
 import NewClientModal       from '../NewClientModal.jsx'
 import SusaTab              from './SUSATab.jsx'
 
-const TABS = ['🏠 Übersicht', '🗂 Stammdaten', '📊 Status', '✅ Aufgaben', '📁 Abschluss', '💼 Lohn', '🧠 Beratung', '🔢 Rechner', '✉️ Kommunikation', '📂 Dokumente', '📊 ESt', '⚡ Auftrag', '🧾 USt', '📋 Formulare', '📊 Abschluss (SuSa)']
+const TAB_NAV = [
+  { icon: '🏠', short: 'Übersicht'  },
+  { icon: '🗂', short: 'Stammdaten' },
+  { icon: '📊', short: 'Status'     },
+  { icon: '✅', short: 'Aufgaben'   },
+  { icon: '📁', short: 'Abschluss'  },
+  { icon: '💼', short: 'Lohn'       },
+  { icon: '🧠', short: 'Beratung'   },
+  { icon: '🔢', short: 'Rechner'    },
+  { icon: '✉️', short: 'Komm.'      },
+  { icon: '📂', short: 'Dokumente'  },
+  { icon: '📊', short: 'ESt'        },
+  { icon: '⚡', short: 'Auftrag'    },
+  { icon: '🧾', short: 'USt'        },
+  { icon: '📋', short: 'Formulare'  },
+  { icon: '📊', short: 'SuSa'       },
+]
 
 
 export default function DetailView({
@@ -74,7 +90,7 @@ export default function DetailView({
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       {/* Detail Header */}
       <div className="detail-header">
         <div className="detail-header-top">
@@ -129,19 +145,6 @@ export default function DetailView({
               🗑 Löschen
             </button>
           </div>
-        </div>
-
-        {/* Tab bar */}
-        <div className="tab-bar">
-          {TABS.map((tab, i) => (
-            <button
-              key={i}
-              className={`tab-btn${activeTab === i ? ' active' : ''}`}
-              onClick={() => setActiveTab(i)}
-            >
-              {tab}
-            </button>
-          ))}
         </div>
 
         {/* ── Status-Strip ── */}
@@ -207,8 +210,11 @@ export default function DetailView({
         })()}
       </div>
 
+      {/* Body: Inhalt + vertikale Tab-Navigation rechts */}
+      <div style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
+
       {/* Tab content */}
-      <div style={{ flex: 1 }}>
+      <div style={{ flex: 1, overflowY: 'auto', minWidth: 0 }}>
         {activeTab === 0 && (
           <UebersichtTab key={client.id} client={client} onNavigateToTab={setActiveTab} onUpdate={onUpdate} />
         )}
@@ -281,7 +287,24 @@ export default function DetailView({
         {activeTab === 14 && (
           <SusaTab key={client.id} client={client} onUpdate={onUpdate} />
         )}
-      </div>
+      </div>{/* end tab content */}
+
+      {/* ── Vertikale Tab-Navigation rechts ── */}
+      <nav className="tab-nav-right" aria-label="Reiter">
+        {TAB_NAV.map((tab, i) => (
+          <button
+            key={i}
+            className={`tab-nav-btn${activeTab === i ? ' active' : ''}`}
+            onClick={() => setActiveTab(i)}
+            title={tab.short}
+          >
+            <span className="tab-nav-icon">{tab.icon}</span>
+            <span className="tab-nav-label">{tab.short}</span>
+          </button>
+        ))}
+      </nav>
+
+      </div>{/* end body flex row */}
 
       {/* Bearbeitungs-Modal */}
       {showEdit && (

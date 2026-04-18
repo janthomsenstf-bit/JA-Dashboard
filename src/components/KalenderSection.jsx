@@ -53,7 +53,7 @@ function fmtDatum(ymd, uhrzeit) {
   return uhrzeit ? `${base} ${uhrzeit}` : base
 }
 
-export default function KalenderSection({ termine, clients, onAdd, onUpdate, onDelete, compact = false, prefillMandantId = null }) {
+export default function KalenderSection({ termine, clients, onAdd, onUpdate, onDelete, compact = false, prefillMandantId = null, eventsOnly = false }) {
   const [currentMonth, setCurrentMonth] = useState(() => {
     const now = new Date()
     return new Date(now.getFullYear(), now.getMonth(), 1)
@@ -113,6 +113,79 @@ export default function KalenderSection({ termine, clients, onAdd, onUpdate, onD
 
   function handleDeleteDay(id) {
     if (window.confirm('Termin wirklich löschen?')) onDelete(id)
+  }
+
+  // ── Kompakter Events-only Modus ────────────────────────────��──────────────────
+  if (eventsOnly) {
+    const upcomingTermine = termine
+      .filter(t => {
+        const d = new Date(t.datum); d.setHours(0, 0, 0, 0)
+        return d >= new Date(today.getTime() - 24 * 60 * 60 * 1000)
+      })
+      .sort((a, b) => a.datum.localeCompare(b.datum) || (a.uhrzeit || '').localeCompare(b.uhrzeit || ''))
+      .slice(0, 10)
+
+    return (
+      <div className="kalender-events-only">
+        <div className="kalender-events-only-header">
+          <span style={{ fontWeight: 700, fontSize: '13px' }}>📅 Termine</span>
+          {pendingCount > 0 && (
+            <span className="badge badge-blue" style={{ fontSize: '10px' }}>{pendingCount}</span>
+          )}
+          <button
+            className="btn btn-primary btn-sm"
+            onClick={() => { setEditTermin(null); setShowModal(true) }}
+            style={{ marginLeft: 'auto', fontSize: '11px', padding: '3px 8px' }}
+          >＋ Neu</button>
+        </div>
+
+        <div className="kalender-events-only-list">
+          {upcomingTermine.length === 0 ? (
+            <div style={{ padding: '20px 12px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '12px' }}>
+              Keine anstehenden Termine
+            </div>
+          ) : upcomingTermine.map(t => {
+            const cfg      = ART_CONFIG[t.art] ?? ART_CONFIG.erinnerung
+            const tDate    = new Date(t.datum); tDate.setHours(0, 0, 0, 0)
+            const isToday  = t.datum === todayStr
+            const isOverdue= !t.erledigt && tDate < today
+            const mandant  = getMandantName(t.mandantId)
+            return (
+              <div key={t.id} className={`kalender-events-only-item${t.erledigt ? ' done' : ''}${isOverdue ? ' overdue' : ''}`}>
+                <span className="ev-art-badge" style={{ background: cfg.bg }} title={cfg.label}>{cfg.icon}</span>
+                <div className="ev-info">
+                  <div className="ev-datum" style={{ color: isOverdue ? 'var(--red)' : isToday ? 'var(--accent)' : 'var(--text-muted)' }}>
+                    {isToday && <strong style={{ marginRight: '4px' }}>HEUTE</strong>}
+                    {isOverdue && <span style={{ marginRight: '4px' }}>⚠</span>}
+                    {fmtDatum(t.datum, t.uhrzeit)}
+                  </div>
+                  {mandant && <div className="ev-mandant">{mandant}</div>}
+                  {t.beschreibung && <div className="ev-beschreibung">{t.beschreibung}</div>}
+                </div>
+                <div className="ev-actions">
+                  <input type="checkbox" checked={!!t.erledigt}
+                    onChange={e => onUpdate(t.id, { erledigt: e.target.checked })}
+                    style={{ cursor: 'pointer', accentColor: 'var(--green)' }} />
+                  <button className="btn btn-ghost btn-sm"
+                    onClick={() => { setEditTermin(t); setShowModal(true) }}
+                    style={{ fontSize: '10px', padding: '1px 4px' }} title="Bearbeiten">✏️</button>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+
+        {showModal && (
+          <TerminModal
+            termin={editTermin}
+            clients={clients}
+            prefillMandantId={editTermin ? null : prefillMandantId}
+            onSave={handleSave}
+            onClose={() => { setShowModal(false); setEditTermin(null) }}
+          />
+        )}
+      </div>
+    )
   }
 
   function getMandantName(mandantId) {

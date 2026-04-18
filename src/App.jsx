@@ -1158,11 +1158,13 @@ export default function App() {
         {/* Right column */}
         <div className="col-right">
           {selectedId === '__todo__' ? (
-            <GlobalTodoView
-              clients={clients}
-              onUpdateClient={updateClient}
-              onSelectClient={id => setSelectedId(id)}
-            />
+            <div style={{ flex: 1, overflowY: 'auto' }}>
+              <GlobalTodoView
+                clients={clients}
+                onUpdateClient={updateClient}
+                onSelectClient={id => setSelectedId(id)}
+              />
+            </div>
           ) : selectedClient ? (
             <DetailView
               client={selectedClient}
@@ -1205,12 +1207,14 @@ export default function App() {
               onUpdateFormVorlagen={setFormVorlagen}
             />
           ) : (
-            <StartseiteHome
-              clients={clients}
-              onSelectClient={(id) => { setDetailInitialTab(0); setSelectedId(id) }}
-              onSelectClientAtKomm={openClientAtKomm}
-              onUpdateClient={updateClient}
-            />
+            <div style={{ flex: 1, overflowY: 'auto' }}>
+              <StartseiteHome
+                clients={clients}
+                onSelectClient={(id) => { setDetailInitialTab(0); setSelectedId(id) }}
+                onSelectClientAtKomm={openClientAtKomm}
+                onUpdateClient={updateClient}
+              />
+            </div>
           )}
         </div>
 
@@ -1223,7 +1227,7 @@ export default function App() {
               onAdd={addTermin}
               onUpdate={updateTermin}
               onDelete={deleteTermin}
-              compact={true}
+              eventsOnly={true}
               prefillMandantId={selectedId}
             />
           </div>
