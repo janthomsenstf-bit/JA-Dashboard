@@ -1737,6 +1737,12 @@ function EmailDetailPanel({
   const [replySending,    setReplySending]     = useState(false)
   const [replyError,      setReplyError]       = useState('')
 
+  // ── Diktieren + KI-Optimierung ────────────────────────────────
+  const recRef          = useRef(null)
+  const [dictating,    setDictating]    = useState(false)
+  const [kiOptLoad,    setKiOptLoad]    = useState(false)
+  const [kiOptErr,     setKiOptErr]     = useState('')
+
   const cfg   = TYP_CONFIG[entry.typ]   ?? TYP_CONFIG.frei
   const sbCfg = STATUS_BADGES[entry.status] ?? STATUS_BADGES.entwurf
 
@@ -1834,6 +1840,70 @@ function EmailDetailPanel({
       setReplySending(false)
     }
   }
+
+  // ── Diktierfunktion (Web Speech API) ──────────────────────────
+  function startDictation() {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition
+    if (!SR) { showToast('Diktat nicht verfügbar (Chrome empfohlen)'); return }
+    const rec = new SR()
+    rec.lang = 'de-DE'
+    rec.continuous = true
+    rec.interimResults = false
+    rec.onresult = e => {
+      let chunk = ''
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        if (e.results[i].isFinal) chunk += e.results[i][0].transcript + ' '
+      }
+      if (chunk) {
+        setReplyText(prev => {
+          const sep = prev && !prev.endsWith(' ') && !prev.endsWith('\n') ? ' ' : ''
+          return prev + sep + chunk
+        })
+      }
+    }
+    rec.onerror = ev => {
+      if (ev.error !== 'aborted') showToast('Diktierfehler: ' + ev.error)
+      setDictating(false)
+    }
+    rec.onend = () => setDictating(false)
+    recRef.current = rec
+    rec.start()
+    setDictating(true)
+  }
+
+  function stopDictation() {
+    recRef.current?.stop()
+    recRef.current = null
+    setDictating(false)
+  }
+
+  // ── KI-Textoptimierung ────────────────────────────────────────
+  const KI_OPT_PROMPTS = {
+    freundlicher:    'Formuliere diesen E-Mail-Text freundlicher und herzlicher. Behalte alle inhaltlichen Punkte exakt bei. Antworte NUR mit JSON: {"text":"..."}',
+    kuerzer:         'Kuerze diesen E-Mail-Text auf das Wesentliche, ohne inhaltliche Verluste. Antworte NUR mit JSON: {"text":"..."}',
+    klarer:          'Formuliere diesen E-Mail-Text klarer und verstaendlicher. Antworte NUR mit JSON: {"text":"..."}',
+    professioneller: 'Formuliere diesen E-Mail-Text professioneller im Stil einer Steuerkanzlei. Antworte NUR mit JSON: {"text":"..."}',
+    'du-form':       'Formuliere diesen E-Mail-Text in Du-Form um. Behalte den Inhalt. Antworte NUR mit JSON: {"text":"..."}',
+    'sie-form':      'Formuliere diesen E-Mail-Text in formeller Sie-Form um. Behalte den Inhalt. Antworte NUR mit JSON: {"text":"..."}',
+    en:              'Translate this email text into English. Answer ONLY with JSON: {"text":"..."}',
+    dk:              'Oversat denne e-mail tekst til dansk. Svar KUN med JSON: {"text":"..."}',
+    de:              'Ueberse diesen Text ins Deutsche. Antworte NUR mit JSON: {"text":"..."}',
+  }
+
+  async function handleKiOpt(aktion) {
+    if (!replyText.trim()) { showToast('Zuerst Text eingeben'); return }
+    setKiOptLoad(true)
+    setKiOptErr('')
+    try {
+      const result = await callClaude(KI_OPT_PROMPTS[aktion], replyText)
+      if (result.text) setReplyText(result.text)
+    } catch (e) {
+      setKiOptErr(e.message)
+    } finally {
+      setKiOptLoad(false)
+    }
+  }
+
   function handleAufgabe() {
     if (!aufgabeTitel.trim()) return
     const newTask = {
@@ -2118,16 +2188,94 @@ function EmailDetailPanel({
               )}
             </div>
 
+            {/* ── Editor-Toolbar: Diktieren + KI-Optionen ── */}
+            <div style={{
+              display: 'flex', flexWrap: 'wrap', gap: '4px', alignItems: 'center',
+              padding: '5px 8px', background: 'var(--surface2)',
+              borderRadius: '6px', border: '1px solid var(--border)',
+            }}>
+              {/* Mikrofon */}
+              <button
+                className="btn btn-sm"
+                onClick={dictating ? stopDictation : startDictation}
+                title={dictating ? 'Diktat stoppen' : 'Spracheingabe starten (de-DE)'}
+                style={{
+                  fontSize: '11px', fontWeight: 700,
+                  background: dictating ? '#dc2626' : 'transparent',
+                  color: dictating ? '#fff' : 'var(--text)',
+                  border: dictating ? '1px solid #dc2626' : '1px solid var(--border)',
+                  padding: '3px 8px', borderRadius: '5px',
+                  animation: dictating ? 'dictPulse 1.2s ease-in-out infinite' : 'none',
+                }}
+              >
+                {dictating ? '⏹ Stop' : '🎤 Diktieren'}
+              </button>
+
+              {/* Separator */}
+              <span style={{ borderLeft: '1px solid var(--border)', height: '16px', margin: '0 2px' }} />
+              <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600 }}>KI:</span>
+
+              {/* Ton */}
+              {[
+                { key: 'freundlicher',    label: '😊 Freundl.' },
+                { key: 'kuerzer',         label: '✂️ Kürzer'   },
+                { key: 'klarer',          label: '💡 Klarer'   },
+                { key: 'professioneller', label: '👔 Profess.' },
+              ].map(({ key, label }) => (
+                <button key={key} className="btn btn-ghost btn-sm"
+                  onClick={() => handleKiOpt(key)} disabled={kiOptLoad || !replyText.trim()}
+                  style={{ fontSize: '10px', padding: '3px 7px' }} title={label}>
+                  {label}
+                </button>
+              ))}
+
+              {/* Ansprache */}
+              <span style={{ borderLeft: '1px solid var(--border)', height: '16px', margin: '0 2px' }} />
+              {[
+                { key: 'du-form',  label: 'Du'  },
+                { key: 'sie-form', label: 'Sie' },
+              ].map(({ key, label }) => (
+                <button key={key} className="btn btn-ghost btn-sm"
+                  onClick={() => handleKiOpt(key)} disabled={kiOptLoad || !replyText.trim()}
+                  style={{ fontSize: '10px', padding: '3px 7px' }}>
+                  {label}
+                </button>
+              ))}
+
+              {/* Übersetzen */}
+              <span style={{ borderLeft: '1px solid var(--border)', height: '16px', margin: '0 2px' }} />
+              {[
+                { key: 'en', label: '🇬🇧 EN' },
+                { key: 'dk', label: '🇩🇰 DK' },
+                { key: 'de', label: '🇩🇪 DE' },
+              ].map(({ key, label }) => (
+                <button key={key} className="btn btn-ghost btn-sm"
+                  onClick={() => handleKiOpt(key)} disabled={kiOptLoad || !replyText.trim()}
+                  style={{ fontSize: '10px', padding: '3px 7px' }}>
+                  {label}
+                </button>
+              ))}
+
+              {kiOptLoad && <span style={{ fontSize: '12px', marginLeft: '4px' }}>⏳</span>}
+            </div>
+
+            {kiOptErr && (
+              <div style={{ fontSize: '11px', color: '#dc2626', padding: '4px 8px', background: 'rgba(220,38,38,0.06)', borderRadius: '4px' }}>
+                KI-Fehler: {kiOptErr}
+              </div>
+            )}
+
             {/* Textarea – nur mein neuer Text */}
             <textarea
               className="input"
               value={replyText}
               onChange={e => setReplyText(e.target.value)}
-              placeholder="Antworttext…"
+              placeholder="Antworttext… (oder 🎤 Diktieren klicken)"
               autoFocus
               style={{
                 width: '100%', minHeight: '110px', resize: 'vertical', fontSize: '13px',
                 fontFamily: 'inherit', lineHeight: '1.6', padding: '8px 10px', boxSizing: 'border-box',
+                ...(dictating ? { borderColor: '#dc2626', boxShadow: '0 0 0 2px rgba(220,38,38,0.15)' } : {}),
               }}
             />
 
