@@ -115,7 +115,19 @@ export default function KalenderSection({ termine, clients, onAdd, onUpdate, onD
     if (window.confirm('Termin wirklich löschen?')) onDelete(id)
   }
 
-  // ── Kompakter Events-only Modus ────────────────────────────��──────────────────
+  function getMandantName(mandantId) {
+    if (!mandantId) return null
+    const c = clients.find(cl => cl.id === mandantId)
+    return c ? c.name : null
+  }
+
+  const pendingCount = termine.filter(t => {
+    const d = new Date(t.datum)
+    d.setHours(0, 0, 0, 0)
+    return !t.erledigt && d >= today
+  }).length
+
+  // ── Kompakter Events-only Modus ────────────────────────────────────────────
   if (eventsOnly) {
     const upcomingTermine = termine
       .filter(t => {
@@ -188,24 +200,12 @@ export default function KalenderSection({ termine, clients, onAdd, onUpdate, onD
     )
   }
 
-  function getMandantName(mandantId) {
-    if (!mandantId) return null
-    const c = clients.find(cl => cl.id === mandantId)
-    return c ? c.name : null
-  }
-
   // Filter-Label wenn Tag ausgewählt
   function selectedDayLabel() {
     if (!selectedDay) return null
     const [y, mo, d] = selectedDay.split('-')
     return `${d}.${mo}.${y}`
   }
-
-  const pendingCount = termine.filter(t => {
-    const d = new Date(t.datum)
-    d.setHours(0, 0, 0, 0)
-    return !t.erledigt && d >= today
-  }).length
 
   return (
     <div className={compact ? 'kalender-section-compact' : 'kalender-section'}>
