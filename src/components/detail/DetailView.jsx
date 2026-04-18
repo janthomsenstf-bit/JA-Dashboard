@@ -16,6 +16,7 @@ import UStTab               from './UStTab.jsx'
 import FormularTab          from '../formular/FormularTab.jsx'
 import NewClientModal       from '../NewClientModal.jsx'
 import SusaTab              from './SUSATab.jsx'
+import MobileBottomNav      from '../MobileBottomNav.jsx'
 
 const TAB_NAV = [
   { icon: '🏠', short: 'Übersicht'  },
@@ -305,6 +306,9 @@ export default function DetailView({
       </nav>
 
       </div>{/* end body flex row */}
+
+      {/* Mobile Bottom Navigation (nur auf ≤768px sichtbar via CSS) */}
+      <MobileBottomNav activeTab={activeTab} setActiveTab={setActiveTab} />
 
       {/* Bearbeitungs-Modal */}
       {showEdit && (

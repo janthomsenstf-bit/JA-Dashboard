@@ -27,6 +27,7 @@
     "electron": "^40.7.0",
     "electron-builder": "^26.8.1",
     "vite": "^5.4.2",
+    "vite-plugin-pwa": "^1.2.0",
     "wait-on": "^9.0.4"
   }
 }

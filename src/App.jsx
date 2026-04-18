@@ -873,6 +873,15 @@ export default function App() {
     <div className="app-layout">
       {/* Header */}
       <header className="app-header">
+        {/* Mobile Hamburger (nur auf ≤768px) */}
+        <button
+          className="mobile-hamburger"
+          onClick={() => setSidebarOpen(o => !o)}
+          aria-label="Mandanten-Liste"
+        >
+          ☰
+        </button>
+
         <div className="app-header-logo" onClick={() => setSelectedId(null)} style={{ cursor: 'pointer' }}>
           <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
             <rect width="28" height="28" rx="6" fill="var(--accent-dim)"/>
@@ -881,7 +890,7 @@ export default function App() {
           <div>
             <h1>Jan's Spielbuch</h1>
           </div>
-          <span style={{color:'var(--text-muted)', fontSize:'12px', marginLeft:'4px'}}>
+          <span className="header-subtitle" style={{color:'var(--text-muted)', fontSize:'12px', marginLeft:'4px'}}>
             Jahresabschluss-Dashboard
           </span>
         </div>
@@ -1104,9 +1113,14 @@ export default function App() {
 
       {/* Body */}
       <div className="app-body">
+        {/* Mobile Sidebar-Backdrop */}
+        {sidebarOpen && (
+          <div className="mobile-sidebar-backdrop" onClick={() => setSidebarOpen(false)} />
+        )}
+
         {/* Left column – einklappbar */}
         <div
-          className="col-left"
+          className={`col-left${sidebarOpen ? ' open' : ''}`}
           style={sidebarOpen ? {} : { width: '44px', minWidth: '44px', overflow: 'hidden' }}
         >
           {/* Toggle-Button */}

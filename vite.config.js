@@ -1,13 +1,46 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { VitePWA } from 'vite-plugin-pwa'
 
-// Proxy leitet /api/claude/* → https://api.anthropic.com/* weiter.
-// Dadurch können wir die Anthropic-API direkt aus dem Browser aufrufen
-// ohne CORS-Probleme (funktioniert beim lokalen `npm run dev`).
 export default defineConfig({
-  // base './' nur für Electron-Build – für Vercel muss '/' gesetzt sein
   base: '/',
-  plugins: [react()],
+  plugins: [
+    react(),
+    VitePWA({
+      registerType: 'autoUpdate',
+      includeAssets: ['icon.svg'],
+      manifest: {
+        name: 'JA-Dashboard',
+        short_name: 'JA-Dash',
+        description: 'Jahresabschluss-Dashboard – Steuerkanzlei',
+        theme_color: '#1e40af',
+        background_color: '#0f172a',
+        display: 'standalone',
+        start_url: '/',
+        scope: '/',
+        orientation: 'portrait-primary',
+        icons: [
+          {
+            src: 'icon.svg',
+            sizes: 'any',
+            type: 'image/svg+xml',
+            purpose: 'any maskable',
+          },
+        ],
+      },
+      workbox: {
+        // Cache static assets; API calls pass through to network
+        globPatterns: ['**/*.{js,css,html,svg,woff2}'],
+        runtimeCaching: [
+          {
+            urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
+            handler: 'CacheFirst',
+            options: { cacheName: 'google-fonts', expiration: { maxEntries: 4, maxAgeSeconds: 365 * 24 * 60 * 60 } },
+          },
+        ],
+      },
+    }),
+  ],
   server: {
     proxy: {
       '/api/claude': {

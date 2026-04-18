@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Background -->
+  <rect width="512" height="512" rx="96" fill="#1e40af"/>
+  <!-- Document card -->
+  <rect x="96" y="96" width="320" height="400" rx="24" fill="rgba(255,255,255,0.12)" stroke="rgba(255,255,255,0.25)" stroke-width="8"/>
+  <!-- Header bar -->
+  <rect x="96" y="96" width="320" height="72" rx="24" fill="rgba(255,255,255,0.2)"/>
+  <rect x="96" y="136" width="320" height="32" fill="rgba(255,255,255,0.2)"/>
+  <!-- Content lines -->
+  <rect x="136" y="212" width="180" height="14" rx="7" fill="rgba(255,255,255,0.8)"/>
+  <rect x="136" y="244" width="140" height="14" rx="7" fill="rgba(255,255,255,0.55)"/>
+  <rect x="136" y="276" width="160" height="14" rx="7" fill="rgba(255,255,255,0.55)"/>
+  <rect x="136" y="308" width="120" height="14" rx="7" fill="rgba(255,255,255,0.55)"/>
+  <!-- Checkmark badge -->
+  <circle cx="368" cy="376" r="72" fill="#2563eb"/>
+  <circle cx="368" cy="376" r="64" fill="#1d4ed8"/>
+  <!-- Check -->
+  <path d="M336 376 L356 398 L404 348" stroke="white" stroke-width="20" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+</svg>
