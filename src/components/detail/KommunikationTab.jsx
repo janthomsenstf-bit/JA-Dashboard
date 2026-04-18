@@ -1692,6 +1692,7 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
           sendFromHistory={sendFromHistory}
           actionForm={actionForm}
           setActionForm={setActionForm}
+          emailSignaturen={emailSignaturen}
         />
       )}
     </div>
@@ -1707,6 +1708,7 @@ function EmailDetailPanel({
   setActivTyp, setEmpfaenger, setAbsenderVal, setBetreff, setText, setCC, setBCC, setEditorOpen,
   sendFromHistory,
   actionForm, setActionForm,
+  emailSignaturen = [],
 }) {
   const [toast,          setToast]          = useState('')
   const [aufgabeTitel,   setAufgabeTitel]   = useState(entry.betreff ?? '')
@@ -1719,6 +1721,21 @@ function EmailDetailPanel({
   const [panelAiError,   setPanelAiError]   = useState('')
   const [showTranslate,  setShowTranslate]  = useState(false)
   const [translateLang,  setTranslateLang]  = useState('Deutsch')
+
+  // ── Inline-Antwort ────────────────────────────────────────────
+  const [absenderList]    = useState(loadAbsender)
+  const [replyMode,       setReplyMode]        = useState(false)
+  const [replyText,       setReplyText]        = useState('')
+  const [replyBetreff,    setReplyBetreff]     = useState('Re: ' + (entry.betreff ?? ''))
+  const [replyEmpfaenger, setReplyEmpfaenger]  = useState(entry.absender ?? '')
+  const [replyAbsenderVal,setReplyAbsenderVal] = useState(() => {
+    const list = loadAbsender()
+    return (list.find(a => a.isDefault) ?? list[0])?.email ?? ''
+  })
+  const [replyCC,         setReplyCC]          = useState('')
+  const [replySigId,      setReplySigId]       = useState(() => emailSignaturen.find(s => s.isDefault)?.id ?? '')
+  const [replySending,    setReplySending]     = useState(false)
+  const [replyError,      setReplyError]       = useState('')
 
   const cfg   = TYP_CONFIG[entry.typ]   ?? TYP_CONFIG.frei
   const sbCfg = STATUS_BADGES[entry.status] ?? STATUS_BADGES.entwurf
@@ -1764,14 +1781,9 @@ function EmailDetailPanel({
       const result = await callClaude(prompt, input)
       setPanelAiResult(result.text ?? '')
       if (aktion === 'antwort' && result.text) {
-        setActivTyp('frei')
-        setEmpfaenger(entry.absender ?? '')
-        setAbsenderVal('')
-        setBetreff(result.betreff || 'Re: ' + (entry.betreff ?? ''))
-        setText(result.text)
-        setCC(''); setBCC('')
-        setEditorOpen(true)
-        onClose()
+        setReplyBetreff(result.betreff || 'Re: ' + (entry.betreff ?? ''))
+        setReplyText(result.text)
+        setReplyMode(true)
       }
     } catch (e) {
       setPanelAiError(e.message)
@@ -1781,14 +1793,46 @@ function EmailDetailPanel({
   }
 
   function handleReply() {
-    setActivTyp('frei')
-    setEmpfaenger(entry.absender ?? '')
-    setAbsenderVal('')
-    setBetreff('Re: ' + (entry.betreff ?? ''))
-    setText('\n\n--- Original-Nachricht ---\nVon: ' + (entry.absender ?? '') + '\n' + (entry.text ?? ''))
-    setCC(''); setBCC('')
-    setEditorOpen(true)
-    onClose()
+    setReplyBetreff('Re: ' + (entry.betreff ?? ''))
+    setReplyEmpfaenger(entry.absender ?? '')
+    setReplyText('')
+    setReplyMode(true)
+  }
+
+  async function handleSendReply() {
+    if (!replyText.trim()) return
+    setReplySending(true)
+    setReplyError('')
+    const sig = emailSignaturen.find(s => s.id === replySigId)
+    // Richtige Reihenfolge: mein Text → Signatur → Original-Zitat
+    const quoteHead = '\n\n--- Original-Nachricht ---\nVon: ' + (entry.absender ?? '') + '\nBetreff: ' + (entry.betreff ?? '') + '\n'
+    const fullBody = replyText
+      + (sig ? '\n\n--\n' + sig.text : '')
+      + quoteHead
+      + (entry.text ?? '')
+    const selectedAbs = absenderList.find(a => a.email === replyAbsenderVal)
+    const account = selectedAbs?.konto ?? 'hostinger'
+    const now = new Date().toISOString()
+    const newEvent = {
+      id: 'ev' + Date.now().toString(36),
+      typ: 'frei', status: 'gesendet',
+      betreff: replyBetreff, text: fullBody,
+      empfaenger: replyEmpfaenger, absender: replyAbsenderVal,
+      cc: replyCC, bcc: '',
+      erstelltAm: now, gesendetAm: now, anlagen: [],
+    }
+    try {
+      await sendViaSMTP({ to: replyEmpfaenger, from: replyAbsenderVal, subject: replyBetreff, text: fullBody, cc: replyCC, account })
+      saveKomm({ events: [newEvent, ...events] })
+      showToast('✓ Antwort gesendet')
+      setReplyMode(false)
+    } catch {
+      openMailto({ empfaenger: replyEmpfaenger, betreff: replyBetreff, text: fullBody, cc: replyCC })
+      saveKomm({ events: [newEvent, ...events] })
+      setReplyMode(false)
+    } finally {
+      setReplySending(false)
+    }
   }
   function handleAufgabe() {
     if (!aufgabeTitel.trim()) return
@@ -1846,7 +1890,7 @@ function EmailDetailPanel({
       <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 1799 }} />
       <div style={{
         position: 'fixed', top: 0, right: 0, bottom: 0,
-        width: '680px', maxWidth: '100vw',
+        width: 'min(860px, 96vw)',
         background: 'var(--surface)',
         borderLeft: '1px solid var(--border)',
         boxShadow: '-6px 0 40px rgba(0,0,0,0.4)',
@@ -1926,7 +1970,7 @@ function EmailDetailPanel({
         )}
 
         {/* Inhalt */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px' }}>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', ...(replyMode ? { maxHeight: '260px' } : {}) }}>
           {contentLoading[entry.id] && <div style={{ color: 'var(--text-muted)', fontSize: '13px' }}>⏳ E-Mail-Inhalt wird geladen…</div>}
           {contentError[entry.id] && (
             <div style={{ fontSize: '12px', color: '#dc2626', padding: '8px 12px', background: 'rgba(220,38,38,0.06)', borderRadius: '6px', marginBottom: '12px', display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -2023,6 +2067,107 @@ function EmailDetailPanel({
             </div>
           )}
         </div>
+
+        {/* ── Inline-Antwort-Formular ────────────────────────────────── */}
+        {replyMode && (
+          <div style={{
+            borderTop: '2px solid var(--accent)', flexShrink: 0,
+            background: 'rgba(37,99,235,0.03)', display: 'flex', flexDirection: 'column', gap: '8px',
+            padding: '12px 20px',
+          }}>
+            {/* Kopfzeile */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--accent)' }}>↩ Antwort verfassen</span>
+              <button className="btn btn-ghost btn-sm" onClick={() => setReplyMode(false)} style={{ fontSize: '13px', lineHeight: 1 }}>✕</button>
+            </div>
+
+            {/* Von + An */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+              {absenderList.length > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Von:</span>
+                  <select className="input" value={replyAbsenderVal} onChange={e => setReplyAbsenderVal(e.target.value)}
+                    style={{ flex: 1, fontSize: '11px', padding: '4px 6px' }}>
+                    {absenderList.map(a => (
+                      <option key={a.email} value={a.email}>{a.name ? a.name + ' <' + a.email + '>' : a.email}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>An:</span>
+                <input className="input" value={replyEmpfaenger} onChange={e => setReplyEmpfaenger(e.target.value)}
+                  style={{ flex: 1, fontSize: '11px', padding: '4px 6px' }} />
+              </div>
+            </div>
+
+            {/* Betreff + Signatur */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Betreff:</span>
+              <input className="input" value={replyBetreff} onChange={e => setReplyBetreff(e.target.value)}
+                style={{ flex: 1, minWidth: '160px', fontSize: '11px', padding: '4px 6px' }} />
+              {emailSignaturen.length > 0 && (
+                <>
+                  <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Signatur:</span>
+                  <select className="input" value={replySigId} onChange={e => setReplySigId(e.target.value)}
+                    style={{ fontSize: '11px', padding: '4px 6px', width: '140px' }}>
+                    <option value="">Keine</option>
+                    {emailSignaturen.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+                </>
+              )}
+            </div>
+
+            {/* Textarea – nur mein neuer Text */}
+            <textarea
+              className="input"
+              value={replyText}
+              onChange={e => setReplyText(e.target.value)}
+              placeholder="Antworttext…"
+              autoFocus
+              style={{
+                width: '100%', minHeight: '110px', resize: 'vertical', fontSize: '13px',
+                fontFamily: 'inherit', lineHeight: '1.6', padding: '8px 10px', boxSizing: 'border-box',
+              }}
+            />
+
+            {/* Zitat-Vorschau (read-only) */}
+            <div style={{
+              fontSize: '11px', color: 'var(--text-muted)',
+              background: 'rgba(100,116,139,0.06)', padding: '6px 10px',
+              borderRadius: '4px', borderLeft: '3px solid var(--border)',
+              maxHeight: '56px', overflow: 'hidden',
+            }}>
+              <strong>— Original-Nachricht —</strong> Von: {entry.absender ?? ''} · {entry.betreff ?? ''}
+              <div style={{ opacity: 0.7, marginTop: '2px' }}>
+                {(entry.text ?? '').slice(0, 140)}{(entry.text ?? '').length > 140 ? '…' : ''}
+              </div>
+            </div>
+
+            {/* Sende-Leiste */}
+            {replyError && <div style={{ fontSize: '11px', color: '#dc2626' }}>⚠️ {replyError}</div>}
+            <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+              <button className="btn btn-primary btn-sm" onClick={handleSendReply}
+                disabled={replySending || !replyText.trim()} style={{ fontSize: '12px' }}>
+                {replySending ? '⏳ Sende…' : '📤 Senden'}
+              </button>
+              <button className="btn btn-ghost btn-sm" onClick={() => setReplyMode(false)} style={{ fontSize: '12px' }}>Abbrechen</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => {
+                setActivTyp('frei')
+                setEmpfaenger(replyEmpfaenger)
+                setAbsenderVal(replyAbsenderVal)
+                setBetreff(replyBetreff)
+                const sig = emailSignaturen.find(s => s.id === replySigId)
+                const quoteHead = '\n\n--- Original-Nachricht ---\nVon: ' + (entry.absender ?? '') + '\n'
+                setText(replyText + (sig ? '\n\n--\n' + sig.text : '') + quoteHead + (entry.text ?? ''))
+                setCC(replyCC); setBCC('')
+                setEditorOpen(true); onClose()
+              }} style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                Im Editor öffnen
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Aktionsleiste */}
         <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)', display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center', flexShrink: 0 }}>
