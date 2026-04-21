@@ -1,5 +1,4 @@
 import { useState, useRef } from 'react'
-import { MANDANT_STATUS_CONFIG, MANUELL_STATUS_OPTIONEN, getMandantStatus } from '../../utils/progress.js'
 
 // ── Persistence helpers ──────────────────────────────────────────────────────
 const APIKEY_STORAGE = 'sda-claude-api-key'
@@ -12,7 +11,6 @@ function saveTemplate3(t) { localStorage.setItem(TEMPLATE3_KEY, t) }
 function getTodayISO() { return new Date().toISOString().slice(0, 10) }
 
 function toISO(dateStr) {
-  // Convert "YYYY-MM-DD" to ISO, avoiding timezone shifts
   return new Date(dateStr + 'T12:00:00').toISOString()
 }
 
@@ -115,14 +113,32 @@ const EVENT_TYPES = {
   },
 }
 
-// ── KI: Timeline-Analyse ─────────────────────────────────────────────────────
-function getTimelinePrompt() {
-  const today = getTodayISO()
-  return `Du bist ein Steuerberater-Assistent. Der Nutzer beschreibt eine Aktivität oder Kommunikation mit einem Mandanten. Heute: ${today}.
-Extrahiere folgendes und antworte NUR mit einem JSON-Objekt:
-{"typ":"rueckfragen|erinnerung|antwort|vollstaendigkeit|telefonat|email|notiz","datum":"YYYY-MM-DD","notiz":"Kurze Beschreibung max 100 Zeichen","reminder_tage":Zahl oder null}
-Typen: rueckfragen=Rückfragen an Mandant gesendet, erinnerung=Erinnerung gesendet, antwort=Antwort vom Mandant erhalten, vollstaendigkeit=Vollständigkeitserklärung vom Mandant erhalten, telefonat=Telefonat oder persönliches Gespräch, email=allgemeine E-Mail gesendet, notiz=interne Notiz.
-Falls der Nutzer eine Erinnerung erwähnt (z.B. "erinnere mich in 7 Tagen"), setze reminder_tage.`
+// ── KI: Kombinierter Prompt (Timeline + Rückfragen-Erkennung) ─────────────────
+function getKiPrompt(clientName, vj, today) {
+  return `Du bist ein Steuerberater-Assistent. Heute: ${today}. Mandant: ${clientName}, Veranlagungsjahr: ${vj}.
+
+Analysiere den Text. Entscheide:
+(A) Enthält er Rückfragen/Nachforderungen an den Mandanten (Belege, Erklärungen, Aufstellungen, konkrete Fragen)?
+(B) Oder ist es eine allgemeine Aktivitätsbeschreibung (Telefonat, Erinnerung, Notiz, …)?
+
+Antworte NUR mit einem JSON-Objekt:
+{
+  "typ": "rueckfragen" | "erinnerung" | "antwort" | "vollstaendigkeit" | "telefonat" | "email" | "notiz" | "fa_gesendet" | "rechnung_gestellt",
+  "hatRueckfragen": true / false,
+  "datum": "YYYY-MM-DD",
+  "notiz": "Kurze Beschreibung max 100 Zeichen",
+  "reminder_tage": Zahl oder null,
+  "rueckfragen": ["Präzise Rückfrage 1", "Präzise Rückfrage 2"],
+  "emailBetreff": "Aussagekräftiger Betreff",
+  "emailText": "Vollständiger E-Mail-Text mit Anrede Sehr geehrte/r … und Grußformel"
+}
+
+Regeln:
+- hatRueckfragen=true nur wenn mindestens eine konkrete Frage/Anforderung erkennbar
+- rueckfragen[]: jede Rückfrage als eigenständiger, vollständiger Satz
+- emailText: professionell, höflich, alle Rückfragen nummeriert aufgelistet, keine Platzhalter
+- Bei hatRueckfragen=false: rueckfragen=[], emailBetreff="", emailText=""
+- typ: bei Rückfragen immer "rueckfragen", sonst passend klassifizieren`
 }
 
 // ── KI: E-Mail generieren ────────────────────────────────────────────────────
@@ -132,7 +148,7 @@ Antworte NUR mit einem JSON-Objekt:
 
 async function callClaude(systemPrompt, userText) {
   const key = loadApiKey()
-  if (!key) throw new Error('Bitte zuerst den Claude API-Schlüssel hinterlegen (🔑).')
+  if (!key) throw new Error('Bitte zuerst den Claude API-Schlüssel hinterlegen (🗂 Stammdaten).')
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -143,7 +159,7 @@ async function callClaude(systemPrompt, userText) {
     },
     body: JSON.stringify({
       model: 'claude-sonnet-4-6',
-      max_tokens: 1024,
+      max_tokens: 1500,
       system: systemPrompt,
       messages: [{ role: 'user', content: userText }],
     }),
@@ -227,7 +243,7 @@ function VoiceInputBlock({ placeholder, onProcess }) {
               value={transcript}
               onChange={e => set(e.target.value)}
               placeholder={isRecording ? '🎤 Aufnahme läuft…' : placeholder}
-              rows={2}
+              rows={3}
               style={{
                 width: '100%', padding: '6px 10px',
                 border: `1px solid ${isRecording ? '#ef4444' : 'var(--border)'}`,
@@ -243,12 +259,133 @@ function VoiceInputBlock({ placeholder, onProcess }) {
             )}
           </div>
           {error && <div style={{ fontSize: '11px', color: '#ef4444', marginTop: '4px', padding: '4px 8px', background: 'rgba(239,68,68,0.06)', borderRadius: '4px' }}>⚠ {error}</div>}
+          <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px', lineHeight: 1.4 }}>
+            KI erkennt automatisch: Rückfragen-Listen → strukturierte Checkliste + E-Mail-Entwurf · Aktivitäten → Timeline-Eintrag
+          </div>
           <div style={{ display: 'flex', gap: '6px', marginTop: '6px', justifyContent: 'flex-end' }}>
             {transcript && <button className="btn btn-ghost btn-sm" style={{ fontSize: '11px' }} onClick={() => set('')}>✕ Löschen</button>}
             <button className="btn btn-primary btn-sm" onClick={process} disabled={!transcript.trim() || isProcessing} style={{ fontSize: '11px' }}>
               {isProcessing ? '⏳ KI analysiert…' : '✨ Verarbeiten'}
             </button>
           </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── PendingRueckfragenBlock ───────────────────────────────────────────────────
+function PendingRueckfragenBlock({ pending, onConfirm, onCancel, onToggleItem, onToggleEmail, onUpdateEmailText, onUpdateEmailBetreff }) {
+  const selectedCount = pending.items.filter(i => i.selected).length
+
+  return (
+    <div style={{
+      border: '2px solid rgba(37,99,235,0.4)', borderRadius: '10px', overflow: 'hidden',
+      background: 'rgba(37,99,235,0.03)',
+    }}>
+      {/* Header */}
+      <div style={{
+        padding: '10px 14px', background: 'rgba(37,99,235,0.08)',
+        borderBottom: '1px solid rgba(37,99,235,0.2)',
+        display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap',
+      }}>
+        <span style={{ fontSize: '18px' }}>🤖</span>
+        <span style={{ fontWeight: 700, fontSize: '13px', color: '#1d4ed8', flex: 1 }}>
+          KI hat {pending.items.length} Rückfrage{pending.items.length !== 1 ? 'n' : ''} erkannt
+        </span>
+        <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Bitte prüfen und bestätigen</span>
+      </div>
+
+      <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+
+        {/* Rückfragen-Liste */}
+        <div>
+          <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>
+            Erkannte Rückfragen
+          </div>
+          <div style={{ border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden' }}>
+            {pending.items.map((item, i) => (
+              <label key={i} style={{
+                display: 'flex', alignItems: 'flex-start', gap: '10px',
+                padding: '9px 12px', cursor: 'pointer',
+                borderBottom: i < pending.items.length - 1 ? '1px solid var(--border)' : 'none',
+                background: item.selected ? 'rgba(37,99,235,0.04)' : 'transparent',
+                transition: 'background 0.1s',
+              }}>
+                <input
+                  type="checkbox" checked={item.selected}
+                  onChange={() => onToggleItem(i)}
+                  style={{ marginTop: '2px', width: '14px', height: '14px', accentColor: '#2563eb', flexShrink: 0, cursor: 'pointer' }}
+                />
+                <span style={{
+                  fontSize: '12px', lineHeight: 1.5,
+                  color: item.selected ? 'var(--text)' : 'var(--text-muted)',
+                  textDecoration: item.selected ? 'none' : 'line-through',
+                }}>
+                  {item.text}
+                </span>
+              </label>
+            ))}
+          </div>
+        </div>
+
+        {/* E-Mail-Entwurf */}
+        {pending.emailText && (
+          <div>
+            <button
+              className="btn btn-ghost btn-sm"
+              style={{ fontSize: '11px', marginBottom: pending.showEmail ? '8px' : '0' }}
+              onClick={onToggleEmail}
+            >
+              {pending.showEmail ? '▲ E-Mail-Entwurf ausblenden' : '📧 E-Mail-Entwurf anzeigen / bearbeiten'}
+            </button>
+            {pending.showEmail && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <input
+                  className="input"
+                  value={pending.emailBetreff}
+                  onChange={e => onUpdateEmailBetreff(e.target.value)}
+                  style={{ fontSize: '12px', padding: '6px 10px' }}
+                  placeholder="Betreff"
+                />
+                <textarea
+                  className="input"
+                  value={pending.emailText}
+                  onChange={e => onUpdateEmailText(e.target.value)}
+                  rows={8}
+                  style={{ fontSize: '12px', resize: 'vertical', padding: '8px 10px', lineHeight: 1.6, fontFamily: 'var(--font-ui)' }}
+                />
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                  💡 E-Mail wird nur als Entwurf gespeichert. Versand erfolgt im Reiter ✉️ Komm.
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Aktions-Buttons */}
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', paddingTop: '4px', borderTop: '1px solid var(--border)' }}>
+          <button
+            className="btn btn-primary btn-sm"
+            style={{ fontWeight: 700 }}
+            disabled={selectedCount === 0}
+            onClick={() => onConfirm(false)}
+          >
+            ✓ {selectedCount} Rückfrage{selectedCount !== 1 ? 'n' : ''} speichern
+          </button>
+          {pending.emailText && (
+            <button
+              className="btn btn-sm"
+              style={{ fontWeight: 600, background: 'rgba(37,99,235,0.12)', color: '#1d4ed8', border: '1px solid rgba(37,99,235,0.3)' }}
+              disabled={selectedCount === 0}
+              onClick={() => onConfirm(true)}
+            >
+              ✓ Speichern + E-Mail-Entwurf erstellen
+            </button>
+          )}
+          <button className="btn btn-ghost btn-sm" onClick={onCancel} style={{ marginLeft: 'auto' }}>
+            ✕ Verwerfen
+          </button>
         </div>
       </div>
     </div>
@@ -273,7 +410,6 @@ function StatusBanner({ events }) {
   const cfg = EVENT_TYPES[latest.typ] ?? EVENT_TYPES.notiz
   const since = daysSince(latest.datum)
 
-  // Find first pending (not erledigt) reminder
   const pending = events.find(e => e.reminder && !e.reminder.erledigt)
   const reminderN = pending ? daysUntil(pending.reminder.datum) : null
   const reminderOverdue = reminderN !== null && reminderN < 0
@@ -309,7 +445,6 @@ function StatusBanner({ events }) {
         </div>
       </div>
 
-      {/* Reminder-Anzeige */}
       {pending && (
         <div style={{
           marginTop: '12px', padding: '9px 14px', borderRadius: '8px',
@@ -343,7 +478,6 @@ function TimelineItem({ event, isLast, onDelete, onToggleReminder }) {
 
   return (
     <div style={{ display: 'flex', gap: '0', position: 'relative' }}>
-      {/* Linie + Punkt */}
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '44px', flexShrink: 0 }}>
         <div style={{
           width: '36px', height: '36px', borderRadius: '50%', zIndex: 1, flexShrink: 0,
@@ -357,14 +491,12 @@ function TimelineItem({ event, isLast, onDelete, onToggleReminder }) {
         {!isLast && <div style={{ width: '2px', flex: 1, background: 'var(--border)', marginTop: '2px', minHeight: '20px' }} />}
       </div>
 
-      {/* Inhalt */}
       <div style={{
         flex: 1, marginLeft: '10px', marginBottom: isLast ? '0' : '16px',
         background: reminderOverdue ? 'rgba(239,68,68,0.03)' : 'var(--surface2)',
         border: `1px solid ${reminderOverdue ? 'rgba(239,68,68,0.3)' : 'var(--border)'}`,
         borderRadius: 'var(--radius)', overflow: 'hidden',
       }}>
-        {/* Header */}
         <div style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--surface)', borderBottom: (event.notiz || hasReminder) ? '1px solid var(--border)' : 'none' }}>
           <span style={{
             fontSize: '11px', fontWeight: 700, color: cfg.color,
@@ -383,7 +515,6 @@ function TimelineItem({ event, isLast, onDelete, onToggleReminder }) {
           >🗑</button>
         </div>
 
-        {/* Notiz + Reminder */}
         {(event.notiz || hasReminder) && (
           <div style={{ padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
             {event.notiz && (
@@ -521,21 +652,91 @@ export default function StandDerArbeitTab({ client, onUpdate }) {
     showToast(`${EVENT_TYPES[selectedTyp].icon} ${EVENT_TYPES[selectedTyp].label} eingetragen`)
   }
 
-  // ── Voice / KI ──
-  async function processVoice(text) {
-    const parsed = await callClaude(getTimelinePrompt(), text)
-    const typ = Object.keys(EVENT_TYPES).includes(parsed.typ) ? parsed.typ : 'notiz'
-    const datum = parsed.datum && /^\d{4}-\d{2}-\d{2}$/.test(parsed.datum) ? parsed.datum : getTodayISO()
-    const notiz = parsed.notiz ?? ''
-    let remDatum = null
-    if (parsed.reminder_tage && parsed.reminder_tage > 0)
-      remDatum = addDays(datum, Math.round(parsed.reminder_tage))
-    addEvent(typ, datum, notiz, remDatum)
-    showToast(`${EVENT_TYPES[typ].icon} ${EVENT_TYPES[typ].label} – KI hat Eintrag erstellt${remDatum ? ` · ⏰ Erinnerung am ${fmtDateShort(remDatum)}` : ''}`)
-  }
-
+  // ── Toast ──
   const [toast, setToast_] = useState('')
   function showToast(msg) { setToast_(msg); setTimeout(() => setToast_(''), 4000) }
+
+  // ── Pending Rückfragen (KI-Vorschau) ──
+  const [pendingRQ, setPendingRQ] = useState(null)
+  // Schema: { items: [{text, selected}], emailBetreff, emailText, showEmail, datum }
+
+  // ── Voice / KI ──
+  async function processVoice(text) {
+    const vj = [client.veranlagungsjahr, client.veranlagungsjahr2, client.veranlagungsjahr3].filter(Boolean).join('/') || String(new Date().getFullYear())
+    const parsed = await callClaude(getKiPrompt(client.name, vj, getTodayISO()), text)
+
+    if (parsed.hatRueckfragen && Array.isArray(parsed.rueckfragen) && parsed.rueckfragen.length > 0) {
+      // Rückfragen erkannt → Vorschau zeigen
+      setPendingRQ({
+        items: parsed.rueckfragen.map(t => ({ text: t, selected: true })),
+        emailBetreff: parsed.emailBetreff ?? '',
+        emailText: parsed.emailText ?? '',
+        showEmail: false,
+        datum: parsed.datum && /^\d{4}-\d{2}-\d{2}$/.test(parsed.datum) ? parsed.datum : getTodayISO(),
+      })
+      showToast(`🤖 ${parsed.rueckfragen.length} Rückfrage${parsed.rueckfragen.length !== 1 ? 'n' : ''} erkannt – bitte prüfen`)
+    } else {
+      // Normale Aktivität → direkt als Timeline-Eintrag
+      const typ = Object.keys(EVENT_TYPES).includes(parsed.typ) ? parsed.typ : 'notiz'
+      const datum = parsed.datum && /^\d{4}-\d{2}-\d{2}$/.test(parsed.datum) ? parsed.datum : getTodayISO()
+      const notiz = parsed.notiz ?? ''
+      let remDatum = null
+      if (parsed.reminder_tage && parsed.reminder_tage > 0)
+        remDatum = addDays(datum, Math.round(parsed.reminder_tage))
+      addEvent(typ, datum, notiz, remDatum)
+      showToast(`${EVENT_TYPES[typ].icon} ${EVENT_TYPES[typ].label} – KI hat Eintrag erstellt${remDatum ? ` · ⏰ Erinnerung am ${fmtDateShort(remDatum)}` : ''}`)
+    }
+  }
+
+  function confirmRueckfragen(withEmail) {
+    if (!pendingRQ) return
+    const selected = pendingRQ.items.filter(i => i.selected)
+    if (selected.length === 0) { setPendingRQ(null); return }
+
+    const now = new Date().toISOString()
+    const existingRQ = client.rueckfragen ?? []
+
+    // Neue Rückfragen erstellen – Architektur: buchungskonto + antwort für spätere Verknüpfung
+    const newRQs = selected.map((item, idx) => ({
+      id: 'rq_' + Date.now().toString(36) + idx.toString(36),
+      text: item.text,
+      buchungskonto: '',   // kann später mit Konto verknüpft werden
+      antwort: '',         // wird befüllt wenn Mandant antwortet
+      beantwortet: false,
+      datum: now,
+      gesendetAm: null,    // Zeitpunkt des Versands an Mandant (wird in Komm. gesetzt)
+    }))
+
+    let updates = { rueckfragen: [...existingRQ, ...newRQs] }
+
+    // Timeline-Event für den Verlauf
+    const summary = selected.map(i => i.text).join(' · ')
+    const newEvent = {
+      id: 'e' + Date.now().toString(36),
+      typ: 'rueckfragen',
+      datum: toISO(pendingRQ.datum),
+      notiz: `${selected.length} Rückfrage${selected.length !== 1 ? 'n' : ''} erstellt${summary.length < 100 ? ': ' + summary : ''}`,
+      reminder: null,
+    }
+    updates.kommunikation = { ...komm, events: [newEvent, ...(komm.events ?? [])] }
+
+    // Optional: E-Mail-Entwurf speichern
+    if (withEmail && pendingRQ.emailText.trim()) {
+      const stand = client.standDerArbeit ?? { emails: [] }
+      const emailEntry = {
+        id: 'em_' + Date.now().toString(36),
+        betreff: pendingRQ.emailBetreff || `Rückfragen Jahresabschluss ${client.veranlagungsjahr ?? ''}`.trim(),
+        text: pendingRQ.emailText,
+        datum: new Date().toISOString(),
+        gesendetAm: null,
+      }
+      updates.standDerArbeit = { ...stand, emails: [emailEntry, ...(stand.emails ?? [])] }
+    }
+
+    onUpdate(updates)
+    setPendingRQ(null)
+    showToast(`✓ ${selected.length} Rückfrage${selected.length !== 1 ? 'n' : ''} gespeichert${withEmail ? ' + E-Mail-Entwurf erstellt' : ''}`)
+  }
 
   // ── E-Mail-Bereich ──
   const stand     = client.standDerArbeit ?? { emails: [] }
@@ -551,6 +752,10 @@ export default function StandDerArbeitTab({ client, onUpdate }) {
     onUpdate({ standDerArbeit: { ...stand, emails: updated } })
   }
 
+  function deleteEmail(id) {
+    onUpdate({ standDerArbeit: { ...stand, emails: emails.filter(e => e.id !== id) } })
+  }
+
   async function processEmail(text) {
     const parsed = await callClaude(PROMPT_EMAIL, text)
     const newEntry = { id: 'e' + Date.now().toString(36), betreff: parsed.betreff ?? 'E-Mail', text: parsed.text ?? '', datum: new Date().toISOString(), gesendetAm: null }
@@ -559,7 +764,7 @@ export default function StandDerArbeitTab({ client, onUpdate }) {
   }
 
   async function generateQuickEmail(type) {
-    if (!loadApiKey()) { setShowKeyInput(true); showToast('⚠ Bitte zuerst den API-Schlüssel hinterlegen.'); return }
+    if (!loadApiKey()) { showToast('⚠ Bitte zuerst den Claude API-Schlüssel in den Stammdaten hinterlegen.'); return }
     const vj = [client.veranlagungsjahr, client.veranlagungsjahr2, client.veranlagungsjahr3].filter(Boolean).join('/')
     let userText = ''
     if (type === 'termin') {
@@ -574,6 +779,7 @@ export default function StandDerArbeitTab({ client, onUpdate }) {
       const parsed = await callClaude(PROMPT_EMAIL, userText)
       const newEntry = { id: 'e' + Date.now().toString(36), betreff: parsed.betreff ?? 'E-Mail', text: parsed.text ?? '', datum: new Date().toISOString(), gesendetAm: null }
       onUpdate({ standDerArbeit: { ...stand, emails: [newEntry, ...emails] } })
+      setShowEmails(true)
       showToast('📧 E-Mail formuliert')
     } catch (e) { showToast('⚠ ' + e.message) }
     finally { setQuickLoading(null) }
@@ -596,7 +802,6 @@ export default function StandDerArbeitTab({ client, onUpdate }) {
     return `${d.getDate().toString().padStart(2,'0')}.${(d.getMonth()+1).toString().padStart(2,'0')}.${d.getFullYear()}`
   }
 
-  // API-Key Hinweis (kein Key → Link zu Stammdaten)
   const hasApiKey = !!loadApiKey()
 
   return (
@@ -609,7 +814,7 @@ export default function StandDerArbeitTab({ client, onUpdate }) {
         </div>
       )}
 
-      {/* API-Key Hinweis wenn nicht gesetzt */}
+      {/* API-Key Hinweis */}
       {!hasApiKey && (
         <div style={{ padding: '8px 12px', background: 'rgba(249,115,22,0.07)', border: '1px solid rgba(249,115,22,0.25)', borderRadius: '7px', fontSize: '12px', color: '#c2410c', display: 'flex', alignItems: 'center', gap: '8px' }}>
           🔑 <span>Claude API-Schlüssel fehlt — KI-Funktionen nicht verfügbar. Bitte unter <strong>🗂 Stammdaten → API-Schlüssel</strong> hinterlegen.</span>
@@ -619,7 +824,7 @@ export default function StandDerArbeitTab({ client, onUpdate }) {
       {/* ══════════ RÜCKFRAGEN-ÜBERSICHT ══════════ */}
       {rueckfragen.length > 0 && (
         <div style={{ border: '1px solid var(--border)', borderRadius: '10px', overflow: 'hidden' }}>
-          <div style={{ padding: '9px 14px', background: 'var(--surface)', borderBottom: rueckfragen.length > 0 ? '1px solid var(--border)' : 'none', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{ padding: '9px 14px', background: 'var(--surface)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '8px' }}>
             <span style={{ fontSize: '14px' }}>📤</span>
             <span style={{ fontWeight: 700, fontSize: '13px', flex: 1 }}>Rückfragen</span>
             {offeneRQ.length > 0 && (
@@ -681,78 +886,15 @@ export default function StandDerArbeitTab({ client, onUpdate }) {
         </div>
       )}
 
-      {/* ══════════════ MANUELLER STATUS ══════════════ */}
-      <div style={{ border: '1px solid var(--border)', borderRadius: '10px', overflow: 'hidden' }}>
-        <div style={{ padding: '9px 14px', background: 'var(--surface)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: '14px' }}>🎛</span>
-          <span style={{ fontWeight: 700, fontSize: '13px', flex: 1 }}>Status manuell setzen</span>
-          {client.manuellerStatus ? (
-            <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-              Automatik deaktiviert —{' '}
-              <button
-                onClick={() => {
-                  onUpdate({ manuellerStatus: null })
-                  const komm = client.kommunikation ?? { events: [] }
-                  onUpdate({
-                    manuellerStatus: null,
-                    kommunikation: { ...komm, events: [{ id: 'e' + Date.now().toString(36), typ: 'notiz', datum: new Date().toISOString(), notiz: 'Status-Override entfernt – automatische Statuslogik aktiv', reminder: null }, ...(komm.events ?? [])] }
-                  })
-                }}
-                style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: '11px', padding: 0, textDecoration: 'underline' }}
-              >
-                Zurück zur Automatik
-              </button>
-            </span>
-          ) : (
-            <span style={{ fontSize: '11px', color: '#16a34a', fontWeight: 600 }}>● Automatisch aktiv</span>
-          )}
-        </div>
-        <div style={{ padding: '10px 14px', background: 'var(--surface2)', display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-          {MANUELL_STATUS_OPTIONEN.map(key => {
-            const cfg     = MANDANT_STATUS_CONFIG[key]
-            const aktiv   = client.manuellerStatus === key
-            const autoKey = !client.manuellerStatus && getMandantStatus(client) === key
-            return (
-              <button
-                key={key}
-                onClick={() => {
-                  if (aktiv) return  // schon aktiv, nix tun
-                  const komm = client.kommunikation ?? { events: [] }
-                  onUpdate({
-                    manuellerStatus: key,
-                    kommunikation: { ...komm, events: [{ id: 'e' + Date.now().toString(36), typ: 'notiz', datum: new Date().toISOString(), notiz: `Status manuell gesetzt: ${cfg.label}`, reminder: null }, ...(komm.events ?? [])] }
-                  })
-                }}
-                style={{
-                  display: 'inline-flex', alignItems: 'center', gap: '5px',
-                  padding: '6px 13px', borderRadius: '20px', cursor: aktiv ? 'default' : 'pointer',
-                  fontSize: '12px', fontWeight: aktiv ? 700 : 500,
-                  border: `1.5px solid ${aktiv ? cfg.color : autoKey ? cfg.color + '80' : 'var(--border)'}`,
-                  background: aktiv ? cfg.bg : autoKey ? cfg.bg + '80' : 'var(--surface)',
-                  color: aktiv ? cfg.color : autoKey ? cfg.color : 'var(--text-muted)',
-                  transition: 'all 0.15s',
-                  boxShadow: aktiv ? `0 0 0 2px ${cfg.color}30` : 'none',
-                }}
-              >
-                {cfg.icon} {cfg.label}
-                {aktiv && <span style={{ fontSize: '10px', marginLeft: '2px' }}>✓</span>}
-                {autoKey && !aktiv && <span style={{ fontSize: '10px', color: cfg.color, opacity: 0.7 }}> (auto)</span>}
-              </button>
-            )
-          })}
-        </div>
-      </div>
-
       {/* ═══════════════════════ STATUS BANNER ═══════════════════════ */}
       <StatusBanner events={events} />
 
       {/* ═══════════════════════ NEUE AKTIVITÄT ══════════════════════ */}
       <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflow: 'hidden' }}>
 
-        {/* Header */}
         <div style={{ padding: '10px 14px', background: 'var(--surface)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '8px' }}>
           <span style={{ fontWeight: 700, fontSize: '13px' }}>➕ Aktivität erfassen</span>
-          <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>— per Schnellauswahl oder Spracheingabe</span>
+          <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>— per Schnellauswahl oder KI-Spracheingabe</span>
         </div>
 
         {/* Schnellauswahl-Chips */}
@@ -779,7 +921,7 @@ export default function StandDerArbeitTab({ client, onUpdate }) {
           </div>
         </div>
 
-        {/* Inline-Formular (wenn Typ ausgewählt) */}
+        {/* Inline-Formular */}
         {selectedTyp && (() => {
           const cfg = EVENT_TYPES[selectedTyp]
           return (
@@ -804,7 +946,7 @@ export default function StandDerArbeitTab({ client, onUpdate }) {
                     onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) handleAddEvent() }}
                     autoFocus
                   />
-                  <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '3px' }}>Strg+Enter zum Speichern · Zeilenumbrüche werden übernommen</div>
+                  <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '3px' }}>Strg+Enter zum Speichern</div>
                 </div>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '12px' }}>
@@ -830,11 +972,102 @@ export default function StandDerArbeitTab({ client, onUpdate }) {
           )
         })()}
 
-        {/* Voice Input */}
+        {/* KI-Spracheingabe */}
         <VoiceInputBlock
-          placeholder='Aktivität sprechen, z.B.: "Heute Rückfragen an Mandant gesendet, erinnere mich in 7 Tagen"'
+          placeholder={'Rückfragen sprechen, z.B.: "Erstelle Rückfragen: 1. Beleg 1.520 € vom 23.12. nachreichen 2. Warum ist Konto 8400 höher als Vorjahr"\nOder Aktivität: "Heute Telefonat mit Mandant, Unterlagen kommen nächste Woche"'}
           onProcess={processVoice}
         />
+      </div>
+
+      {/* ═══════════ PENDING RÜCKFRAGEN VORSCHAU ═══════════ */}
+      {pendingRQ && (
+        <PendingRueckfragenBlock
+          pending={pendingRQ}
+          onConfirm={confirmRueckfragen}
+          onCancel={() => setPendingRQ(null)}
+          onToggleItem={i => setPendingRQ(prev => ({
+            ...prev,
+            items: prev.items.map((item, idx) => idx === i ? { ...item, selected: !item.selected } : item),
+          }))}
+          onToggleEmail={() => setPendingRQ(prev => ({ ...prev, showEmail: !prev.showEmail }))}
+          onUpdateEmailText={t => setPendingRQ(prev => ({ ...prev, emailText: t }))}
+          onUpdateEmailBetreff={t => setPendingRQ(prev => ({ ...prev, emailBetreff: t }))}
+        />
+      )}
+
+      {/* ═══════════ E-MAIL-ENTWÜRFE ═══════════ */}
+      {emails.length > 0 && (
+        <div style={{ border: '1px solid var(--border)', borderRadius: '10px', overflow: 'hidden' }}>
+          <div
+            style={{ padding: '9px 14px', background: 'var(--surface)', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}
+            onClick={() => setShowEmails(v => !v)}
+          >
+            <span style={{ fontSize: '14px' }}>📧</span>
+            <span style={{ fontWeight: 700, fontSize: '13px', flex: 1 }}>E-Mail-Entwürfe</span>
+            <span style={{ fontSize: '11px', fontWeight: 600, padding: '2px 9px', borderRadius: '10px', background: 'var(--surface2)', color: 'var(--text-muted)', border: '1px solid var(--border)' }}>
+              {emails.length}
+            </span>
+            <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{showEmails ? '▲' : '▼'}</span>
+          </div>
+          {showEmails && (
+            <div style={{ padding: '10px 14px', background: 'var(--surface2)' }}>
+              {emails.map(e => (
+                <EmailCard key={e.id} entry={e} onDelete={id => deleteEmail(id)} onUpdate={updateEmail} />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ═══════════ SCHNELL E-MAILS GENERIEREN ═══════════ */}
+      <div style={{ border: '1px solid var(--border)', borderRadius: '10px', overflow: 'hidden' }}>
+        <div style={{ padding: '9px 14px', background: 'var(--surface)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ fontSize: '14px' }}>⚡</span>
+          <span style={{ fontWeight: 700, fontSize: '13px' }}>Schnell-E-Mails</span>
+        </div>
+        <div style={{ padding: '12px 14px', display: 'flex', gap: '8px', flexWrap: 'wrap', background: 'var(--surface2)' }}>
+          <button
+            className="btn btn-ghost btn-sm"
+            style={{ fontSize: '12px' }}
+            onClick={() => generateQuickEmail('termin')}
+            disabled={!!quickLoading}
+          >
+            {quickLoading === 'termin' ? '⏳…' : '📅 Terminanfrage'}
+          </button>
+          <button
+            className="btn btn-ghost btn-sm"
+            style={{ fontSize: '12px' }}
+            onClick={() => generateQuickEmail('jahresabschluss')}
+            disabled={!!quickLoading}
+          >
+            {quickLoading === 'jahresabschluss' ? '⏳…' : '📄 Jahresabschluss-Vorlage'}
+          </button>
+          <button
+            className="btn btn-ghost btn-sm"
+            style={{ fontSize: '11px', marginLeft: 'auto', opacity: 0.7 }}
+            onClick={() => setShowT3Edit(v => !v)}
+          >
+            ⚙ Vorlage bearbeiten
+          </button>
+        </div>
+        {showT3Edit && (
+          <div style={{ padding: '12px 14px', borderTop: '1px solid var(--border)', background: 'var(--surface)' }}>
+            <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '6px' }}>Beschreibe die gewünschte E-Mail – KI formuliert sie aus:</div>
+            <textarea
+              value={template3Text}
+              onChange={e => setTemplate3Text(e.target.value)}
+              rows={4}
+              placeholder='z. B. "Freundliche E-Mail zum Jahresabschluss. Bitten um Einreichung der Unterlagen bis Ende des Monats."'
+              style={{ width: '100%', padding: '8px', border: '1px solid var(--border)', borderRadius: '6px', background: 'var(--surface2)', color: 'var(--text)', fontSize: '12px', resize: 'vertical', boxSizing: 'border-box' }}
+            />
+            <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+              <button className="btn btn-primary btn-sm" onClick={() => { saveTemplate3(template3Text); setT3Saved(true); setTimeout(() => setT3Saved(false), 2000) }} style={{ fontSize: '11px' }}>
+                {t3Saved ? '✓ Gespeichert' : '💾 Speichern'}
+              </button>
+              <button className="btn btn-ghost btn-sm" onClick={() => setShowT3Edit(false)} style={{ fontSize: '11px' }}>Schließen</button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ═══════════════════════ TIMELINE ════════════════════════════ */}
@@ -868,7 +1101,6 @@ export default function StandDerArbeitTab({ client, onUpdate }) {
           </div>
         )}
       </div>
-
 
       <style>{`
         @keyframes pulseRec {
