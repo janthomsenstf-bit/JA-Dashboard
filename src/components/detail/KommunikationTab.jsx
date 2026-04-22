@@ -191,7 +191,12 @@ async function callClaude(systemPrompt, userText) {
   if (cb) raw = cb[1]
   const jm = raw.match(/\{[\s\S]*\}/)
   if (!jm) throw new Error('Antwort konnte nicht verarbeitet werden.')
-  return JSON.parse(jm[0])
+  const jsonStr = jm[0]
+  try { return JSON.parse(jsonStr) } catch {}
+  const fixed = jsonStr.replace(/("(?:[^"\\]|\\.)*")/gs, m =>
+    m.replace(/\n/g, '\\n').replace(/\r/g, '\\r').replace(/\t/g, '\\t')
+  )
+  return JSON.parse(fixed)
 }
 
 function buildKIEntwurfPrompt(typ, client) {

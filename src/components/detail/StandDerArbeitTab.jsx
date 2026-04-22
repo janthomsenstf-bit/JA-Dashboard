@@ -174,7 +174,15 @@ async function callClaude(systemPrompt, userText) {
   if (cb) raw = cb[1]
   const jm = raw.match(/\{[\s\S]*\}/)
   if (!jm) throw new Error('Antwort konnte nicht verarbeitet werden.')
-  return JSON.parse(jm[0])
+  const jsonStr = jm[0]
+  // Erst direkt versuchen
+  try { return JSON.parse(jsonStr) } catch {}
+  // Fallback: echte Zeilenumbrüche / Tabs innerhalb von JSON-Strings bereinigen
+  // (Claude schreibt manchmal echte \n statt \\n in String-Werten)
+  const fixed = jsonStr.replace(/("(?:[^"\\]|\\.)*")/gs, m =>
+    m.replace(/\n/g, '\\n').replace(/\r/g, '\\r').replace(/\t/g, '\\t')
+  )
+  return JSON.parse(fixed)
 }
 
 // ── VoiceInputBlock ───────────────────────────────────────────────────────────
