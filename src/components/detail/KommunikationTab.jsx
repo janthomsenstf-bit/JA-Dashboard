@@ -1736,6 +1736,8 @@ function EmailDetailPanel({
   const [replySigId,      setReplySigId]       = useState(() => emailSignaturen.find(s => s.isDefault)?.id ?? '')
   const [replySending,    setReplySending]     = useState(false)
   const [replyError,      setReplyError]       = useState('')
+  const replyFileInputRef                       = useRef(null)
+  const [replyAttachments, setReplyAttachments] = useState([])
 
   // ── Diktieren + KI-Optimierung ────────────────────────────────
   const recRef          = useRef(null)
@@ -1802,7 +1804,24 @@ function EmailDetailPanel({
     setReplyBetreff('Re: ' + (entry.betreff ?? ''))
     setReplyEmpfaenger(entry.absender ?? '')
     setReplyText('')
+    setReplyAttachments([])
     setReplyMode(true)
+  }
+
+  function handleReplyFileSelect(e) {
+    const files = Array.from(e.target.files ?? [])
+    files.forEach(file => {
+      const reader = new FileReader()
+      reader.onload = ev => {
+        const base64 = (ev.target.result ?? '').split(',')[1] ?? ''
+        setReplyAttachments(prev => [
+          ...prev,
+          { name: file.name, size: file.size, type: file.type, data: base64 },
+        ])
+      }
+      reader.readAsDataURL(file)
+    })
+    e.target.value = ''
   }
 
   async function handleSendReply() {
@@ -1825,17 +1844,21 @@ function EmailDetailPanel({
       betreff: replyBetreff, text: fullBody,
       empfaenger: replyEmpfaenger, absender: replyAbsenderVal,
       cc: replyCC, bcc: '',
-      erstelltAm: now, gesendetAm: now, anlagen: [],
+      erstelltAm: now, gesendetAm: now,
+      anlagen: replyAttachments.map(a => ({ name: a.name, size: a.size })),
     }
+    const smtpAtts = replyAttachments.map(a => ({ filename: a.name, content: a.data, contentType: a.type }))
     try {
-      await sendViaSMTP({ to: replyEmpfaenger, from: replyAbsenderVal, subject: replyBetreff, text: fullBody, cc: replyCC, account })
+      await sendViaSMTP({ to: replyEmpfaenger, from: replyAbsenderVal, subject: replyBetreff, text: fullBody, cc: replyCC, account, attachments: smtpAtts })
       saveKomm({ events: [newEvent, ...events] })
       showToast('✓ Antwort gesendet')
       setReplyMode(false)
+      setReplyAttachments([])
     } catch {
       openMailto({ empfaenger: replyEmpfaenger, betreff: replyBetreff, text: fullBody, cc: replyCC })
       saveKomm({ events: [newEvent, ...events] })
       setReplyMode(false)
+      setReplyAttachments([])
     } finally {
       setReplySending(false)
     }
@@ -2278,6 +2301,51 @@ function EmailDetailPanel({
                 ...(dictating ? { borderColor: '#dc2626', boxShadow: '0 0 0 2px rgba(220,38,38,0.15)' } : {}),
               }}
             />
+
+            {/* ── Anhänge ── */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => replyFileInputRef.current?.click()}
+                style={{ fontSize: '11px' }}
+              >
+                📎 Anlage hinzufügen
+              </button>
+              <input
+                ref={replyFileInputRef}
+                type="file"
+                multiple
+                style={{ display: 'none' }}
+                onChange={handleReplyFileSelect}
+              />
+              {replyAttachments.length > 0 && (
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                  {replyAttachments.length} Anhang{replyAttachments.length !== 1 ? 'hänge' : ''} · {fmtSz(replyAttachments.reduce((s, a) => s + a.size, 0))} gesamt
+                </span>
+              )}
+            </div>
+            {replyAttachments.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                {replyAttachments.map((a, i) => (
+                  <div key={i} style={{
+                    display: 'flex', alignItems: 'center', gap: '6px',
+                    padding: '4px 9px', borderRadius: '6px',
+                    background: 'var(--surface)', border: '1px solid var(--border)',
+                    fontSize: '11px',
+                  }}>
+                    <span>{fileIcon(a.type)}</span>
+                    <span style={{ fontWeight: 600 }}>{a.name}</span>
+                    <span style={{ color: 'var(--text-muted)' }}>({fmtSz(a.size)})</span>
+                    <button
+                      onClick={() => setReplyAttachments(prev => prev.filter((_, idx) => idx !== i))}
+                      title="Anhang entfernen"
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: '14px', padding: '0 1px', lineHeight: 1, flexShrink: 0 }}
+                    >✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
 
             {/* Zitat-Vorschau (read-only) */}
             <div style={{
