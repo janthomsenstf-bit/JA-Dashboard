@@ -205,6 +205,9 @@ export default function App() {
   // ── Termine ───────────────────────────────────────────────────────────────────
   const [termine, setTermine] = useState([])
 
+  // ── Manuelle Aufgaben (global, mandantenübergreifend) ─────────────────────────
+  const [aufgabenListe, setAufgabenListe] = useState([])
+
   // ── Zeitstempel ───────────────────────────────────────────────────────────────
   const [lastSaveAt,   setLastSaveAt]   = useState(null)
   const [startupBanner, setStartupBanner] = useState(true)
@@ -244,7 +247,8 @@ export default function App() {
       if (cloudData && cloudData[STORAGE_KEY]) {
         const raw = cloudData[STORAGE_KEY]
         setClients(Array.isArray(raw) ? raw.map(migrateClient).filter(Boolean) : [])
-        if (Array.isArray(cloudData['sdb-termine'])) setTermine(cloudData['sdb-termine'])
+        if (Array.isArray(cloudData['sdb-termine']))        setTermine(cloudData['sdb-termine'])
+        if (Array.isArray(cloudData['sdb-aufgaben-liste'])) setAufgabenListe(cloudData['sdb-aufgaben-liste'])
         if (cloudData['spielbuch-checklisten-v1'])    setChecklistenTypen(cloudData['spielbuch-checklisten-v1'])
         if (cloudData['spielbuch-vorlagen-v1'])       setVorlagen(cloudData['spielbuch-vorlagen-v1'])
         if (Array.isArray(cloudData['unbekannte-emails'])) setUnbekannteEmails(cloudData['unbekannte-emails'])
@@ -311,6 +315,10 @@ export default function App() {
     if (!authUser || dataLoading) return
     cloudSave('sdb-termine', termine)
   }, [termine])
+  useEffect(() => {
+    if (!authUser || dataLoading) return
+    cloudSave('sdb-aufgaben-liste', aufgabenListe)
+  }, [aufgabenListe])
   useEffect(() => {
     if (!authUser || dataLoading) return
     cloudSave('unbekannte-emails', unbekannteEmails)
@@ -661,6 +669,21 @@ export default function App() {
   function addTermin(t) { setTermine(prev => [...prev, t]) }
   function updateTermin(id, patch) { setTermine(prev => prev.map(t => t.id === id ? { ...t, ...patch } : t)) }
   function deleteTermin(id) { setTermine(prev => prev.filter(t => t.id !== id)) }
+
+  // ── Manuelle Aufgaben CRUD ────────────────────────────────────────────────────
+  function addAufgabe(data) {
+    setAufgabenListe(prev => [...prev, {
+      ...data,
+      id:        'ma_' + Date.now().toString(36),
+      createdAt: new Date().toISOString(),
+    }])
+  }
+  function updateAufgabe(id, patch) {
+    setAufgabenListe(prev => prev.map(a => a.id === id ? { ...a, ...patch } : a))
+  }
+  function deleteAufgabe(id) {
+    setAufgabenListe(prev => prev.filter(a => a.id !== id))
+  }
 
   function archiveClient(id, data, exportFn) {
     if (exportFn) exportFn()
@@ -1175,8 +1198,12 @@ export default function App() {
             <div style={{ flex: 1, overflowY: 'auto' }}>
               <GlobalTodoView
                 clients={clients}
+                aufgabenListe={aufgabenListe}
                 onUpdateClient={updateClient}
                 onSelectClient={id => setSelectedId(id)}
+                onAddAufgabe={addAufgabe}
+                onUpdateAufgabe={updateAufgabe}
+                onDeleteAufgabe={deleteAufgabe}
               />
             </div>
           ) : selectedClient ? (

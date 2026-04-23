@@ -10,11 +10,12 @@ export const MONAT_NAMEN = [
 export const MONAT_KURZ = ['Jan','Feb','Mrz','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez']
 
 export const TYP_CONFIG = {
-  USt:    { label: 'USt-Voranmeldung',    icon: '📊', color: '#1e3a5f', bg: 'rgba(30,58,95,0.1)'    },
-  Lohn:   { label: 'Lohnabrechnung',      icon: '💼', color: '#7c3aed', bg: 'rgba(124,58,237,0.1)'  },
-  LohnSV: { label: 'SV-Beitragsnachweis', icon: '🏛',  color: '#0f766e', bg: 'rgba(15,118,110,0.1)'  },
-  JA:     { label: 'Jahresabschluss',     icon: '📁', color: '#c2410c', bg: 'rgba(194,65,12,0.1)'   },
-  Zusatz: { label: 'Zusatzaufgabe',       icon: '⭐', color: '#92400e', bg: 'rgba(146,64,14,0.1)'   },
+  USt:     { label: 'USt-Voranmeldung',    icon: '📊', color: '#1e3a5f', bg: 'rgba(30,58,95,0.1)'    },
+  Lohn:    { label: 'Lohnabrechnung',      icon: '💼', color: '#7c3aed', bg: 'rgba(124,58,237,0.1)'  },
+  LohnSV:  { label: 'SV-Beitragsnachweis', icon: '🏛',  color: '#0f766e', bg: 'rgba(15,118,110,0.1)'  },
+  JA:      { label: 'Jahresabschluss',     icon: '📁', color: '#c2410c', bg: 'rgba(194,65,12,0.1)'   },
+  Zusatz:  { label: 'Zusatzaufgabe',       icon: '⭐', color: '#92400e', bg: 'rgba(146,64,14,0.1)'   },
+  Manuell: { label: 'Aufgabe',             icon: '📌', color: '#0e7490', bg: 'rgba(14,116,144,0.1)'  },
 }
 
 export const ZUSATZ_ARTEN = [
@@ -235,4 +236,100 @@ export function fmtDatum(iso) {
 export function isUeberfaellig(faelligIsoStr) {
   if (!faelligIsoStr) return false
   return new Date() > new Date(faelligIsoStr)
+}
+
+// ── Manuelle Aufgaben (Einmal & Serien) ────────────────────────────────────────
+/**
+ * Generiert Task-Objekte aus manuellen Aufgaben (Einmal & Serien).
+ * Gleiche Struktur wie generateAufgaben(), damit sie in GlobalTodoView
+ * zusammen mit auto-generierten Tasks gefiltert/angezeigt werden können.
+ *
+ * @param {Array}  aufgabenListe  Globale manuelle Aufgaben aus App-State
+ * @param {number} filterJahr     Für Serien: nur Instanzen dieses Jahres generieren
+ */
+export function generateManuelleAufgaben(aufgabenListe, filterJahr) {
+  const tasks = []
+  if (!Array.isArray(aufgabenListe)) return tasks
+
+  for (const aufgabe of aufgabenListe) {
+    if (!aufgabe?.id) continue
+
+    // ── Einmalaufgabe ──────────────────────────────────────────────────────────
+    if (aufgabe.typ === 'einmal') {
+      if (!aufgabe.faellig) continue
+      const d = new Date(aufgabe.faellig)
+      if (isNaN(d.getTime())) continue
+      const jahr = d.getFullYear()
+      if (filterJahr !== undefined && filterJahr !== null && jahr !== filterJahr) continue
+      const monat = d.getMonth() + 1
+      tasks.push({
+        key:          aufgabe.id,
+        type:         'Manuell',
+        label:        aufgabe.titel ?? '(Aufgabe)',
+        beschreibung: aufgabe.beschreibung ?? '',
+        mandantId:    aufgabe.mandantId ?? null,
+        monat,
+        quartal:      Math.ceil(monat / 3),
+        jahr,
+        faellig:      d.toISOString(),
+        erledigt:     aufgabe.erledigt ?? false,
+        erledigtAm:   aufgabe.erledigtAm ?? null,
+        istManuell:   true,
+        istSerie:     false,
+        aufgabeId:    aufgabe.id,
+      })
+
+    // ── Serienaufgabe ──────────────────────────────────────────────────────────
+    } else if (aufgabe.typ === 'serie') {
+      const startD     = new Date(aufgabe.startDatum ?? new Date().toISOString().slice(0, 10))
+      const endD       = aufgabe.endDatum ? new Date(aufgabe.endDatum) : null
+      const faelligTag = Math.min(Math.max(parseInt(aufgabe.faelligTag ?? 1, 10), 1), 28)
+      const freq       = aufgabe.frequenz ?? 'monatlich'
+      const genYear    = (filterJahr !== undefined && filterJahr !== null) ? filterJahr : new Date().getFullYear()
+      const erlInst    = aufgabe.erledigtInstanzen ?? {}
+
+      function pushInst(monat, quartal, instKey) {
+        const instanceDate = new Date(genYear, monat - 1, faelligTag)
+        if (instanceDate < startD) return
+        if (endD && instanceDate > endD) return
+        const info = erlInst[instKey] ?? {}
+        tasks.push({
+          key:          `${aufgabe.id}::${instKey}`,
+          type:         'Manuell',
+          label:        aufgabe.titel ?? '(Aufgabe)',
+          beschreibung: aufgabe.beschreibung ?? '',
+          mandantId:    aufgabe.mandantId ?? null,
+          monat,
+          quartal,
+          jahr:         genYear,
+          faellig:      instanceDate.toISOString(),
+          erledigt:     info.erledigt ?? false,
+          erledigtAm:   info.erledigtAm ?? null,
+          istManuell:   true,
+          istSerie:     true,
+          aufgabeId:    aufgabe.id,
+          serieInstanz: instKey,
+        })
+      }
+
+      if (freq === 'monatlich') {
+        for (let m = 1; m <= 12; m++) {
+          const mk = `${genYear}-${String(m).padStart(2, '0')}`
+          pushInst(m, Math.ceil(m / 3), mk)
+        }
+      } else if (freq === 'quartalsweise') {
+        for (let q = 1; q <= 4; q++) {
+          const m = q * 3  // letzter Quartalsmonat
+          pushInst(m, q, `${genYear}-Q${q}`)
+        }
+      } else if (freq === 'halbjaehrlich') {
+        pushInst(6,  2, `${genYear}-H1`)
+        pushInst(12, 4, `${genYear}-H2`)
+      } else if (freq === 'jaehrlich') {
+        const startMonat = startD.getMonth() + 1
+        pushInst(startMonat, Math.ceil(startMonat / 3), `${genYear}`)
+      }
+    }
+  }
+  return tasks
 }
