@@ -415,7 +415,6 @@ export default function GlobalTodoView({
   const [filterMonat,  setFilterMonat]  = useState(CUR_MONAT)
   const [filterJahr,   setFilterJahr]   = useState(CUR_JAHR)
   const [filterTyp,    setFilterTyp]    = useState('alle')
-  const [filterStatus, setFilterStatus] = useState('offen')
 
   // ── Modal-State ───────────────────────────────────────────────────────────────
   const [showModal,   setShowModal]   = useState(false)
@@ -460,11 +459,9 @@ export default function GlobalTodoView({
         }
       }
       if (filterTyp !== 'alle' && t.type !== filterTyp) return false
-      if (filterStatus === 'offen'    && t.erledigt)  return false
-      if (filterStatus === 'erledigt' && !t.erledigt) return false
       return true
     })
-  }, [alleTasks, filterJahr, filterMonat, filterTyp, filterStatus])
+  }, [alleTasks, filterJahr, filterMonat, filterTyp])
 
   // ── Statistiken ───────────────────────────────────────────────────────────────
   const stats = useMemo(() => {
@@ -622,22 +619,6 @@ export default function GlobalTodoView({
             }}>{f.label}</button>
           ))}
 
-          <div style={{ height: '20px', width: '1px', background: 'rgba(255,255,255,0.15)' }} />
-
-          {/* Status-Filter */}
-          {[
-            { key: 'offen',    label: '⬜ Offen' },
-            { key: 'erledigt', label: '✅ Erledigt' },
-            { key: 'alle',     label: 'Alle' },
-          ].map(f => (
-            <button key={f.key} onClick={() => setFilterStatus(f.key)} style={{
-              padding: '4px 10px', borderRadius: '20px', fontSize: '11px', cursor: 'pointer',
-              border: `1px solid ${filterStatus === f.key ? '#4ade80' : 'rgba(255,255,255,0.2)'}`,
-              background: filterStatus === f.key ? 'rgba(74,222,128,0.2)' : 'transparent',
-              color: filterStatus === f.key ? '#4ade80' : 'rgba(255,255,255,0.6)',
-              fontWeight: filterStatus === f.key ? 700 : 400,
-            }}>{f.label}</button>
-          ))}
         </div>
       </div>
 
@@ -645,11 +626,9 @@ export default function GlobalTodoView({
       <div style={{ flex: 1, overflowY: 'auto', background: 'var(--bg)' }}>
         {gefiltert.length === 0 ? (
           <div style={{ padding: '48px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '14px' }}>
-            {filterStatus === 'erledigt'
-              ? '🎉 Keine erledigten Aufgaben in diesem Zeitraum.'
-              : filterTyp === 'Manuell'
-                ? <span>Noch keine manuellen Aufgaben.<br /><button onClick={() => { setEditAufgabe(null); setShowModal(true) }} style={{ marginTop: '12px', padding: '8px 18px', borderRadius: '8px', border: 'none', background: '#2563eb', color: '#fff', fontWeight: 700, cursor: 'pointer' }}>＋ Erste Aufgabe anlegen</button></span>
-                : '✅ Keine offenen Aufgaben – alles erledigt!'}
+            {filterTyp === 'Manuell'
+              ? <span>Noch keine manuellen Aufgaben.<br /><button onClick={() => { setEditAufgabe(null); setShowModal(true) }} style={{ marginTop: '12px', padding: '8px 18px', borderRadius: '8px', border: 'none', background: '#2563eb', color: '#fff', fontWeight: 700, cursor: 'pointer' }}>＋ Erste Aufgabe anlegen</button></span>
+              : 'Keine Aufgaben in diesem Zeitraum.'}
           </div>
         ) : (
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
@@ -736,13 +715,18 @@ export default function GlobalTodoView({
                     </td>
 
                     {/* Status */}
-                    <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>
+                    <td style={{ padding: '8px 12px' }}>
                       {task.erledigt ? (
-                        <span style={{ fontSize: '11px', color: '#16a34a', fontWeight: 600 }}>
-                          ✓ {fmtDatum(task.erledigtAm)}
-                        </span>
+                        <div>
+                          <div style={{ fontSize: '11px', color: '#16a34a', fontWeight: 700 }}>✓ Erledigt</div>
+                          {task.erledigtAm && (
+                            <div style={{ fontSize: '10px', color: '#16a34a', opacity: 0.75, marginTop: '1px' }}>
+                              am {fmtDatum(task.erledigtAm)}
+                            </div>
+                          )}
+                        </div>
                       ) : (
-                        <span style={{ fontSize: '11px', color: ueber ? '#ef4444' : 'var(--text-muted)', fontWeight: ueber ? 600 : 400 }}>
+                        <span style={{ fontSize: '11px', color: ueber ? '#ef4444' : 'var(--text-muted)', fontWeight: ueber ? 600 : 400, whiteSpace: 'nowrap' }}>
                           {ueber ? '⚠ Überfällig' : 'Offen'}
                         </span>
                       )}
