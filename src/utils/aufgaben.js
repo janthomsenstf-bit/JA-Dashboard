@@ -238,6 +238,17 @@ export function isUeberfaellig(faelligIsoStr) {
   return new Date() > new Date(faelligIsoStr)
 }
 
+// ── Datums-Helper für individuelle Intervalle ─────────────────────────────────
+/** Addiert ein freies Intervall auf ein Date-Objekt. Exportiert für Preview-Berechnung. */
+export function addIntervalDate(date, typ, wert) {
+  const nd = new Date(date)
+  const w  = Math.max(1, parseInt(wert, 10))
+  if (typ === 'tage')   nd.setDate(nd.getDate() + w)
+  if (typ === 'wochen') nd.setDate(nd.getDate() + w * 7)
+  if (typ === 'monate') nd.setMonth(nd.getMonth() + w)
+  return nd
+}
+
 // ── Manuelle Aufgaben (Einmal & Serien) ────────────────────────────────────────
 /**
  * Generiert Task-Objekte aus manuellen Aufgaben (Einmal & Serien).
@@ -328,6 +339,54 @@ export function generateManuelleAufgaben(aufgabenListe, filterJahr) {
       } else if (freq === 'jaehrlich') {
         const startMonat = startD.getMonth() + 1
         pushInst(startMonat, Math.ceil(startMonat / 3), `${genYear}`)
+
+      } else if (freq === 'individuell') {
+        // Freies Intervall: alle N Tage / Wochen / Monate ab startDatum
+        const iTyp  = aufgabe.intervallTyp  ?? 'monate'
+        const iWert = Math.max(1, parseInt(aufgabe.intervallWert ?? 1, 10))
+
+        // Approx. ms pro Schritt (für schnelles Vorspulen bei weit zurück liegendem Startdatum)
+        const approxMs = iTyp === 'tage'   ? iWert * 86400000
+                       : iTyp === 'wochen' ? iWert * 7 * 86400000
+                       :                     iWert * 30 * 86400000  // monate
+
+        let cur = new Date(startD)
+
+        // Vorspulen: grob bis kurz vor Jahresbeginn, dann exakt
+        const minDate = new Date(genYear, 0, 1)
+        if (cur < minDate && approxMs > 0) {
+          const stepsRough = Math.max(0, Math.floor((minDate.getTime() - cur.getTime()) / approxMs) - 2)
+          for (let i = 0; i < stepsRough; i++) cur = addIntervalDate(cur, iTyp, iWert)
+          while (cur < minDate) cur = addIntervalDate(cur, iTyp, iWert)
+        }
+
+        const maxDate = new Date(genYear, 11, 31, 23, 59, 59)
+        let safety = 0
+        while (cur <= maxDate && safety++ < 400) {
+          if (!endD || cur <= endD) {
+            const ymd   = cur.toISOString().slice(0, 10)
+            const monat = cur.getMonth() + 1
+            const info  = erlInst[ymd] ?? {}
+            tasks.push({
+              key:          `${aufgabe.id}::${ymd}`,
+              type:         'Manuell',
+              label:        aufgabe.titel ?? '(Aufgabe)',
+              beschreibung: aufgabe.beschreibung ?? '',
+              mandantId:    aufgabe.mandantId ?? null,
+              monat,
+              quartal:      Math.ceil(monat / 3),
+              jahr:         genYear,
+              faellig:      cur.toISOString(),
+              erledigt:     info.erledigt ?? false,
+              erledigtAm:   info.erledigtAm ?? null,
+              istManuell:   true,
+              istSerie:     true,
+              aufgabeId:    aufgabe.id,
+              serieInstanz: ymd,
+            })
+          }
+          cur = addIntervalDate(cur, iTyp, iWert)
+        }
       }
     }
   }

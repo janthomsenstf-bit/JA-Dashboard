@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
-import { generateAufgaben, generateManuelleAufgaben, getStatus, buildTogglePatch, TYP_CONFIG, fmtDatum, isUeberfaellig, MONAT_NAMEN, MONAT_KURZ } from '../utils/aufgaben.js'
+import { generateAufgaben, generateManuelleAufgaben, getStatus, buildTogglePatch, TYP_CONFIG, fmtDatum, isUeberfaellig, MONAT_NAMEN, MONAT_KURZ, addIntervalDate } from '../utils/aufgaben.js'
 
 const HEUTE = new Date()
 const CUR_MONAT = HEUTE.getMonth() + 1
@@ -131,6 +131,49 @@ function ClientPicker({ clients, value, onChange, inputStyle }) {
   )
 }
 
+// ── Vorschau für individuelle Intervall-Serien ────────────────────────────────
+function IndividuellPreview({ startDatum, endDatum, intervallTyp, intervallWert }) {
+  const dates = useMemo(() => {
+    const wert = Math.max(1, parseInt(intervallWert || 1, 10))
+    const end  = endDatum ? new Date(endDatum) : null
+    const start = new Date(startDatum)
+    if (isNaN(start.getTime())) return []
+    const result = []
+    let cur = new Date(start)
+    for (let i = 0; i < 60 && result.length < 8; i++) {
+      if (end && cur > end) break
+      result.push(new Date(cur))
+      cur = addIntervalDate(cur, intervallTyp, wert)
+    }
+    return result
+  }, [startDatum, endDatum, intervallTyp, intervallWert])
+
+  if (!dates.length) return null
+
+  const fmtD = d => d.toLocaleDateString('de-DE', { day: '2-digit', month: 'short', year: 'numeric' })
+
+  return (
+    <div style={{
+      background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.2)',
+      borderRadius: '8px', padding: '10px 12px',
+    }}>
+      <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--accent)', marginBottom: '6px' }}>
+        📅 Nächste Termine ({dates.length}{dates.length === 8 ? '+' : ''}):
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
+        {dates.map((d, i) => (
+          <span key={i} style={{
+            fontSize: '11px', padding: '2px 8px', borderRadius: '10px',
+            background: 'rgba(59,130,246,0.12)', color: 'var(--accent)', fontFamily: 'monospace',
+          }}>
+            {fmtD(d)}
+          </span>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // ── Modal: Aufgabe erstellen / bearbeiten ─────────────────────────────────────
 function AufgabeModal({ aufgabe, clients, onSave, onClose }) {
   const isEdit = !!aufgabe?.id
@@ -142,8 +185,10 @@ function AufgabeModal({ aufgabe, clients, onSave, onClose }) {
   const [frequenz,   setFrequenz]   = useState(aufgabe?.frequenz   ?? 'monatlich')
   const [startDatum, setStartDatum] = useState(aufgabe?.startDatum ?? new Date().toISOString().slice(0, 10))
   const [endDatum,   setEndDatum]   = useState(aufgabe?.endDatum   ?? '')
-  const [faelligTag, setFaelligTag] = useState(aufgabe?.faelligTag ?? 1)
-  const [beschreibung, setBeschreibung] = useState(aufgabe?.beschreibung ?? '')
+  const [faelligTag,    setFaelligTag]    = useState(aufgabe?.faelligTag    ?? 1)
+  const [intervallTyp,  setIntervallTyp]  = useState(aufgabe?.intervallTyp  ?? 'monate')
+  const [intervallWert, setIntervallWert] = useState(aufgabe?.intervallWert ?? 3)
+  const [beschreibung,  setBeschreibung]  = useState(aufgabe?.beschreibung  ?? '')
 
   function handleSubmit(e) {
     e.preventDefault()
@@ -163,6 +208,10 @@ function AufgabeModal({ aufgabe, clients, onSave, onClose }) {
         startDatum,
         endDatum:   endDatum || null,
         faelligTag: parseInt(faelligTag, 10),
+        ...(frequenz === 'individuell' ? {
+          intervallTyp,
+          intervallWert: parseInt(intervallWert, 10),
+        } : {}),
         erledigtInstanzen: aufgabe?.erledigtInstanzen ?? {},
       })
     }
@@ -183,6 +232,7 @@ function AufgabeModal({ aufgabe, clients, onSave, onClose }) {
       <div style={{
         background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '12px',
         boxShadow: '0 20px 60px rgba(0,0,0,0.5)', width: '100%', maxWidth: '480px',
+        maxHeight: '90vh', overflowY: 'auto',
         padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px',
       }}>
         <div style={{ fontWeight: 800, fontSize: '15px' }}>
@@ -262,16 +312,38 @@ function AufgabeModal({ aufgabe, clients, onSave, onClose }) {
           {/* Serienaufgabe: Felder */}
           {typ === 'serie' && (
             <>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              {/* Frequenz */}
+              <div>
+                <label style={labelStyle}>Frequenz</label>
+                <select value={frequenz} onChange={e => setFrequenz(e.target.value)} style={inputStyle}>
+                  <option value="monatlich">Monatlich</option>
+                  <option value="quartalsweise">Quartalsweise</option>
+                  <option value="halbjaehrlich">Halbjährlich</option>
+                  <option value="jaehrlich">Jährlich</option>
+                  <option value="individuell">📅 Individuelles Intervall</option>
+                </select>
+              </div>
+
+              {/* Individuell: Intervall-Wert + Typ */}
+              {frequenz === 'individuell' ? (
                 <div>
-                  <label style={labelStyle}>Frequenz</label>
-                  <select value={frequenz} onChange={e => setFrequenz(e.target.value)} style={inputStyle}>
-                    <option value="monatlich">Monatlich</option>
-                    <option value="quartalsweise">Quartalsweise</option>
-                    <option value="halbjaehrlich">Halbjährlich</option>
-                    <option value="jaehrlich">Jährlich</option>
-                  </select>
+                  <label style={labelStyle}>Intervall</label>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <span style={{ fontSize: '13px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Alle</span>
+                    <input
+                      type="number" min={1} max={999} value={intervallWert}
+                      onChange={e => setIntervallWert(e.target.value)}
+                      style={{ ...inputStyle, width: '72px', flex: 'none' }}
+                    />
+                    <select value={intervallTyp} onChange={e => setIntervallTyp(e.target.value)} style={{ ...inputStyle, flex: 1 }}>
+                      <option value="tage">Tage</option>
+                      <option value="wochen">Wochen</option>
+                      <option value="monate">Monate</option>
+                    </select>
+                  </div>
                 </div>
+              ) : (
+                /* Fixed-Frequenz: Tag im Monat */
                 <div>
                   <label style={labelStyle}>Tag im Monat (fällig)</label>
                   <input
@@ -280,7 +352,9 @@ function AufgabeModal({ aufgabe, clients, onSave, onClose }) {
                     style={inputStyle}
                   />
                 </div>
-              </div>
+              )}
+
+              {/* Startdatum / Enddatum */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                 <div>
                   <label style={labelStyle}>Startdatum *</label>
@@ -297,6 +371,16 @@ function AufgabeModal({ aufgabe, clients, onSave, onClose }) {
                   />
                 </div>
               </div>
+
+              {/* Vorschau (nur bei individuell) */}
+              {frequenz === 'individuell' && startDatum && (
+                <IndividuellPreview
+                  startDatum={startDatum}
+                  endDatum={endDatum}
+                  intervallTyp={intervallTyp}
+                  intervallWert={intervallWert}
+                />
+              )}
             </>
           )}
 
