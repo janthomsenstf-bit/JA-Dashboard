@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import { generateAufgaben, generateManuelleAufgaben, getStatus, buildTogglePatch, TYP_CONFIG, fmtDatum, isUeberfaellig, MONAT_NAMEN, MONAT_KURZ } from '../utils/aufgaben.js'
 
 const HEUTE = new Date()
@@ -21,6 +21,116 @@ function StatBadge({ label, count, color, bg }) {
   )
 }
 
+// ── Mandant-Typeahead ─────────────────────────────────────────────────────────
+function ClientPicker({ clients, value, onChange, inputStyle }) {
+  const aktive = clients.filter(c => !c.archiviert)
+
+  // Initialer Anzeigename aus vorausgewählter ID
+  const initName = value ? (aktive.find(c => c.id === value)?.name ?? '') : ''
+  const [query,    setQuery]    = useState(initName)
+  const [open,     setOpen]     = useState(false)
+  const wrapRef                 = useRef(null)
+
+  // Schließen bei Klick außerhalb
+  useEffect(() => {
+    function onDown(e) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [])
+
+  const matches = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return aktive.slice(0, 8)
+    return aktive.filter(c =>
+      c.name.toLowerCase().includes(q) ||
+      (c.mandantennummer && c.mandantennummer.toLowerCase().includes(q))
+    ).slice(0, 10)
+  }, [query, aktive])
+
+  function select(client) {
+    setQuery(client.name)
+    setOpen(false)
+    onChange(client.id)
+  }
+
+  function clear() {
+    setQuery('')
+    setOpen(false)
+    onChange('')
+  }
+
+  return (
+    <div ref={wrapRef} style={{ position: 'relative' }}>
+      <div style={{ position: 'relative' }}>
+        <input
+          type="text"
+          value={query}
+          placeholder="Name oder Mandantennr. eingeben…"
+          autoComplete="off"
+          style={{ ...inputStyle, paddingRight: '28px' }}
+          onChange={e => { setQuery(e.target.value); setOpen(true); if (!e.target.value) onChange('') }}
+          onFocus={() => setOpen(true)}
+        />
+        {query && (
+          <button
+            type="button"
+            onMouseDown={e => { e.preventDefault(); clear() }}
+            style={{
+              position: 'absolute', right: '6px', top: '50%', transform: 'translateY(-50%)',
+              background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)',
+              fontSize: '14px', lineHeight: 1, padding: '0 2px',
+            }}
+          >✕</button>
+        )}
+      </div>
+
+      {open && matches.length > 0 && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 3px)', left: 0, right: 0, zIndex: 200,
+          background: 'var(--surface)', border: '1px solid var(--border)',
+          borderRadius: '8px', boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
+          maxHeight: '220px', overflowY: 'auto',
+        }}>
+          {/* "Kein Mandant"-Option */}
+          <div
+            onMouseDown={e => { e.preventDefault(); clear() }}
+            style={{
+              padding: '8px 12px', cursor: 'pointer', fontSize: '12px',
+              color: 'var(--text-muted)', fontStyle: 'italic',
+              borderBottom: '1px solid var(--border)',
+            }}
+            onMouseEnter={e => e.currentTarget.style.background = 'var(--surface2)'}
+            onMouseLeave={e => e.currentTarget.style.background = ''}
+          >
+            — Kein Mandant —
+          </div>
+          {matches.map(c => (
+            <div
+              key={c.id}
+              onMouseDown={e => { e.preventDefault(); select(c) }}
+              style={{
+                padding: '8px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px',
+                background: value === c.id ? 'rgba(59,130,246,0.1)' : '',
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = 'var(--surface2)'}
+              onMouseLeave={e => e.currentTarget.style.background = value === c.id ? 'rgba(59,130,246,0.1)' : ''}
+            >
+              {c.mandantennummer && (
+                <span style={{ fontSize: '10px', fontFamily: 'monospace', color: 'var(--text-muted)', minWidth: '52px' }}>
+                  {c.mandantennummer}
+                </span>
+              )}
+              <span style={{ fontSize: '13px', fontWeight: value === c.id ? 700 : 400 }}>{c.name}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Modal: Aufgabe erstellen / bearbeiten ─────────────────────────────────────
 function AufgabeModal({ aufgabe, clients, onSave, onClose }) {
   const isEdit = !!aufgabe?.id
@@ -34,8 +144,6 @@ function AufgabeModal({ aufgabe, clients, onSave, onClose }) {
   const [endDatum,   setEndDatum]   = useState(aufgabe?.endDatum   ?? '')
   const [faelligTag, setFaelligTag] = useState(aufgabe?.faelligTag ?? 1)
   const [beschreibung, setBeschreibung] = useState(aufgabe?.beschreibung ?? '')
-
-  const aktiveClients = clients.filter(c => !c.archiviert)
 
   function handleSubmit(e) {
     e.preventDefault()
@@ -121,14 +229,12 @@ function AufgabeModal({ aufgabe, clients, onSave, onClose }) {
           {/* Mandant */}
           <div>
             <label style={labelStyle}>Mandant (optional)</label>
-            <select value={mandantId} onChange={e => setMandantId(e.target.value)} style={inputStyle}>
-              <option value="">— Kein Mandant —</option>
-              {aktiveClients.map(c => (
-                <option key={c.id} value={c.id}>
-                  {c.mandantennummer ? `${c.mandantennummer} · ` : ''}{c.name}
-                </option>
-              ))}
-            </select>
+            <ClientPicker
+              clients={clients}
+              value={mandantId}
+              onChange={setMandantId}
+              inputStyle={inputStyle}
+            />
           </div>
 
           {/* Beschreibung */}
