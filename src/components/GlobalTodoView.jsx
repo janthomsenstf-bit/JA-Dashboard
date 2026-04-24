@@ -429,6 +429,7 @@ export default function GlobalTodoView({
         if (task.type === 'Lohn' && client.lohnInUebersicht === false) continue
         if (task.type === 'USt'  && client.ustInUebersicht  === false) continue
         if (task.type === 'JA'   && client.jaInUebersicht   === false) continue
+        if (task.type === 'FIBU' && !client.fibuInUebersicht)          continue
         const st = getStatus(client, task.key)
         result.push({ ...task, client, mandantName: client.name, erledigt: st.erledigt, erledigtAm: st.erledigtAm, istManuell: false })
       }
@@ -609,6 +610,7 @@ export default function GlobalTodoView({
             { key: 'JA',      label: '📁 JA' },
             { key: 'Zusatz',  label: '⭐ Zusatz' },
             { key: 'Manuell', label: '📌 Manuell' },
+            { key: 'FIBU',    label: '📒 FIBU' },
           ].map(f => (
             <button key={f.key} onClick={() => setFilterTyp(f.key)} style={{
               padding: '4px 10px', borderRadius: '20px', fontSize: '11px', cursor: 'pointer',

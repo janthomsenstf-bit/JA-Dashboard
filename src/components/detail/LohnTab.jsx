@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { generateAufgaben, getStatus, buildTogglePatch, fmtDatum } from '../../utils/aufgaben.js'
+import SerieKonfigPanel from './SerieKonfigPanel.jsx'
 
 const ACCENT = '#7c3aed'
 
@@ -77,10 +78,14 @@ export default function LohnTab({ client, onUpdate }) {
 
   const lohnTasks = generateAufgaben(client).filter(t => t.type === 'Lohn')
 
+  const DEFAULT_LOHN_SERIE = { aktiv: false, startDatum: '', frequenz: 'monatlich', faelligTag: 22, endDatum: '', intervallTyp: 'monate', intervallWert: 1 }
+  const lohnSerie = client.lohnSerie ?? DEFAULT_LOHN_SERIE
+
   function toggle(key) { onUpdate(buildTogglePatch(client, key)) }
   function setLohnAktiv(aktiv) { onUpdate({ lohnAktiv: aktiv }) }
   function addNotiz(e)  { onUpdate({ lohn: { ...data, notizen: [...notizen, e] } }) }
   function delNotiz(id) { onUpdate({ lohn: { ...data, notizen: notizen.filter(n => n.id !== id) } }) }
+  function setLohnSerie(s) { onUpdate({ lohnSerie: s }) }
 
   const erledigtCount = lohnTasks.filter(t => getStatus(client, t.key).erledigt).length
 
@@ -116,10 +121,22 @@ export default function LohnTab({ client, onUpdate }) {
               onChange={e => onUpdate({ lohnInUebersicht: e.target.checked })}
               style={{ width:'16px', height:'16px', accentColor:'#0f766e', cursor:'pointer' }} />
             <span style={{ fontSize:'13px', fontWeight: client.lohnInUebersicht !== false ? 600 : 400, color: client.lohnInUebersicht !== false ? '#0f766e' : 'var(--text-secondary)' }}>
-              📋 Offene Löhne in Aufgaben-Übersicht anzeigen
+              📋 In Aufgaben-Übersicht anzeigen
             </span>
           </label>
         </div>
+
+        {/* Serien-Konfiguration */}
+        {client.lohnAktiv && client.lohnInUebersicht !== false && (
+          <div style={{ padding:'10px 14px', background:'var(--surface)', borderBottom:'1px solid var(--border)' }}>
+            <SerieKonfigPanel
+              config={lohnSerie}
+              onChange={setLohnSerie}
+              accentColor={ACCENT}
+              taskLabel="Lohnabrechnung"
+            />
+          </div>
+        )}
 
         {/* Fortschrittsbalken */}
         {lohnTasks.length > 0 && (

@@ -16,6 +16,7 @@ export const TYP_CONFIG = {
   JA:      { label: 'Jahresabschluss',     icon: '📁', color: '#c2410c', bg: 'rgba(194,65,12,0.1)'   },
   Zusatz:  { label: 'Zusatzaufgabe',       icon: '⭐', color: '#92400e', bg: 'rgba(146,64,14,0.1)'   },
   Manuell: { label: 'Aufgabe',             icon: '📌', color: '#0e7490', bg: 'rgba(14,116,144,0.1)'  },
+  FIBU:    { label: 'Finanzbuchhaltung',   icon: '📒', color: '#065f46', bg: 'rgba(6,95,70,0.1)'     },
 }
 
 export const ZUSATZ_ARTEN = [
@@ -117,37 +118,127 @@ export function generateAufgaben(client) {
       })
     }
 
+    // ── Hilfsfunktion: Serieninstanzen für ein Jahr berechnen ─────────────────
+    // Wird für Lohn-Serie und FIBU-Serie verwendet.
+    function genSerieInstances(serieConfig, jahr) {
+      const freq      = serieConfig.frequenz ?? 'monatlich'
+      const startD    = new Date(serieConfig.startDatum)
+      const endD      = serieConfig.endDatum ? new Date(serieConfig.endDatum) : null
+      const tag       = Math.min(Math.max(parseInt(serieConfig.faelligTag ?? 1, 10), 1), 28)
+      const iTyp      = serieConfig.intervallTyp ?? 'monate'
+      const iWert     = Math.max(1, parseInt(serieConfig.intervallWert ?? 1, 10))
+      const result    = []
+
+      function addInst(monat, quartal, instKey, d) {
+        if (d < startD) return
+        if (endD && d > endD) return
+        result.push({ instKey, monat, quartal, faelligDate: d })
+      }
+
+      if (freq === 'monatlich') {
+        for (let m = 1; m <= 12; m++)
+          addInst(m, Math.ceil(m / 3), String(m).padStart(2, '0'), new Date(jahr, m - 1, tag))
+      } else if (freq === 'quartalsweise') {
+        for (let q = 1; q <= 4; q++) {
+          const m = q * 3
+          addInst(m, q, `Q${q}`, new Date(jahr, m - 1, tag))
+        }
+      } else if (freq === 'jaehrlich') {
+        const sm = startD.getMonth() + 1
+        addInst(sm, Math.ceil(sm / 3), 'Y', new Date(jahr, sm - 1, tag))
+      } else if (freq === 'individuell') {
+        const approxMs = iTyp === 'tage' ? iWert * 86400000 : iTyp === 'wochen' ? iWert * 7 * 86400000 : iWert * 30 * 86400000
+        let cur = new Date(startD)
+        const minDate = new Date(jahr, 0, 1)
+        if (cur < minDate && approxMs > 0) {
+          const skip = Math.max(0, Math.floor((minDate.getTime() - cur.getTime()) / approxMs) - 2)
+          for (let i = 0; i < skip; i++) cur = addIntervalDate(cur, iTyp, iWert)
+          while (cur < minDate) cur = addIntervalDate(cur, iTyp, iWert)
+        }
+        const maxDate = new Date(jahr, 11, 31, 23, 59, 59)
+        let safety = 0
+        while (cur <= maxDate && safety++ < 400) {
+          const m = cur.getMonth() + 1
+          addInst(m, Math.ceil(m / 3), cur.toISOString().slice(0, 10), new Date(cur))
+          cur = addIntervalDate(cur, iTyp, iWert)
+        }
+      }
+      return result
+    }
+
     // ── Lohnabrechnung + SV-Beitragsnachweis ─────────────────────────────────
-    // Pro Monat zwei Aufgaben:
-    //   1) Lohnabrechnung      → fällig 25. des Monats (letzter Arbeitstag approx.)
-    //   2) SV-Beitragsnachweis → fällig 26. des Monats (§28f Abs.3 SGB IV:
-    //      zwei Werktage vor Fälligkeit der Beiträge = 26. des Monats)
     if (client.lohnAktiv) {
       const artSuffix = client.lohnArt === 'baulohn' ? ' (Bau)' : ''
-      for (let lm = 1; lm <= 12; lm++) {
-        const mStr = String(lm).padStart(2, '0')
-        tasks.push({
-          key:            `lohn-${leistungsJahr}-${mStr}`,
-          type:           'Lohn',
-          label:          `Lohnabrechnung ${MONAT_NAMEN[lm - 1]} ${leistungsJahr}${artSuffix}`,
-          leistungsMonat: lm,
-          leistungsJahr,
-          monat:          lm,
-          quartal:        Math.ceil(lm / 3),
-          jahr:           leistungsJahr,
-          faellig:        new Date(leistungsJahr, lm - 1, 25).toISOString(),
-        })
-        tasks.push({
-          key:            `lohn-sv-${leistungsJahr}-${mStr}`,
-          type:           'LohnSV',
-          label:          `SV-Beitragsnachweis ${MONAT_NAMEN[lm - 1]} ${leistungsJahr}`,
-          leistungsMonat: lm,
-          leistungsJahr,
-          monat:          lm,
-          quartal:        Math.ceil(lm / 3),
-          jahr:           leistungsJahr,
-          faellig:        new Date(leistungsJahr, lm - 1, 26).toISOString(),
-        })
+      const ls        = client.lohnSerie
+
+      if (ls?.aktiv && ls.startDatum) {
+        // Serienbasierte Lohn-Aufgaben (konfigurierbar)
+        for (const inst of genSerieInstances(ls, leistungsJahr)) {
+          const monatLabel = ls.frequenz === 'jaehrlich'     ? `${leistungsJahr}`
+                           : ls.frequenz === 'quartalsweise' ? `Q${inst.quartal} ${leistungsJahr}`
+                           :                                   `${MONAT_NAMEN[inst.monat - 1]} ${leistungsJahr}`
+          tasks.push({
+            key:            `lohn-${leistungsJahr}-${inst.instKey}`,
+            type:           'Lohn',
+            label:          `Lohnabrechnung ${monatLabel}${artSuffix}`,
+            leistungsMonat: inst.monat,
+            leistungsJahr,
+            monat:          inst.monat,
+            quartal:        inst.quartal,
+            jahr:           leistungsJahr,
+            faellig:        inst.faelligDate.toISOString(),
+          })
+        }
+      } else {
+        // Standard-Monatsgenerierung (fällig 25./26.)
+        for (let lm = 1; lm <= 12; lm++) {
+          const mStr = String(lm).padStart(2, '0')
+          tasks.push({
+            key:            `lohn-${leistungsJahr}-${mStr}`,
+            type:           'Lohn',
+            label:          `Lohnabrechnung ${MONAT_NAMEN[lm - 1]} ${leistungsJahr}${artSuffix}`,
+            leistungsMonat: lm,
+            leistungsJahr,
+            monat:          lm,
+            quartal:        Math.ceil(lm / 3),
+            jahr:           leistungsJahr,
+            faellig:        new Date(leistungsJahr, lm - 1, 25).toISOString(),
+          })
+          tasks.push({
+            key:            `lohn-sv-${leistungsJahr}-${mStr}`,
+            type:           'LohnSV',
+            label:          `SV-Beitragsnachweis ${MONAT_NAMEN[lm - 1]} ${leistungsJahr}`,
+            leistungsMonat: lm,
+            leistungsJahr,
+            monat:          lm,
+            quartal:        Math.ceil(lm / 3),
+            jahr:           leistungsJahr,
+            faellig:        new Date(leistungsJahr, lm - 1, 26).toISOString(),
+          })
+        }
+      }
+    }
+
+    // ── FIBU (Finanzbuchhaltung) ──────────────────────────────────────────────
+    if (client.fibuAktiv) {
+      const fs = client.fibuSerie
+      if (fs?.aktiv && fs.startDatum) {
+        for (const inst of genSerieInstances(fs, leistungsJahr)) {
+          const monatLabel = fs.frequenz === 'jaehrlich'     ? `${leistungsJahr}`
+                           : fs.frequenz === 'quartalsweise' ? `Q${inst.quartal} ${leistungsJahr}`
+                           :                                   `${MONAT_NAMEN[inst.monat - 1]} ${leistungsJahr}`
+          tasks.push({
+            key:            `fibu-${leistungsJahr}-${inst.instKey}`,
+            type:           'FIBU',
+            label:          `FIBU / Buchhaltung ${monatLabel}`,
+            leistungsMonat: inst.monat,
+            leistungsJahr,
+            monat:          inst.monat,
+            quartal:        inst.quartal,
+            jahr:           leistungsJahr,
+            faellig:        inst.faelligDate.toISOString(),
+          })
+        }
       }
     }
   }
