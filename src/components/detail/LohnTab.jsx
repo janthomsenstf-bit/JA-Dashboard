@@ -104,7 +104,7 @@ export default function LohnTab({ client, onUpdate }) {
           )}
         </div>
 
-        {/* Einstellungen-Zeile */}
+        {/* Toggle-Zeile */}
         <div style={{ padding:'10px 14px', background:'var(--surface)', borderBottom:'1px solid var(--border)', display:'flex', gap:'20px', alignItems:'center', flexWrap:'wrap' }}>
           {/* Lohn aktiv */}
           <label style={{ display:'flex', alignItems:'center', gap:'8px', cursor:'pointer', userSelect:'none' }}>
@@ -114,20 +114,22 @@ export default function LohnTab({ client, onUpdate }) {
               💼 Lohnabrechnung aktiv
             </span>
           </label>
-          {/* In Übersicht anzeigen */}
-          <label style={{ display:'flex', alignItems:'center', gap:'8px', cursor:'pointer', userSelect:'none' }}>
-            <input type="checkbox"
-              checked={client.lohnInUebersicht !== false}
-              onChange={e => onUpdate({ lohnInUebersicht: e.target.checked })}
-              style={{ width:'16px', height:'16px', accentColor:'#0f766e', cursor:'pointer' }} />
-            <span style={{ fontSize:'13px', fontWeight: client.lohnInUebersicht !== false ? 600 : 400, color: client.lohnInUebersicht !== false ? '#0f766e' : 'var(--text-secondary)' }}>
-              📋 In Aufgaben-Übersicht anzeigen
-            </span>
-          </label>
+          {/* In Übersicht anzeigen – nur wenn Lohn aktiv */}
+          {client.lohnAktiv && (
+            <label style={{ display:'flex', alignItems:'center', gap:'8px', cursor:'pointer', userSelect:'none' }}>
+              <input type="checkbox"
+                checked={!!client.lohnInUebersicht}
+                onChange={e => onUpdate({ lohnInUebersicht: e.target.checked })}
+                style={{ width:'16px', height:'16px', accentColor:'#0f766e', cursor:'pointer' }} />
+              <span style={{ fontSize:'13px', fontWeight: client.lohnInUebersicht ? 600 : 400, color: client.lohnInUebersicht ? '#0f766e' : 'var(--text-secondary)' }}>
+                📋 In Aufgaben-Übersicht anzeigen
+              </span>
+            </label>
+          )}
         </div>
 
-        {/* Serien-Konfiguration */}
-        {client.lohnAktiv && client.lohnInUebersicht !== false && (
+        {/* Serien-Konfiguration – erscheint wenn beide Haken gesetzt */}
+        {client.lohnAktiv && client.lohnInUebersicht && (
           <div style={{ padding:'10px 14px', background:'var(--surface)', borderBottom:'1px solid var(--border)' }}>
             <SerieKonfigPanel
               config={lohnSerie}

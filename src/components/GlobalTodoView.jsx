@@ -426,7 +426,7 @@ export default function GlobalTodoView({
     for (const client of aktiveClients) {
       const tasks = generateAufgaben(client)
       for (const task of tasks) {
-        if (task.type === 'Lohn' && client.lohnInUebersicht === false) continue
+        if (task.type === 'Lohn' && !client.lohnInUebersicht) continue
         if (task.type === 'USt'  && client.ustInUebersicht  === false) continue
         if (task.type === 'JA'   && client.jaInUebersicht   === false) continue
         if (task.type === 'FIBU' && !client.fibuInUebersicht)          continue
