@@ -1698,6 +1698,7 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
           actionForm={actionForm}
           setActionForm={setActionForm}
           emailSignaturen={emailSignaturen}
+          emailVorlagen={emailVorlagen}
         />
       )}
     </div>
@@ -1714,6 +1715,7 @@ function EmailDetailPanel({
   sendFromHistory,
   actionForm, setActionForm,
   emailSignaturen = [],
+  emailVorlagen = [],
 }) {
   const [toast,          setToast]          = useState('')
   const [aufgabeTitel,   setAufgabeTitel]   = useState(entry.betreff ?? '')
@@ -1729,7 +1731,8 @@ function EmailDetailPanel({
 
   // ── Inline-Antwort ────────────────────────────────────────────
   const [absenderList]    = useState(loadAbsender)
-  const [replyMode,       setReplyMode]        = useState(false)
+  const [replyMode,       setReplyMode]        = useState('')   // '' | 'reply' | 'replyAll' | 'forward'
+  const [showVorlagenPicker, setShowVorlagenPicker] = useState(false)
   const [replyText,       setReplyText]        = useState('')
   const [replyBetreff,    setReplyBetreff]     = useState('Re: ' + (entry.betreff ?? ''))
   const [replyEmpfaenger, setReplyEmpfaenger]  = useState(entry.absender ?? '')
@@ -1796,7 +1799,7 @@ function EmailDetailPanel({
       if (aktion === 'antwort' && result.text) {
         setReplyBetreff(result.betreff || 'Re: ' + (entry.betreff ?? ''))
         setReplyText(result.text)
-        setReplyMode(true)
+        setReplyMode('reply')
       }
     } catch (e) {
       setPanelAiError(e.message)
@@ -1808,9 +1811,31 @@ function EmailDetailPanel({
   function handleReply() {
     setReplyBetreff('Re: ' + (entry.betreff ?? ''))
     setReplyEmpfaenger(entry.absender ?? '')
+    setReplyCC('')
     setReplyText('')
     setReplyAttachments([])
-    setReplyMode(true)
+    setReplyMode('reply')
+  }
+
+  function handleReplyAll() {
+    const ownAddresses = new Set(absenderList.map(a => a.email.toLowerCase().trim()))
+    const origCC = (entry.cc ?? '').split(',').map(s => s.trim()).filter(s => s && !ownAddresses.has(s.toLowerCase()))
+    const origTo = (entry.empfaenger ?? '').split(',').map(s => s.trim()).filter(s => s && !ownAddresses.has(s.toLowerCase()))
+    setReplyBetreff('Re: ' + (entry.betreff ?? ''))
+    setReplyEmpfaenger(entry.absender ?? '')
+    setReplyCC([...origTo, ...origCC].filter(Boolean).join(', '))
+    setReplyText('')
+    setReplyAttachments([])
+    setReplyMode('replyAll')
+  }
+
+  function handleForward() {
+    setReplyBetreff('WG: ' + (entry.betreff ?? ''))
+    setReplyEmpfaenger('')
+    setReplyCC('')
+    setReplyText('')
+    setReplyAttachments([])
+    setReplyMode('forward')
   }
 
   function handleReplyFileSelect(e) {
@@ -1856,13 +1881,13 @@ function EmailDetailPanel({
     try {
       await sendViaSMTP({ to: replyEmpfaenger, from: replyAbsenderVal, subject: replyBetreff, text: fullBody, cc: replyCC, account, attachments: smtpAtts })
       saveKomm({ events: [newEvent, ...events] })
-      showToast('✓ Antwort gesendet')
-      setReplyMode(false)
+      showToast(replyMode === 'forward' ? '✓ Weitergeleitet' : '✓ Antwort gesendet')
+      setReplyMode('')
       setReplyAttachments([])
     } catch {
       openMailto({ empfaenger: replyEmpfaenger, betreff: replyBetreff, text: fullBody, cc: replyCC })
       saveKomm({ events: [newEvent, ...events] })
-      setReplyMode(false)
+      setReplyMode('')
       setReplyAttachments([])
     } finally {
       setReplySending(false)
@@ -2175,8 +2200,10 @@ function EmailDetailPanel({
           }}>
             {/* Kopfzeile */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--accent)' }}>↩ Antwort verfassen</span>
-              <button className="btn btn-ghost btn-sm" onClick={() => setReplyMode(false)} style={{ fontSize: '13px', lineHeight: 1 }}>✕</button>
+              <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--accent)' }}>
+                {replyMode === 'forward' ? '→ Weiterleiten' : replyMode === 'replyAll' ? '↩↩ Allen antworten' : '↩ Antwort verfassen'}
+              </span>
+              <button className="btn btn-ghost btn-sm" onClick={() => setReplyMode('')} style={{ fontSize: '13px', lineHeight: 1 }}>✕</button>
             </div>
 
             {/* Von + An */}
@@ -2199,6 +2226,16 @@ function EmailDetailPanel({
               </div>
             </div>
 
+            {/* CC – bei Allen antworten vorausgefüllt, immer editierbar wenn Inhalt */}
+            {(replyMode === 'replyAll' || replyCC) && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', whiteSpace: 'nowrap', minWidth: '28px' }}>CC:</span>
+                <input className="input" value={replyCC} onChange={e => setReplyCC(e.target.value)}
+                  placeholder="cc@firma.de, weitere@kontakt.de"
+                  style={{ flex: 1, fontSize: '11px', padding: '4px 6px' }} />
+              </div>
+            )}
+
             {/* Betreff + Signatur */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
               <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Betreff:</span>
@@ -2215,6 +2252,43 @@ function EmailDetailPanel({
                 </>
               )}
             </div>
+
+            {/* ── Vorlage auswählen ── */}
+            {emailVorlagen.length > 0 && (
+              <div style={{ position: 'relative' }}>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => setShowVorlagenPicker(v => !v)}
+                  style={{ fontSize: '11px', color: '#a78bfa' }}
+                >
+                  📝 Vorlage auswählen ({emailVorlagen.length})
+                </button>
+                {showVorlagenPicker && (
+                  <div style={{
+                    position: 'absolute', bottom: 'calc(100% + 4px)', left: 0, zIndex: 300,
+                    background: 'var(--surface)', border: '1px solid var(--border)',
+                    borderRadius: '10px', boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+                    minWidth: '240px', maxHeight: '260px', overflowY: 'auto', padding: '6px',
+                  }}>
+                    {emailVorlagen.map(v => (
+                      <button
+                        key={v.id}
+                        onClick={() => {
+                          setReplyText(prev => (prev ? prev + '\n\n' : '') + v.text)
+                          setShowVorlagenPicker(false)
+                        }}
+                        style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 10px', borderRadius: '6px', cursor: 'pointer', background: 'none', border: 'none', color: 'var(--text)', fontSize: '12px' }}
+                        onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
+                        onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                      >
+                        <div style={{ fontWeight: 600 }}>{v.name}</div>
+                        <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '1px' }}>{v.kategorie} · {v.betreff}</div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* ── Editor-Toolbar: Diktieren + KI-Optionen ── */}
             <div style={{
@@ -2372,7 +2446,7 @@ function EmailDetailPanel({
                 disabled={replySending || !replyText.trim()} style={{ fontSize: '12px' }}>
                 {replySending ? '⏳ Sende…' : '📤 Senden'}
               </button>
-              <button className="btn btn-ghost btn-sm" onClick={() => setReplyMode(false)} style={{ fontSize: '12px' }}>Abbrechen</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => setReplyMode('')} style={{ fontSize: '12px' }}>Abbrechen</button>
               <button className="btn btn-ghost btn-sm" onClick={() => {
                 setActivTyp('frei')
                 setEmpfaenger(replyEmpfaenger)
@@ -2394,8 +2468,12 @@ function EmailDetailPanel({
         <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)', display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center', flexShrink: 0 }}>
           {toast && <span style={{ fontSize: '11px', color: 'var(--green)', fontWeight: 700 }}>{toast}</span>}
           {entry.typ === 'eingehend' && (
-            <button className="btn btn-primary btn-sm" onClick={handleReply} style={{ fontSize: '11px' }}>↩ Antworten</button>
+            <>
+              <button className="btn btn-primary btn-sm" onClick={handleReply} style={{ fontSize: '11px' }}>↩ Antworten</button>
+              <button className="btn btn-ghost btn-sm" onClick={handleReplyAll} style={{ fontSize: '11px' }}>↩↩ Allen</button>
+            </>
           )}
+          <button className="btn btn-ghost btn-sm" onClick={handleForward} style={{ fontSize: '11px' }}>→ Weiterleiten</button>
           {entry.status === 'entwurf' && (
             <button className="btn btn-primary btn-sm" onClick={() => { sendFromHistory(entry); onClose() }} style={{ fontSize: '11px' }}>📤 Jetzt senden</button>
           )}
