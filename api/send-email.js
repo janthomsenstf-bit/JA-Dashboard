@@ -133,8 +133,22 @@ export default async function handler(req, res) {
       }))
     : []
 
+  // ── From-Adresse prüfen: SMTP-Server erlaubt nur Versand von authentifizierter Adresse ──
+  // Falls abweichende Absenderadresse angegeben, als Reply-To setzen (Antworten landen trotzdem dort)
+  function extractEmail(addr) {
+    if (!addr) return ''
+    const m = addr.match(/<([^>]+)>/)
+    return (m ? m[1] : addr).toLowerCase().trim()
+  }
+  const desiredFrom  = from || smtpCfg.user
+  const desiredEmail = extractEmail(desiredFrom)
+  const smtpEmail    = (smtpCfg.user ?? '').toLowerCase().trim()
+  const effectiveFrom = desiredEmail === smtpEmail ? desiredFrom : smtpCfg.user
+  const replyTo       = desiredEmail !== smtpEmail ? desiredFrom : undefined
+
   const mailOptions = {
-    from:    from || smtpCfg.user,
+    from:    effectiveFrom,
+    replyTo: replyTo,
     to,
     cc:      cc  || undefined,
     bcc:     bcc || undefined,
