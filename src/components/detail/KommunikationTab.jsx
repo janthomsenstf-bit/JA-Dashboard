@@ -34,6 +34,52 @@ function saveAbsender(list) {
   try { localStorage.setItem(ABSENDER_KEY, JSON.stringify(list)) } catch {}
 }
 
+// ── Draft-Persistenz (Auto-Save) ──────────────────────────────────────────────
+function loadMainDraft(clientId) {
+  if (!clientId) return null
+  try {
+    const raw = localStorage.getItem(`komm_draft_${clientId}`)
+    return raw ? JSON.parse(raw) : null
+  } catch { return null }
+}
+function saveMainDraft(clientId, draft) {
+  if (!clientId) return
+  try {
+    localStorage.setItem(`komm_draft_${clientId}`, JSON.stringify(draft))
+  } catch {
+    try {
+      // Quota überschritten: ohne Anhang-Binärdaten speichern
+      localStorage.setItem(`komm_draft_${clientId}`, JSON.stringify({ ...draft, attachments: [] }))
+    } catch {}
+  }
+}
+function clearMainDraft(clientId) {
+  if (!clientId) return
+  try { localStorage.removeItem(`komm_draft_${clientId}`) } catch {}
+}
+
+function loadReplyDraft(clientId, entryId) {
+  if (!clientId || !entryId) return null
+  try {
+    const raw = localStorage.getItem(`komm_reply_${clientId}_${entryId}`)
+    return raw ? JSON.parse(raw) : null
+  } catch { return null }
+}
+function saveReplyDraft(clientId, entryId, draft) {
+  if (!clientId || !entryId) return
+  try {
+    localStorage.setItem(`komm_reply_${clientId}_${entryId}`, JSON.stringify(draft))
+  } catch {
+    try {
+      localStorage.setItem(`komm_reply_${clientId}_${entryId}`, JSON.stringify({ ...draft, replyAttachments: [] }))
+    } catch {}
+  }
+}
+function clearReplyDraft(clientId, entryId) {
+  if (!clientId || !entryId) return
+  try { localStorage.removeItem(`komm_reply_${clientId}_${entryId}`) } catch {}
+}
+
 // ── SMTP Senden ───────────────────────────────────────────────────────────────
 async function sendViaSMTP({ to, from, subject, text, cc, bcc, account, attachments = [] }) {
   const res = await fetch('/api/send-email', {
@@ -316,19 +362,26 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
   const events  = Array.isArray(komm.events) ? komm.events : []
   const absender = loadAbsender()
 
-  // Editor State
-  const [editorOpen,  setEditorOpen]  = useState(false)
-  const [activTyp,    setActivTyp]    = useState('frei')
-  const [empfaenger,  setEmpfaenger]  = useState('')
-  const [absenderVal, setAbsenderVal] = useState(komm.standardAbsender || (absender.find(a => a.isDefault)?.email ?? ''))
-  const [betreff,     setBetreff]     = useState('')
-  const [text,        setText]        = useState('')
-  const [cc,          setCC]          = useState('')
-  const [bcc,         setBCC]         = useState('')
-  const [showBCC,     setShowBCC]     = useState(false)
+  // ── Draft-Wiederherstellung ──────────────────────────────────────────────────
+  const [_draft] = useState(() => loadMainDraft(client.id))
+  const [draftRestored, setDraftRestored] = useState(() => !!(
+    _draft && (_draft.editorOpen || _draft.betreff || _draft.text || _draft.empfaenger)
+  ))
+  const draftSaveRef = useRef(null)
+
+  // Editor State (mit Draft-Initialisierung)
+  const [editorOpen,  setEditorOpen]  = useState(_draft?.editorOpen ?? false)
+  const [activTyp,    setActivTyp]    = useState(_draft?.activTyp ?? 'frei')
+  const [empfaenger,  setEmpfaenger]  = useState(_draft?.empfaenger ?? '')
+  const [absenderVal, setAbsenderVal] = useState(_draft?.absenderVal ?? (komm.standardAbsender || (absender.find(a => a.isDefault)?.email ?? '')))
+  const [betreff,     setBetreff]     = useState(_draft?.betreff ?? '')
+  const [text,        setText]        = useState(_draft?.text ?? '')
+  const [cc,          setCC]          = useState(_draft?.cc ?? '')
+  const [bcc,         setBCC]         = useState(_draft?.bcc ?? '')
+  const [showBCC,     setShowBCC]     = useState(_draft?.showBCC ?? false)
 
   // Anhänge State
-  const [attachments,  setAttachments]  = useState([])
+  const [attachments,  setAttachments]  = useState(_draft?.attachments ?? [])
   const [isDragOver,   setIsDragOver]   = useState(false)
   const fileInputRef = useRef(null)
 
@@ -337,7 +390,7 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
   const [showVorlagenModal,   setShowVorlagenModal]   = useState(false)
 
   // Signaturen
-  const [activeSignaturId,    setActiveSignaturId]    = useState(null)
+  const [activeSignaturId,    setActiveSignaturId]    = useState(_draft?.activeSignaturId ?? null)
   const [showSignaturSelect,  setShowSignaturSelect]  = useState(false)
   const [showSignaturenModal, setShowSignaturenModal] = useState(false)
 
@@ -386,6 +439,21 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
     setEditorOpen(true)
     onClearPendingAttachments?.()
   }, [pendingAttachments])
+
+  // ── Auto-Save: Editor-Entwurf in localStorage ────────────────────────────────
+  useEffect(() => {
+    clearTimeout(draftSaveRef.current)
+    draftSaveRef.current = setTimeout(() => {
+      const hasContent = editorOpen || text || betreff || empfaenger
+      if (!hasContent) { clearMainDraft(client.id); return }
+      saveMainDraft(client.id, {
+        editorOpen, activTyp, empfaenger, absenderVal, betreff, text,
+        cc, bcc, showBCC, activeSignaturId,
+        attachments: attachments.map(a => ({ ...a })),
+      })
+    }, 800)
+    return () => clearTimeout(draftSaveRef.current)
+  }, [editorOpen, activTyp, empfaenger, absenderVal, betreff, text, cc, bcc, showBCC, activeSignaturId, attachments])
 
   function saveKomm(patch) {
     onUpdate({ kommunikation: { ...komm, ...patch } })
@@ -589,6 +657,8 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
   }
 
   function resetEditor() {
+    clearMainDraft(client.id)
+    setDraftRestored(false)
     setEditorOpen(false)
     setBetreff('')
     setText('')
@@ -1041,6 +1111,33 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
         >
+          {/* ── Entwurf-Banner ── */}
+          {draftRestored && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: '8px',
+              padding: '6px 12px', marginBottom: '10px',
+              background: 'rgba(22,163,74,0.07)', border: '1px solid rgba(22,163,74,0.25)',
+              borderRadius: '6px', fontSize: '12px',
+            }}>
+              <span style={{ color: '#16a34a', fontWeight: 600 }}>💾 Entwurf wiederhergestellt</span>
+              <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>– weiter schreiben oder verwerfen</span>
+              <div style={{ marginLeft: 'auto', display: 'flex', gap: '6px' }}>
+                <button
+                  onClick={resetEditor}
+                  style={{ background: 'none', border: '1px solid rgba(239,68,68,0.35)', borderRadius: '4px', cursor: 'pointer', color: '#ef4444', fontSize: '11px', padding: '2px 8px' }}
+                >
+                  Verwerfen
+                </button>
+                <button
+                  onClick={() => setDraftRestored(false)}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '14px', lineHeight: 1 }}
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Drag-Overlay */}
           {isDragOver && (
             <div style={{
@@ -1731,21 +1828,25 @@ function EmailDetailPanel({
 
   // ── Inline-Antwort ────────────────────────────────────────────
   const [absenderList]    = useState(loadAbsender)
-  const [replyMode,       setReplyMode]        = useState('')   // '' | 'reply' | 'replyAll' | 'forward'
+  const [_rDraft]         = useState(() => loadReplyDraft(client.id, entry.id))
+  const replyDraftSaveRef = useRef(null)
+
+  const [replyMode,       setReplyMode]        = useState(_rDraft?.replyMode ?? '')   // '' | 'reply' | 'replyAll' | 'forward'
   const [showVorlagenPicker, setShowVorlagenPicker] = useState(false)
-  const [replyText,       setReplyText]        = useState('')
-  const [replyBetreff,    setReplyBetreff]     = useState('Re: ' + (entry.betreff ?? ''))
-  const [replyEmpfaenger, setReplyEmpfaenger]  = useState(entry.absender ?? '')
+  const [replyText,       setReplyText]        = useState(_rDraft?.replyText ?? '')
+  const [replyBetreff,    setReplyBetreff]     = useState(_rDraft?.replyBetreff ?? ('Re: ' + (entry.betreff ?? '')))
+  const [replyEmpfaenger, setReplyEmpfaenger]  = useState(_rDraft?.replyEmpfaenger ?? (entry.absender ?? ''))
   const [replyAbsenderVal,setReplyAbsenderVal] = useState(() => {
+    if (_rDraft?.replyAbsenderVal) return _rDraft.replyAbsenderVal
     const list = loadAbsender()
     return (list.find(a => a.isDefault) ?? list[0])?.email ?? ''
   })
-  const [replyCC,         setReplyCC]          = useState('')
-  const [replySigId,      setReplySigId]       = useState(() => emailSignaturen.find(s => s.isDefault)?.id ?? '')
+  const [replyCC,         setReplyCC]          = useState(_rDraft?.replyCC ?? '')
+  const [replySigId,      setReplySigId]       = useState(() => _rDraft?.replySigId ?? (emailSignaturen.find(s => s.isDefault)?.id ?? ''))
   const [replySending,    setReplySending]     = useState(false)
   const [replyError,      setReplyError]       = useState('')
   const replyFileInputRef                       = useRef(null)
-  const [replyAttachments, setReplyAttachments] = useState([])
+  const [replyAttachments, setReplyAttachments] = useState(_rDraft?.replyAttachments ?? [])
 
   // ── Diktieren + KI-Optimierung ────────────────────────────────
   const recRef          = useRef(null)
@@ -1882,11 +1983,13 @@ function EmailDetailPanel({
       await sendViaSMTP({ to: replyEmpfaenger, from: replyAbsenderVal, subject: replyBetreff, text: fullBody, cc: replyCC, account, attachments: smtpAtts })
       saveKomm({ events: [newEvent, ...events] })
       showToast(replyMode === 'forward' ? '✓ Weitergeleitet' : '✓ Antwort gesendet')
+      clearReplyDraft(client.id, entry.id)
       setReplyMode('')
       setReplyAttachments([])
     } catch {
       openMailto({ empfaenger: replyEmpfaenger, betreff: replyBetreff, text: fullBody, cc: replyCC })
       saveKomm({ events: [newEvent, ...events] })
+      clearReplyDraft(client.id, entry.id)
       setReplyMode('')
       setReplyAttachments([])
     } finally {
@@ -1929,6 +2032,23 @@ function EmailDetailPanel({
     recRef.current = null
     setDictating(false)
   }
+
+  // ── Auto-Save: Antwort-Entwurf ────────────────────────────────
+  useEffect(() => {
+    clearTimeout(replyDraftSaveRef.current)
+    replyDraftSaveRef.current = setTimeout(() => {
+      if (!replyMode && !replyText) {
+        clearReplyDraft(client.id, entry.id)
+        return
+      }
+      saveReplyDraft(client.id, entry.id, {
+        replyMode, replyText, replyBetreff, replyEmpfaenger,
+        replyAbsenderVal, replyCC, replySigId,
+        replyAttachments: replyAttachments.map(a => ({ ...a })),
+      })
+    }, 800)
+    return () => clearTimeout(replyDraftSaveRef.current)
+  }, [replyMode, replyText, replyBetreff, replyEmpfaenger, replyAbsenderVal, replyCC, replySigId, replyAttachments])
 
   // ── KI-Textoptimierung ────────────────────────────────────────
   const KI_OPT_PROMPTS = {
