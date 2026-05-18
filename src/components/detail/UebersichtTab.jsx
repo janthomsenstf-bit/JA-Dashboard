@@ -7,6 +7,194 @@ function truncate(str, max) {
   return s.length > max ? s.slice(0, max) + '…' : s
 }
 
+function daysSince(iso) {
+  if (!iso) return null
+  const diff = Date.now() - new Date(iso.length === 10 ? iso + 'T12:00:00' : iso).getTime()
+  return Math.floor(diff / (1000 * 60 * 60 * 24))
+}
+
+const EVENT_CFG = {
+  rueckfragen:    { label: 'Rückfragen gesendet',                        icon: '📤', color: '#2563eb' },
+  erinnerung:     { label: 'Erinnerung gesendet',                        icon: '🔔', color: '#f97316' },
+  antwort:        { label: 'Antwort erhalten',                            icon: '💬', color: '#16a34a' },
+  vollstaendigkeit:{ label: 'Vollständigkeitserklärung erhalten',         icon: '📋', color: '#0f766e' },
+  telefonat:      { label: 'Telefonat / Persönlich',                      icon: '📞', color: '#7c3aed' },
+  email:          { label: 'E-Mail gesendet',                             icon: '📧', color: '#0891b2' },
+  unterschrift:   { label: 'Steuererklärung zur Unterschrift gesendet',   icon: '✍️', color: '#0f766e' },
+  notiz:          { label: 'Interne Notiz',                               icon: '🧠', color: '#64748b' },
+  fa_gesendet:    { label: 'Steuererklärung ans Finanzamt geschickt',     icon: '🏛', color: '#0891b2' },
+  rechnung_gestellt:{ label: 'Rechnung geschrieben',                      icon: '🧾', color: '#16a34a' },
+}
+
+function VerlaufPanel({ client, onNavigateToTab }) {
+  const events    = [...(client.kommunikation?.events ?? [])].sort((a, b) => new Date(b.datum) - new Date(a.datum))
+  const allRF     = client.rueckfragen ?? []
+  const openRF    = allRF.filter(r => !r.beantwortet)
+  const latest    = events[0] ?? null
+  const latestCfg = latest ? (EVENT_CFG[latest.typ] ?? { label: latest.typ, icon: '●', color: 'var(--text-muted)' }) : null
+  const shown     = events.slice(0, 6)
+  const hasMore   = events.length > 6
+
+  if (events.length === 0 && allRF.length === 0) return null
+
+  return (
+    <div style={{
+      background: 'var(--surface)',
+      border: '1px solid var(--border)',
+      borderRadius: 'var(--radius-lg)',
+      padding: '16px 18px',
+      marginTop: '14px',
+    }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
+        <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)' }}>
+          📊 Verlauf &amp; Aktivitäten
+        </span>
+        {events.length > 0 && (
+          <span style={{
+            fontSize: '11px', fontWeight: 700, padding: '1px 8px',
+            borderRadius: '20px', background: 'var(--surface2)',
+            color: 'var(--text-muted)', border: '1px solid var(--border)',
+          }}>
+            {events.length} Einträge
+          </span>
+        )}
+        <button
+          onClick={() => onNavigateToTab(2)}
+          style={{
+            marginLeft: 'auto', fontSize: '11px', color: 'var(--accent)',
+            background: 'none', border: 'none', cursor: 'pointer', padding: '2px 6px',
+          }}
+        >
+          → Status-Reiter
+        </button>
+      </div>
+
+      {/* Status-Badges: letztes Event + offene RQ */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '14px' }}>
+        {latestCfg && (
+          <span style={{
+            display: 'inline-flex', alignItems: 'center', gap: '5px',
+            padding: '3px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: 600,
+            background: latestCfg.color + '18', color: latestCfg.color,
+            border: `1px solid ${latestCfg.color}44`,
+          }}>
+            {latestCfg.icon} {latestCfg.label}
+            <span style={{ fontWeight: 400, color: 'var(--text-muted)', marginLeft: '4px' }}>
+              · {fmtDate(latest.datum)}
+            </span>
+          </span>
+        )}
+        {openRF.length > 0 ? (
+          <span style={{
+            display: 'inline-flex', alignItems: 'center', gap: '5px',
+            padding: '3px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: 600,
+            background: 'rgba(239,68,68,0.07)', color: '#ef4444',
+            border: '1px solid rgba(239,68,68,0.25)',
+          }}>
+            ⏳ {openRF.length} offene Rückfrage{openRF.length !== 1 ? 'n' : ''}
+          </span>
+        ) : allRF.length > 0 ? (
+          <span style={{
+            display: 'inline-flex', alignItems: 'center', gap: '5px',
+            padding: '3px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: 600,
+            background: 'rgba(22,163,74,0.07)', color: '#16a34a',
+            border: '1px solid rgba(22,163,74,0.25)',
+          }}>
+            ✓ Alle Rückfragen beantwortet
+          </span>
+        ) : null}
+      </div>
+
+      {/* Kompakte Timeline */}
+      {shown.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', marginBottom: hasMore || openRF.length > 0 ? '12px' : 0 }}>
+          {shown.map((ev, i) => {
+            const cfg = EVENT_CFG[ev.typ] ?? { label: ev.typ, icon: '●', color: 'var(--text-muted)' }
+            const age = daysSince(ev.datum)
+            return (
+              <div key={ev.id ?? i} style={{
+                display: 'flex', alignItems: 'center', gap: '8px',
+                padding: '5px 6px', borderRadius: '6px',
+                background: i % 2 === 0 ? 'transparent' : 'var(--surface2)',
+              }}>
+                <span style={{ fontSize: '13px', flexShrink: 0 }}>{cfg.icon}</span>
+                <span style={{
+                  fontSize: '11px', fontWeight: 600, color: cfg.color,
+                  minWidth: '130px', flexShrink: 0,
+                }}>
+                  {cfg.label}
+                </span>
+                {ev.notiz && (
+                  <span style={{
+                    fontSize: '11px', color: 'var(--text-secondary)',
+                    flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  }}>
+                    {truncate(ev.notiz, 60)}
+                  </span>
+                )}
+                <span style={{
+                  fontSize: '10px', color: 'var(--text-muted)', flexShrink: 0, marginLeft: 'auto',
+                  fontFamily: 'var(--font-mono)',
+                }}>
+                  {fmtDate(ev.datum)}{age !== null && age <= 7 ? ` (${age === 0 ? 'heute' : age === 1 ? 'gestern' : `vor ${age}d`})` : ''}
+                </span>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* "Mehr anzeigen"-Link */}
+      {hasMore && (
+        <button
+          onClick={() => onNavigateToTab(2)}
+          style={{
+            fontSize: '11px', color: 'var(--accent)', background: 'none',
+            border: 'none', cursor: 'pointer', padding: '0 6px 10px', display: 'block',
+          }}
+        >
+          + {events.length - 6} weitere Einträge → Status-Reiter
+        </button>
+      )}
+
+      {/* Offene Rückfragen (max 3) */}
+      {openRF.length > 0 && (
+        <div style={{ borderTop: '1px solid var(--border)', paddingTop: '10px' }}>
+          <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '6px' }}>
+            Offene Rückfragen
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+            {openRF.slice(0, 3).map((rq, i) => (
+              <div key={rq.id ?? i} style={{
+                fontSize: '11px', color: 'var(--text-secondary)',
+                padding: '4px 8px',
+                background: 'rgba(239,68,68,0.04)',
+                border: '1px solid rgba(239,68,68,0.15)',
+                borderRadius: '5px',
+              }}>
+                <span style={{ color: '#ef4444', fontWeight: 700, marginRight: '5px' }}>{i + 1}.</span>
+                {truncate(rq.text, 90)}
+              </div>
+            ))}
+            {openRF.length > 3 && (
+              <button
+                onClick={() => onNavigateToTab(1)}
+                style={{
+                  fontSize: '11px', color: 'var(--accent)', background: 'none',
+                  border: 'none', cursor: 'pointer', padding: '2px 8px', textAlign: 'left',
+                }}
+              >
+                + {openRF.length - 3} weitere → Auftrags-Reiter
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function Tile({ title, color, warn, ok, onClick, children }) {
   const borderColor = warn ? 'var(--yellow)' : ok ? 'var(--green)' : 'var(--border)'
   return (
@@ -166,6 +354,9 @@ export default function UebersichtTab({ client, onNavigateToTab, onUpdate }) {
         </Tile>
 
       </div>
+
+      {/* ── Verlauf & Aktivitäten ── */}
+      <VerlaufPanel client={client} onNavigateToTab={onNavigateToTab} />
 
       {/* ── Steuerliche Strukturübersicht ── */}
       <div style={{ marginTop: '20px' }}>
