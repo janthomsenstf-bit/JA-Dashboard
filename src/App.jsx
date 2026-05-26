@@ -585,7 +585,7 @@ export default function App() {
   }
 
   function openClientAtKomm(clientId) {
-    setDetailInitialTab(8)
+    setDetailInitialTab(7)
     setSelectedId(clientId)
   }
 
@@ -987,16 +987,6 @@ export default function App() {
             </div>
           )}
 
-          {/* Kalender-Toggle */}
-          <button
-            className="btn btn-ghost btn-sm"
-            onClick={() => setCalendarOpen(o => { localStorage.setItem('calendar-open', String(!o)); return !o })}
-            title={calendarOpen ? 'Kalender ausblenden' : 'Kalender einblenden'}
-            style={{ fontSize: '14px', opacity: calendarOpen ? 1 : 0.45 }}
-          >
-            📅
-          </button>
-
           {/* CMD+K Hint */}
           <button
             className="btn btn-ghost btn-sm"
@@ -1264,20 +1254,7 @@ export default function App() {
           )}
         </div>
 
-        {/* Right column – Kalender (togglebar) */}
-        {calendarOpen && (
-          <div className="col-calendar">
-            <KalenderSection
-              termine={termine}
-              clients={clients}
-              onAdd={addTermin}
-              onUpdate={updateTermin}
-              onDelete={deleteTermin}
-              eventsOnly={true}
-              prefillMandantId={selectedId}
-            />
-          </div>
-        )}
+        {/* col-calendar entfernt – Termine-Logik bleibt erhalten für spätere Nutzung */}
       </div>
 
       {/* Command Palette */}
