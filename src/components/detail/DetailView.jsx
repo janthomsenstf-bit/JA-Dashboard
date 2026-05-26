@@ -9,6 +9,7 @@ import LohnTab              from './LohnTab.jsx'
 import FIBUTab             from './FIBUTab.jsx'
 import BeratungTab          from './BeratungTab.jsx'
 import KommunikationTab     from './KommunikationTab.jsx'
+import AuftraegeTab        from './AuftraegeTab.jsx'
 import DokumenteTab         from './DokumenteTab.jsx'
 import EStTab               from './EStTab.jsx'
 import UStTab               from './UStTab.jsx'
@@ -32,6 +33,7 @@ const TAB_NAV = [
   { icon: '📋', short: 'Formulare'  },  // 11
   { icon: '📊', short: 'SuSa'       },  // 12
   { icon: '📒', short: 'FIBU'       },  // 13
+  { icon: '📋', short: 'Aufträge'   },  // 14
 ]
 
 
@@ -277,6 +279,9 @@ export default function DetailView({
         )}
         {activeTab === 13 && (
           <FIBUTab key={client.id} client={client} onUpdate={onUpdate} />
+        )}
+        {activeTab === 14 && (
+          <AuftraegeTab key={client.id} client={client} onUpdate={(patch) => onUpdate(patch)} />
         )}
       </div>{/* end tab content */}
 

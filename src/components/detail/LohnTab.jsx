@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { generateAufgaben, getStatus, buildTogglePatch, fmtDatum } from '../../utils/aufgaben.js'
 import SerieKonfigPanel from './SerieKonfigPanel.jsx'
+import AuftragKontextPanel from './AuftragKontextPanel.jsx'
 
 const ACCENT = '#7c3aed'
 
@@ -91,6 +92,14 @@ export default function LohnTab({ client, onUpdate }) {
 
   return (
     <div className="tab-content" style={{ display:'flex', flexDirection:'column', gap:'16px' }}>
+
+      {/* ── Offene Lohn-Aufträge ── */}
+      <AuftragKontextPanel
+        client={client}
+        typen={['lohn']}
+        onUpdate={onUpdate}
+        auftraegeTabIndex={14}
+      />
 
       {/* ── Lohnabrechnung ── */}
       <div style={{ border:'1px solid var(--border)', borderRadius:'8px', overflow:'hidden' }}>

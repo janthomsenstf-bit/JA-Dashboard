@@ -21,6 +21,7 @@ const ALL_TABS = [
   { icon: '📋', short: 'Formulare'  },  // 11
   { icon: '📊', short: 'SuSa'       },  // 12
   { icon: '📒', short: 'FIBU'       },  // 13
+  { icon: '📋', short: 'Aufträge'   },  // 14
 ]
 
 // 5 Tabs in der Bottom Bar
