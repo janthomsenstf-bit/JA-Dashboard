@@ -14,7 +14,7 @@ const ALL_TABS = [
   { icon: '📁', short: 'Abschluss'  },  // 4
   { icon: '💼', short: 'Lohn'       },  // 5
   { icon: '🧠', short: 'Beratung'   },  // 6
-  { icon: '✉️', short: 'Komm.'      },  // 7
+  { icon: '✉️', short: 'Nachrichten' },  // 7
   { icon: '📂', short: 'Dokumente'  },  // 8
   { icon: '📊', short: 'ESt'        },  // 9
   { icon: '🧾', short: 'USt'        },  // 10
@@ -27,7 +27,7 @@ const ALL_TABS = [
 // 5 Tabs in der Bottom Bar
 const BOTTOM_TABS = [
   { icon: '🏠', label: 'Start',    idx: 0  },
-  { icon: '✉️', label: 'E-Mails',  idx: 7  },
+  { icon: '✉️', label: 'Nachrichten', idx: 7 },
   { icon: '✅', label: 'Aufgaben', idx: 3  },
   { icon: '📊', label: 'Historie', idx: 2  },
   { icon: '⋯',  label: 'Mehr',    idx: -1 },

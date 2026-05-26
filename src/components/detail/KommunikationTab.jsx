@@ -390,7 +390,7 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
   const [showVorlagenModal,   setShowVorlagenModal]   = useState(false)
 
   // Signaturen
-  const [activeSignaturId,    setActiveSignaturId]    = useState(_draft?.activeSignaturId ?? null)
+  const [activeSignaturId,    setActiveSignaturId]    = useState(_draft?.activeSignaturId ?? komm.standardSignaturId ?? null)
   const [showSignaturSelect,  setShowSignaturSelect]  = useState(false)
   const [showSignaturenModal, setShowSignaturenModal] = useState(false)
 
@@ -1842,7 +1842,7 @@ function EmailDetailPanel({
     return (list.find(a => a.isDefault) ?? list[0])?.email ?? ''
   })
   const [replyCC,         setReplyCC]          = useState(_rDraft?.replyCC ?? '')
-  const [replySigId,      setReplySigId]       = useState(() => _rDraft?.replySigId ?? (emailSignaturen.find(s => s.isDefault)?.id ?? ''))
+  const [replySigId,      setReplySigId]       = useState(() => _rDraft?.replySigId ?? client.kommunikation?.standardSignaturId ?? (emailSignaturen.find(s => s.isDefault)?.id ?? ''))
   const [replySending,    setReplySending]     = useState(false)
   const [replyError,      setReplyError]       = useState('')
   const replyFileInputRef                       = useRef(null)

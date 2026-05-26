@@ -696,7 +696,7 @@ function AbsenderSection({ client, onUpdate }) {
     <div style={{ border: '1px solid var(--border)', borderRadius: '10px', padding: '12px 16px', marginTop: '14px' }}>
       <div style={{ fontSize: '13px', fontWeight: 700, marginBottom: '4px' }}>✉️ Standard-Absender für diesen Mandanten</div>
       <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-        Noch keine Absenderadressen hinterlegt. Bitte zuerst im Reiter <strong>Kommunikation</strong> unter „Absender-Adressen verwalten" Adressen anlegen.
+        Noch keine Absenderadressen hinterlegt. Bitte zuerst im Reiter <strong>Nachrichten</strong> unter „Absender-Adressen verwalten" Adressen anlegen.
       </div>
     </div>
   )
@@ -736,6 +736,65 @@ function AbsenderSection({ client, onUpdate }) {
             </option>
           ))}
         </select>
+      </div>
+    </div>
+  )
+}
+
+// ── Standard-Signatur pro Mandant ─────────────────────────────────────────────
+function SignaturSection({ client, onUpdate, emailSignaturen }) {
+  const current = client.kommunikation?.standardSignaturId ?? ''
+
+  if (!emailSignaturen || emailSignaturen.length === 0) return (
+    <div style={{ border: '1px solid var(--border)', borderRadius: '10px', padding: '12px 16px', marginTop: '14px' }}>
+      <div style={{ fontSize: '13px', fontWeight: 700, marginBottom: '4px' }}>✍️ Standard-Signatur für diesen Mandanten</div>
+      <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+        Noch keine Signaturen hinterlegt. Bitte im Reiter <strong>Nachrichten</strong> unter „Signaturen verwalten" anlegen.
+      </div>
+    </div>
+  )
+
+  function handleChange(e) {
+    const val = e.target.value
+    const komm = client.kommunikation ?? { events: [] }
+    onUpdate({ kommunikation: { ...komm, standardSignaturId: val || null } })
+  }
+
+  const activeSig = emailSignaturen.find(s => s.id === current)
+
+  return (
+    <div style={{ border: '1px solid var(--border)', borderRadius: '10px', overflow: 'hidden', marginTop: '14px' }}>
+      <div style={{ padding: '10px 14px', background: 'var(--surface)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <span style={{ fontSize: '15px' }}>✍️</span>
+        <span style={{ fontWeight: 700, fontSize: '13px', flex: 1 }}>Standard-Signatur für diesen Mandanten</span>
+        {current && activeSig && (
+          <span style={{ fontSize: '11px', color: '#16a34a', fontWeight: 700, background: 'rgba(22,163,74,0.1)', padding: '2px 9px', borderRadius: '10px' }}>
+            ✓ {activeSig.name}
+          </span>
+        )}
+      </div>
+      <div style={{ padding: '12px 16px' }}>
+        <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '10px' }}>
+          Wird automatisch in neuen E-Mails, Antworten und Weiterleitungen an diesen Mandanten vorausgewählt.
+        </div>
+        <select
+          className="input"
+          value={current}
+          onChange={handleChange}
+          style={{ width: '100%', fontSize: '13px' }}
+        >
+          <option value="">— Globalen Standard verwenden —</option>
+          {emailSignaturen.map(s => (
+            <option key={s.id} value={s.id}>
+              {s.name}{s.isDefault ? ' (globaler Standard)' : ''}
+            </option>
+          ))}
+        </select>
+        {activeSig?.text && (
+          <div style={{ marginTop: '10px', padding: '8px 12px', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '11px', color: 'var(--text-secondary)', lineHeight: 1.5, whiteSpace: 'pre-wrap', maxHeight: '80px', overflow: 'hidden' }}>
+            {activeSig.text.slice(0, 200)}{activeSig.text.length > 200 ? '…' : ''}
+          </div>
+        )}
       </div>
     </div>
   )
@@ -1135,7 +1194,7 @@ function AuftragsBlock({ client, onUpdate }) {
   )
 }
 
-export default function AuftragTab({ client, onUpdate, claudeApiKey, onUpdateClaudeApiKey }) {
+export default function AuftragTab({ client, onUpdate, claudeApiKey, onUpdateClaudeApiKey, emailSignaturen = [] }) {
   const auftrag = client.auftrag ?? {}
 
   // Setup-Felder (aus client-Ebene)
@@ -1389,7 +1448,10 @@ export default function AuftragTab({ client, onUpdate, claudeApiKey, onUpdateCla
       {/* ══════════════════ 4. ABSENDER ══════════════════ */}
       <AbsenderSection client={client} onUpdate={onUpdate} />
 
-      {/* ══════════════════ 5. API-SCHLÜSSEL ══════════════════ */}
+      {/* ══════════════════ 5. STANDARD-SIGNATUR ══════════════════ */}
+      <SignaturSection client={client} onUpdate={onUpdate} emailSignaturen={emailSignaturen} />
+
+      {/* ══════════════════ 6. API-SCHLÜSSEL ══════════════════ */}
       <ApiKeySection claudeApiKey={claudeApiKey} onUpdateClaudeApiKey={onUpdateClaudeApiKey} />
 
     </div>

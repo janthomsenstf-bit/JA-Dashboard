@@ -26,7 +26,7 @@ const TAB_NAV = [
   { icon: '📁', short: 'Abschluss'  },  // 4
   { icon: '💼', short: 'Lohn'       },  // 5
   { icon: '🧠', short: 'Beratung'   },  // 6
-  { icon: '✉️', short: 'Komm.'      },  // 7
+  { icon: '✉️', short: 'Nachrichten' },  // 7
   { icon: '📂', short: 'Dokumente'  },  // 8
   { icon: '📊', short: 'ESt'        },  // 9
   { icon: '🧾', short: 'USt'        },  // 10
@@ -220,7 +220,7 @@ export default function DetailView({
           <UebersichtTab key={client.id} client={client} onNavigateToTab={setActiveTab} onUpdate={onUpdate} />
         )}
         {activeTab === 1 && (
-          <AuftragTab key={client.id} client={client} onUpdate={onUpdate} claudeApiKey={claudeApiKey} onUpdateClaudeApiKey={onUpdateClaudeApiKey} />
+          <AuftragTab key={client.id} client={client} onUpdate={onUpdate} claudeApiKey={claudeApiKey} onUpdateClaudeApiKey={onUpdateClaudeApiKey} emailSignaturen={emailSignaturen} />
         )}
         {activeTab === 2 && (
           <StandDerArbeitTab key={client.id} client={client} onUpdate={onUpdate} />
