@@ -5,31 +5,30 @@
  */
 import { useState } from 'react'
 
-// Alle 15 Reiter (identisch mit DetailView TAB_NAV)
+// Alle 14 Reiter (identisch mit DetailView TAB_NAV)
 const ALL_TABS = [
-  { icon: '🏠', short: 'Übersicht'  },
-  { icon: '🗂', short: 'Stammdaten' },
-  { icon: '📊', short: 'Status'     },
-  { icon: '✅', short: 'Aufgaben'   },
-  { icon: '📁', short: 'Abschluss'  },
-  { icon: '💼', short: 'Lohn'       },
-  { icon: '🧠', short: 'Beratung'   },
-  { icon: '🔢', short: 'Rechner'    },
-  { icon: '✉️', short: 'Komm.'      },
-  { icon: '📂', short: 'Dokumente'  },
-  { icon: '📊', short: 'ESt'        },
-  { icon: '⚡', short: 'Auftrag'    },
-  { icon: '🧾', short: 'USt'        },
-  { icon: '📋', short: 'Formulare'  },
-  { icon: '📊', short: 'SuSa'       },
+  { icon: '🏠', short: 'Dashboard'  },  // 0
+  { icon: '🗂', short: 'Stammdaten' },  // 1
+  { icon: '📊', short: 'Historie'   },  // 2
+  { icon: '✅', short: 'Aufgaben'   },  // 3
+  { icon: '📁', short: 'Abschluss'  },  // 4
+  { icon: '💼', short: 'Lohn'       },  // 5
+  { icon: '🧠', short: 'Beratung'   },  // 6
+  { icon: '✉️', short: 'Komm.'      },  // 7
+  { icon: '📂', short: 'Dokumente'  },  // 8
+  { icon: '📊', short: 'ESt'        },  // 9
+  { icon: '🧾', short: 'USt'        },  // 10
+  { icon: '📋', short: 'Formulare'  },  // 11
+  { icon: '📊', short: 'SuSa'       },  // 12
+  { icon: '📒', short: 'FIBU'       },  // 13
 ]
 
 // 5 Tabs in der Bottom Bar
 const BOTTOM_TABS = [
   { icon: '🏠', label: 'Start',    idx: 0  },
-  { icon: '✉️', label: 'E-Mails',  idx: 8  },
+  { icon: '✉️', label: 'E-Mails',  idx: 7  },
   { icon: '✅', label: 'Aufgaben', idx: 3  },
-  { icon: '📊', label: 'Status',   idx: 2  },
+  { icon: '📊', label: 'Historie', idx: 2  },
   { icon: '⋯',  label: 'Mehr',    idx: -1 },
 ]
 

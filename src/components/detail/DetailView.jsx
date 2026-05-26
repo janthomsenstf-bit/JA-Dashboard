@@ -8,11 +8,9 @@ import AbschlussTab         from './AbschlussTab.jsx'
 import LohnTab              from './LohnTab.jsx'
 import FIBUTab             from './FIBUTab.jsx'
 import BeratungTab          from './BeratungTab.jsx'
-import RechnerTab           from './rechner/RechnerTab.jsx'
 import KommunikationTab     from './KommunikationTab.jsx'
 import DokumenteTab         from './DokumenteTab.jsx'
 import EStTab               from './EStTab.jsx'
-import AuftragWorkflowTab   from './AuftragWorkflowTab.jsx'
 import UStTab               from './UStTab.jsx'
 import FormularTab          from '../formular/FormularTab.jsx'
 import NewClientModal       from '../NewClientModal.jsx'
@@ -20,22 +18,20 @@ import SusaTab              from './SUSATab.jsx'
 import MobileBottomNav      from '../MobileBottomNav.jsx'
 
 const TAB_NAV = [
-  { icon: '🏠', short: 'Übersicht'  },
-  { icon: '🗂', short: 'Stammdaten' },
-  { icon: '📊', short: 'Status'     },
-  { icon: '✅', short: 'Aufgaben'   },
-  { icon: '📁', short: 'Abschluss'  },
-  { icon: '💼', short: 'Lohn'       },
-  { icon: '🧠', short: 'Beratung'   },
-  { icon: '🔢', short: 'Rechner'    },
-  { icon: '✉️', short: 'Komm.'      },
-  { icon: '📂', short: 'Dokumente'  },
-  { icon: '📊', short: 'ESt'        },
-  { icon: '⚡', short: 'Auftrag'    },
-  { icon: '🧾', short: 'USt'        },
-  { icon: '📋', short: 'Formulare'  },
-  { icon: '📊', short: 'SuSa'       },
-  { icon: '📒', short: 'FIBU'       },
+  { icon: '🏠', short: 'Dashboard'  },  // 0
+  { icon: '🗂', short: 'Stammdaten' },  // 1
+  { icon: '📊', short: 'Historie'   },  // 2
+  { icon: '✅', short: 'Aufgaben'   },  // 3
+  { icon: '📁', short: 'Abschluss'  },  // 4
+  { icon: '💼', short: 'Lohn'       },  // 5
+  { icon: '🧠', short: 'Beratung'   },  // 6
+  { icon: '✉️', short: 'Komm.'      },  // 7
+  { icon: '📂', short: 'Dokumente'  },  // 8
+  { icon: '📊', short: 'ESt'        },  // 9
+  { icon: '🧾', short: 'USt'        },  // 10
+  { icon: '📋', short: 'Formulare'  },  // 11
+  { icon: '📊', short: 'SuSa'       },  // 12
+  { icon: '📒', short: 'FIBU'       },  // 13
 ]
 
 
@@ -80,7 +76,7 @@ export default function DetailView({
 
   function handleSendAsAttachment(attachments) {
     setPendingAttachments(attachments)
-    setActiveTab(8)  // Kommunikation-Tab öffnen
+    setActiveTab(7)  // Kommunikation-Tab öffnen
   }
 
   // Mandantennummern als Array (ohne leere)
@@ -240,34 +236,23 @@ export default function DetailView({
           <BeratungTab key={client.id} client={client} onUpdate={onUpdate} />
         )}
         {activeTab === 7 && (
-          <RechnerTab key={client.id} client={client} onUpdate={onUpdate} />
-        )}
-        {activeTab === 8 && (
           <KommunikationTab key={client.id} client={client} onUpdate={onUpdate} emailVorlagen={emailVorlagen} onUpdateEmailVorlagen={onUpdateEmailVorlagen} emailSignaturen={emailSignaturen} onUpdateEmailSignaturen={onUpdateEmailSignaturen} onedriveTokens={onedriveTokens} onUpdateOnedriveTokens={onUpdateOnedriveTokens} pendingAttachments={pendingAttachments} onClearPendingAttachments={() => setPendingAttachments(null)} />
         )}
-        {activeTab === 9 && (
+        {activeTab === 8 && (
           <DokumenteTab
             key={client.id}
             client={client}
             onUpdate={onUpdate}
-            onNavigateToKomm={() => setActiveTab(8)}
+            onNavigateToKomm={() => setActiveTab(7)}
             onedriveTokens={onedriveTokens}
             onUpdateOnedriveTokens={onUpdateOnedriveTokens}
             onSendAsAttachment={handleSendAsAttachment}
           />
         )}
-        {activeTab === 10 && (
+        {activeTab === 9 && (
           <EStTab key={client.id} client={client} onUpdate={onUpdate} onAddRueckfrage={onAddRueckfrage} />
         )}
-        {activeTab === 11 && (
-          <AuftragWorkflowTab
-            key={client.id}
-            client={client}
-            onUpdate={onUpdate}
-            emailVorlagen={emailVorlagen}
-          />
-        )}
-        {activeTab === 12 && (
+        {activeTab === 10 && (
           <UStTab
             key={client.id}
             client={client}
@@ -276,7 +261,7 @@ export default function DetailView({
             emailSignaturen={emailSignaturen}
           />
         )}
-        {activeTab === 13 && (
+        {activeTab === 11 && (
           <FormularTab
             key={client.id}
             client={client}
@@ -287,10 +272,10 @@ export default function DetailView({
             emailSignaturen={emailSignaturen}
           />
         )}
-        {activeTab === 14 && (
+        {activeTab === 12 && (
           <SusaTab key={client.id} client={client} onUpdate={onUpdate} />
         )}
-        {activeTab === 15 && (
+        {activeTab === 13 && (
           <FIBUTab key={client.id} client={client} onUpdate={onUpdate} />
         )}
       </div>{/* end tab content */}
