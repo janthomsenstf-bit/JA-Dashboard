@@ -1,11 +1,11 @@
 /**
  * MobileBottomNav – Bottom Navigation Bar für mobile Nutzung.
  * Nur sichtbar auf Screens ≤ 768px (via CSS).
- * Enthält 5 Haupt-Tabs + "Mehr"-Sheet für alle 15 Reiter.
+ * Enthält 5 Haupt-Tabs + "Mehr"-Sheet für alle 16 Reiter.
  */
 import { useState } from 'react'
 
-// Alle 14 Reiter (identisch mit DetailView TAB_NAV)
+// Alle 16 Reiter (identisch mit DetailView TAB_NAV)
 const ALL_TABS = [
   { icon: '🏠', short: 'Dashboard'  },  // 0
   { icon: '🗂', short: 'Stammdaten' },  // 1
@@ -22,6 +22,7 @@ const ALL_TABS = [
   { icon: '📊', short: 'SuSa'       },  // 12
   { icon: '📒', short: 'FIBU'       },  // 13
   { icon: '📋', short: 'Aufträge'   },  // 14
+  { icon: '💰', short: 'Honorare'  },  // 15
 ]
 
 // 5 Tabs in der Bottom Bar

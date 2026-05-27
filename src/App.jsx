@@ -19,6 +19,7 @@ import { supabase } from './utils/supabaseClient.js'
 import { cloudLoadAll, cloudSave, cloudSaveNow, cloudSnapshot, migrateLocalStorageToCloud } from './utils/cloudStorage.js'
 import LoginPage from './components/LoginPage.jsx'
 import FormularPage from './components/formular/FormularPage.jsx'
+import BudgetView   from './components/BudgetView.jsx'
 
 const BACKUP_INTERVAL_MS = 30 * 60 * 1000  // 30 Minuten
 
@@ -121,6 +122,7 @@ function migrateClient(c) {
     manuellerStatus:             c.manuellerStatus              ?? null,
     est:                         c.est                          ?? {},
     auftraege:                   Array.isArray(c.auftraege)      ? c.auftraege : [],
+    honorare:                    Array.isArray(c.honorare)       ? c.honorare  : [],
     ust:                         c.ust                           ?? {},
     struktur:                    c.struktur                      ?? null,
     lohnSerie:                   c.lohnSerie ?? { aktiv: false, startDatum: '', frequenz: 'monatlich', faelligTag: 22, endDatum: '', intervallTyp: 'monate', intervallWert: 1 },
@@ -1151,7 +1153,7 @@ export default function App() {
           </button>
 
           {sidebarOpen && (
-            <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--border)' }}>
+            <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '4px' }}>
               <button
                 onClick={() => setSelectedId('__todo__')}
                 style={{
@@ -1163,6 +1165,18 @@ export default function App() {
                 }}
               >
                 📋 Aufgaben-Übersicht
+              </button>
+              <button
+                onClick={() => setSelectedId('__budget__')}
+                style={{
+                  width: '100%', padding: '8px 12px', borderRadius: '8px', border: 'none', cursor: 'pointer', textAlign: 'left',
+                  background: selectedId === '__budget__' ? '#0f766e' : 'var(--surface2)',
+                  color: selectedId === '__budget__' ? '#fff' : 'var(--text)',
+                  fontWeight: 600, fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px',
+                  transition: 'all 0.15s',
+                }}
+              >
+                💰 Honorar-Übersicht
               </button>
             </div>
           )}
@@ -1199,6 +1213,13 @@ export default function App() {
                 onAddAufgabe={addAufgabe}
                 onUpdateAufgabe={updateAufgabe}
                 onDeleteAufgabe={deleteAufgabe}
+              />
+            </div>
+          ) : selectedId === '__budget__' ? (
+            <div style={{ flex: 1, overflowY: 'auto' }}>
+              <BudgetView
+                clients={clients}
+                onSelectClient={(id) => { setDetailInitialTab(15); setSelectedId(id) }}
               />
             </div>
           ) : selectedClient ? (
