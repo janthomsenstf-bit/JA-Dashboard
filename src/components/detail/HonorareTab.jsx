@@ -4,6 +4,10 @@
  */
 import { useState } from 'react'
 
+// ── Jahresliste ───────────────────────────────────────────────────────────────────
+const CURRENT_YEAR = new Date().getFullYear()
+export const YEAR_OPTIONS = Array.from({ length: 10 }, (_, i) => CURRENT_YEAR - 3 + i)
+
 // ── Konfiguration ─────────────────────────────────────────────────────────────────
 export const LEISTUNGSART_CFG = {
   miete:           { label: 'Miete / Geschäftsadresse', icon: '🏠', color: '#0891b2', bg: 'rgba(8,145,178,0.07)'    },
@@ -57,24 +61,25 @@ function getLabel(h) {
 
 function mkHonorar() {
   return {
-    id:           'h' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
-    leistungsart: 'fibu',
-    bezeichnung:  '',
-    betrag:       0,
-    bruttoNetto:  'netto',
-    rhythmus:     'monatlich',
-    startDatum:   '',
-    endDatum:     '',
-    aktiv:        true,
-    notiz:        '',
-    erstelltAm:   new Date().toISOString(),
+    id:            'h' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+    leistungsart:  'fibu',
+    bezeichnung:   '',
+    betrag:        0,
+    bruttoNetto:   'netto',
+    rhythmus:      'monatlich',
+    startDatum:    '',
+    endDatum:      '',
+    leistungsjahr: null,   // Jahreszuordnung, besonders für einmalig/aufwand
+    aktiv:         true,
+    notiz:         '',
+    erstelltAm:    new Date().toISOString(),
   }
 }
 
 // ── Hilfskomponenten ──────────────────────────────────────────────────────────────
-function FieldLabel({ children }) {
+function FieldLabel({ children, warn }) {
   return (
-    <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+    <div style={{ fontSize: '10px', fontWeight: 700, marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.05em', color: warn ? '#f97316' : 'var(--text-muted)' }}>
       {children}
     </div>
   )
@@ -83,7 +88,7 @@ function FieldLabel({ children }) {
 const inputBase = { width: '100%', padding: '7px 10px', border: '1px solid var(--border)', borderRadius: '6px', background: 'var(--surface)', color: 'var(--text)', fontSize: '12px', boxSizing: 'border-box' }
 const selectBase = { ...inputBase }
 
-// ── Formular-Komponente ───────────────────────────────────────────────────────────
+// ── Formular ──────────────────────────────────────────────────────────────────────
 function HonorarForm({ initial, isNew, onSave, onCancel }) {
   const [form, setForm] = useState(() => ({
     ...initial,
@@ -91,26 +96,23 @@ function HonorarForm({ initial, isNew, onSave, onCancel }) {
   }))
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
-  const betragNum = parseFloat(form.betrag) || 0
-  const monat     = form.betrag !== '' ? toMonatswert(betragNum, form.rhythmus) : null
-  const jahr      = form.betrag !== '' ? toJahreswert(betragNum, form.rhythmus) : null
-  const canSave   = form.rhythmus === 'aufwand' || betragNum > 0
+  const betragNum  = parseFloat(form.betrag) || 0
+  const monat      = form.betrag !== '' ? toMonatswert(betragNum, form.rhythmus) : null
+  const jahr       = form.betrag !== '' ? toJahreswert(betragNum, form.rhythmus) : null
+  const isEinmalig = form.rhythmus === 'einmalig' || form.rhythmus === 'aufwand'
+  const jahrWarn   = isEinmalig && !form.leistungsjahr
+  const canSave    = isEinmalig ? (form.rhythmus === 'aufwand' || betragNum > 0) : betragNum > 0
 
-  function handleSave() {
-    if (!canSave) return
-    onSave({ ...form, betrag: betragNum })
-  }
+  function handleSave() { if (canSave) onSave({ ...form, betrag: betragNum }) }
 
   return (
     <div style={{ border: `2px solid ${ACCENT}44`, borderRadius: '10px', overflow: 'hidden' }}>
-      {/* Header */}
       <div style={{ background: ACCENT, color: '#fff', padding: '8px 14px', fontSize: '12px', fontWeight: 700 }}>
         {isNew ? '+ Neue Preisvereinbarung' : '✏️ Preisvereinbarung bearbeiten'}
       </div>
-
       <div style={{ padding: '14px', background: 'var(--surface)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
 
-        {/* Zeile 1: Leistungsart + Bezeichnung/Notiz */}
+        {/* Zeile 1: Leistungsart + Bezeichnung / Notiz */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
           <div>
             <FieldLabel>Leistungsart *</FieldLabel>
@@ -123,22 +125,14 @@ function HonorarForm({ initial, isNew, onSave, onCancel }) {
           {form.leistungsart === 'sonstiges' ? (
             <div>
               <FieldLabel>Bezeichnung *</FieldLabel>
-              <input
-                value={form.bezeichnung}
-                onChange={e => set('bezeichnung', e.target.value)}
-                placeholder="z. B. Gesellschafterbeschluss"
-                style={inputBase}
-              />
+              <input value={form.bezeichnung} onChange={e => set('bezeichnung', e.target.value)}
+                placeholder="z. B. Gesellschafterbeschluss" style={inputBase} />
             </div>
           ) : (
             <div>
               <FieldLabel>Interne Notiz</FieldLabel>
-              <input
-                value={form.notiz}
-                onChange={e => set('notiz', e.target.value)}
-                placeholder="z. B. inkl. 2 Mitarbeiter, Sonderkonditionen…"
-                style={inputBase}
-              />
+              <input value={form.notiz} onChange={e => set('notiz', e.target.value)}
+                placeholder="z. B. inkl. 2 Mitarbeiter, Sonderkonditionen…" style={inputBase} />
             </div>
           )}
         </div>
@@ -146,10 +140,9 @@ function HonorarForm({ initial, isNew, onSave, onCancel }) {
         {/* Zeile 2: Betrag + Netto/Brutto + Rhythmus */}
         <div style={{ display: 'grid', gridTemplateColumns: '130px 90px 1fr', gap: '10px' }}>
           <div>
-            <FieldLabel>Betrag {form.rhythmus !== 'aufwand' ? '*' : ''}</FieldLabel>
+            <FieldLabel>Betrag {form.rhythmus !== 'aufwand' && '*'}</FieldLabel>
             <div style={{ position: 'relative' }}>
-              <input
-                type="number" min="0" step="0.01"
+              <input type="number" min="0" step="0.01"
                 value={form.betrag}
                 onChange={e => set('betrag', e.target.value)}
                 placeholder={form.rhythmus === 'aufwand' ? 'optional' : '0,00'}
@@ -175,8 +168,8 @@ function HonorarForm({ initial, isNew, onSave, onCancel }) {
           </div>
         </div>
 
-        {/* Zeile 3: Start + Ende + Aktiv */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: '10px', alignItems: 'end' }}>
+        {/* Zeile 3: Gültig ab + Gültig bis + Leistungsjahr + Aktiv */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 110px auto', gap: '10px', alignItems: 'end' }}>
           <div>
             <FieldLabel>Gültig ab</FieldLabel>
             <input type="date" value={form.startDatum} onChange={e => set('startDatum', e.target.value)} style={inputBase} />
@@ -185,6 +178,19 @@ function HonorarForm({ initial, isNew, onSave, onCancel }) {
             <FieldLabel>Gültig bis (optional)</FieldLabel>
             <input type="date" value={form.endDatum} onChange={e => set('endDatum', e.target.value)} style={inputBase} />
           </div>
+          <div>
+            <FieldLabel warn={jahrWarn}>
+              Jahr {isEinmalig && '*'}
+            </FieldLabel>
+            <select
+              value={form.leistungsjahr ?? ''}
+              onChange={e => set('leistungsjahr', e.target.value ? parseInt(e.target.value) : null)}
+              style={{ ...selectBase, borderColor: jahrWarn ? 'rgba(249,115,22,0.6)' : 'var(--border)' }}
+            >
+              <option value="">– kein –</option>
+              {YEAR_OPTIONS.map(y => <option key={y} value={y}>{y}</option>)}
+            </select>
+          </div>
           <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', userSelect: 'none', paddingBottom: '7px', whiteSpace: 'nowrap' }}>
             <input type="checkbox" checked={form.aktiv} onChange={e => set('aktiv', e.target.checked)}
               style={{ width: '14px', height: '14px', accentColor: ACCENT, cursor: 'pointer' }} />
@@ -192,16 +198,20 @@ function HonorarForm({ initial, isNew, onSave, onCancel }) {
           </label>
         </div>
 
-        {/* Notiz bei Sonstiges */}
+        {/* Hinweis: Jahr fehlt bei einmalig */}
+        {jahrWarn && (
+          <div style={{ background: 'rgba(249,115,22,0.08)', border: '1px solid rgba(249,115,22,0.3)', borderRadius: '6px', padding: '7px 10px', fontSize: '11px', color: '#f97316' }}>
+            ⚠ Bei einmaligen Honoraren empfehle ich, ein Leistungsjahr zu hinterlegen –
+            sonst kann das Honorar in der zeitgefilterten Budgetübersicht nicht zugeordnet werden.
+          </div>
+        )}
+
+        {/* Notiz für Sonstiges */}
         {form.leistungsart === 'sonstiges' && (
           <div>
             <FieldLabel>Interne Notiz</FieldLabel>
-            <input
-              value={form.notiz}
-              onChange={e => set('notiz', e.target.value)}
-              placeholder="Preisabsprache, Konditionen…"
-              style={inputBase}
-            />
+            <input value={form.notiz} onChange={e => set('notiz', e.target.value)}
+              placeholder="Preisabsprache, Konditionen…" style={inputBase} />
           </div>
         )}
 
@@ -233,10 +243,12 @@ function HonorarForm({ initial, isNew, onSave, onCancel }) {
 // ── Einzelne Karte ────────────────────────────────────────────────────────────────
 function HonorarKarte({ h, onUpdate, onDelete }) {
   const [editing, setEditing] = useState(false)
-  const cfg   = LEISTUNGSART_CFG[h.leistungsart] ?? LEISTUNGSART_CFG.sonstiges
-  const monat = toMonatswert(h.betrag, h.rhythmus)
-  const jahr  = toJahreswert(h.betrag, h.rhythmus)
-  const lbl   = getLabel(h)
+  const cfg       = LEISTUNGSART_CFG[h.leistungsart] ?? LEISTUNGSART_CFG.sonstiges
+  const monat     = toMonatswert(h.betrag, h.rhythmus)
+  const jahr      = toJahreswert(h.betrag, h.rhythmus)
+  const lbl       = getLabel(h)
+  const isEinmalig = h.rhythmus === 'einmalig' || h.rhythmus === 'aufwand'
+  const jahrFehlt  = isEinmalig && !h.leistungsjahr
 
   if (editing) {
     return (
@@ -251,10 +263,9 @@ function HonorarKarte({ h, onUpdate, onDelete }) {
 
   return (
     <div style={{
-      border: `1px solid ${h.aktiv ? cfg.color + '44' : 'var(--border)'}`,
-      borderRadius: '8px',
-      padding: '10px 12px',
-      background: h.aktiv ? cfg.bg : 'var(--surface2)',
+      border: `1px solid ${h.aktiv ? (jahrFehlt ? 'rgba(249,115,22,0.4)' : cfg.color + '44') : 'var(--border)'}`,
+      borderRadius: '8px', padding: '10px 12px',
+      background: h.aktiv ? (jahrFehlt ? 'rgba(249,115,22,0.04)' : cfg.bg) : 'var(--surface2)',
       opacity: h.aktiv ? 1 : 0.6,
       transition: 'all 0.15s',
     }}>
@@ -265,8 +276,22 @@ function HonorarKarte({ h, onUpdate, onDelete }) {
 
         {/* Label + Notiz + Datum */}
         <div style={{ flex: 1, minWidth: '120px' }}>
-          <div style={{ fontWeight: 600, fontSize: '13px', color: h.aktiv ? cfg.color : 'var(--text-secondary)', lineHeight: 1.3 }}>
-            {lbl}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+            <span style={{ fontWeight: 600, fontSize: '13px', color: h.aktiv ? cfg.color : 'var(--text-secondary)', lineHeight: 1.3 }}>
+              {lbl}
+            </span>
+            {/* Leistungsjahr-Badge */}
+            {h.leistungsjahr && (
+              <span style={{ fontSize: '10px', background: 'rgba(37,99,235,0.1)', color: '#2563eb', padding: '1px 7px', borderRadius: '8px', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                {h.leistungsjahr}
+              </span>
+            )}
+            {/* Warnung: Jahr fehlt */}
+            {jahrFehlt && (
+              <span style={{ fontSize: '10px', background: 'rgba(249,115,22,0.12)', color: '#f97316', padding: '1px 7px', borderRadius: '8px', fontWeight: 600 }}>
+                ⚠ kein Jahr
+              </span>
+            )}
           </div>
           {h.notiz && (
             <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px', lineHeight: 1.4 }}>
@@ -295,7 +320,7 @@ function HonorarKarte({ h, onUpdate, onDelete }) {
           </div>
         </div>
 
-        {/* Monatswert / Jahreswert */}
+        {/* Monatswert / Jahreswert (nur laufende) */}
         {monat !== null ? (
           <div style={{ textAlign: 'right', flexShrink: 0, minWidth: '90px' }}>
             <div style={{ fontSize: '13px', fontWeight: 700, color: '#16a34a', whiteSpace: 'nowrap' }}>
@@ -314,29 +339,23 @@ function HonorarKarte({ h, onUpdate, onDelete }) {
           onClick={() => onUpdate({ ...h, aktiv: !h.aktiv })}
           title={h.aktiv ? 'Deaktivieren' : 'Aktivieren'}
           style={{
-            background: 'none',
-            border: `1px solid ${h.aktiv ? '#16a34a' : 'var(--border)'}`,
+            background: 'none', border: `1px solid ${h.aktiv ? '#16a34a' : 'var(--border)'}`,
             borderRadius: '6px', padding: '2px 8px', cursor: 'pointer',
-            fontSize: '11px', color: h.aktiv ? '#16a34a' : 'var(--text-muted)',
-            fontWeight: 600, flexShrink: 0, alignSelf: 'center',
+            fontSize: '11px', color: h.aktiv ? '#16a34a' : 'var(--text-muted)', fontWeight: 600, flexShrink: 0, alignSelf: 'center',
           }}
         >
           {h.aktiv ? '✓ Aktiv' : '○ Inaktiv'}
         </button>
 
         {/* Bearbeiten */}
-        <button
-          onClick={() => setEditing(true)}
-          title="Bearbeiten"
+        <button onClick={() => setEditing(true)} title="Bearbeiten"
           style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '14px', padding: '2px 4px', flexShrink: 0, alignSelf: 'center' }}
           onMouseEnter={e => e.currentTarget.style.color = ACCENT}
           onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}
         >✏️</button>
 
         {/* Löschen */}
-        <button
-          onClick={onDelete}
-          title="Löschen"
+        <button onClick={onDelete} title="Löschen"
           style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '14px', padding: '2px 4px', flexShrink: 0, alignSelf: 'center' }}
           onMouseEnter={e => e.currentTarget.style.color = '#ef4444'}
           onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}
@@ -351,22 +370,15 @@ function InaktiveSection({ honorare, onUpdate, onDelete }) {
   const [open, setOpen] = useState(false)
   return (
     <div style={{ borderTop: '1px solid var(--border)', paddingTop: '8px' }}>
-      <button
-        onClick={() => setOpen(o => !o)}
-        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '12px', padding: '2px 0', display: 'flex', alignItems: 'center', gap: '5px' }}
-      >
+      <button onClick={() => setOpen(o => !o)}
+        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '12px', padding: '2px 0', display: 'flex', alignItems: 'center', gap: '5px' }}>
         <span style={{ fontSize: '10px' }}>{open ? '▼' : '▶'}</span>
         {honorare.length} inaktive Vereinbarung{honorare.length !== 1 ? 'en' : ''}
       </button>
       {open && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '8px' }}>
           {honorare.map(h => (
-            <HonorarKarte
-              key={h.id}
-              h={h}
-              onUpdate={onUpdate}
-              onDelete={() => onDelete(h.id)}
-            />
+            <HonorarKarte key={h.id} h={h} onUpdate={onUpdate} onDelete={() => onDelete(h.id)} />
           ))}
         </div>
       )}
@@ -383,12 +395,12 @@ export default function HonorareTab({ client, onUpdate }) {
   function updateHonorar(h)  { onUpdate({ honorare: honorare.map(x => x.id === h.id ? h : x) }) }
   function deleteHonorar(id) { onUpdate({ honorare: honorare.filter(h => h.id !== id) }) }
 
-  // Summenwerte (nur aktive, laufende)
   const aktive       = honorare.filter(h => h.aktiv)
   const monatsSumme  = aktive.reduce((s, h) => s + (toMonatswert(h.betrag, h.rhythmus) ?? 0), 0)
   const jahresSumme  = aktive.reduce((s, h) => s + (toJahreswert(h.betrag, h.rhythmus) ?? 0), 0)
   const einmaligList = aktive.filter(h => h.rhythmus === 'einmalig')
   const aufwandList  = aktive.filter(h => h.rhythmus === 'aufwand')
+  const ohneJahr     = aktive.filter(h => (h.rhythmus === 'einmalig' || h.rhythmus === 'aufwand') && !h.leistungsjahr)
 
   const aktiveHonorare   = honorare.filter(h => h.aktiv)
   const inaktiveHonorare = honorare.filter(h => !h.aktiv)
@@ -399,41 +411,26 @@ export default function HonorareTab({ client, onUpdate }) {
       {/* ── Zusammenfassung ── */}
       {honorare.length > 0 && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '10px' }}>
-          <SumKachel
-            label="Monatlich (laufend)"
-            wert={fmtEuro(monatsSumme)}
-            color={ACCENT}
-            icon="📅"
-          />
-          <SumKachel
-            label="Jahreswert (laufend)"
-            wert={fmtEuro(jahresSumme)}
-            color="#16a34a"
-            icon="📆"
-          />
+          <SumKachel label="Monatlich (laufend)" wert={fmtEuro(monatsSumme)} color={ACCENT} icon="📅" />
+          <SumKachel label="Jahreswert (laufend)" wert={fmtEuro(jahresSumme)} color="#16a34a" icon="📆" />
           {einmaligList.length > 0 && (
-            <SumKachel
-              label={`Einmalig (${einmaligList.length})`}
-              wert={fmtEuro(einmaligList.reduce((s, h) => s + h.betrag, 0))}
-              color="#f97316"
-              icon="⚡"
-            />
+            <SumKachel label={`Einmalig (${einmaligList.length})`} wert={fmtEuro(einmaligList.reduce((s, h) => s + h.betrag, 0))} color="#f97316" icon="⚡" />
           )}
           {aufwandList.length > 0 && (
-            <SumKachel
-              label="Nach Aufwand"
-              wert={`${aufwandList.length} Pos.`}
-              color="#64748b"
-              icon="⏱"
-              isText
-            />
+            <SumKachel label="Nach Aufwand" wert={`${aufwandList.length} Pos.`} color="#64748b" icon="⏱" isText />
           )}
+        </div>
+      )}
+
+      {/* Warnung: einmalige Honorare ohne Jahr */}
+      {ohneJahr.length > 0 && (
+        <div style={{ border: '1px solid rgba(249,115,22,0.3)', borderRadius: '8px', padding: '9px 12px', background: 'rgba(249,115,22,0.06)', fontSize: '12px', color: '#f97316', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          ⚠ <span><strong>{ohneJahr.length} Position{ohneJahr.length !== 1 ? 'en' : ''}</strong> ohne Leistungsjahr — diese erscheinen nicht in der jahresbasierten Budgetübersicht.</span>
         </div>
       )}
 
       {/* ── Hauptbereich ── */}
       <div style={{ border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden' }}>
-        {/* Header */}
         <div style={{ background: ACCENT, color: '#fff', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: '10px' }}>
           <span style={{ fontSize: '16px' }}>💰</span>
           <span style={{ fontWeight: 700, fontSize: '13px', flex: 1 }}>Honorare & Preisvereinbarungen</span>
@@ -443,71 +440,44 @@ export default function HonorareTab({ client, onUpdate }) {
             </span>
           )}
           {!showForm && (
-            <button
-              onClick={() => setShowForm(true)}
-              style={{ padding: '4px 12px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.4)', background: 'rgba(255,255,255,0.15)', color: '#fff', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}
-            >
+            <button onClick={() => setShowForm(true)}
+              style={{ padding: '4px 12px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.4)', background: 'rgba(255,255,255,0.15)', color: '#fff', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
               + Neu
             </button>
           )}
         </div>
 
         <div style={{ padding: '12px', background: 'var(--surface2)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          {/* Neues Formular */}
           {showForm && (
-            <HonorarForm
-              initial={mkHonorar()}
-              isNew={true}
-              onSave={addHonorar}
-              onCancel={() => setShowForm(false)}
-            />
+            <HonorarForm initial={mkHonorar()} isNew={true} onSave={addHonorar} onCancel={() => setShowForm(false)} />
           )}
 
-          {/* Leerer Zustand */}
           {honorare.length === 0 && !showForm && (
             <div style={{ textAlign: 'center', padding: '32px 16px', color: 'var(--text-muted)' }}>
               <div style={{ fontSize: '32px', marginBottom: '10px' }}>💰</div>
-              <div style={{ fontWeight: 600, fontSize: '13px', marginBottom: '4px', color: 'var(--text)' }}>
-                Noch keine Preisvereinbarungen
-              </div>
-              <div style={{ fontSize: '12px', marginBottom: '14px' }}>
-                Hinterlege Honorare für diesen Mandanten – sie fließen in die globale Budgetübersicht ein.
-              </div>
-              <button
-                onClick={() => setShowForm(true)}
-                style={{ padding: '8px 20px', borderRadius: '8px', border: 'none', background: ACCENT, color: '#fff', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}
-              >
+              <div style={{ fontWeight: 600, fontSize: '13px', marginBottom: '4px', color: 'var(--text)' }}>Noch keine Preisvereinbarungen</div>
+              <div style={{ fontSize: '12px', marginBottom: '14px' }}>Hinterlege Honorare — sie fließen in die globale Budgetübersicht ein.</div>
+              <button onClick={() => setShowForm(true)}
+                style={{ padding: '8px 20px', borderRadius: '8px', border: 'none', background: ACCENT, color: '#fff', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
                 + Erste Vereinbarung anlegen
               </button>
             </div>
           )}
 
-          {/* Aktive Einträge */}
           {aktiveHonorare.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               {aktiveHonorare.map(h => (
-                <HonorarKarte
-                  key={h.id}
-                  h={h}
-                  onUpdate={updateHonorar}
-                  onDelete={() => deleteHonorar(h.id)}
-                />
+                <HonorarKarte key={h.id} h={h} onUpdate={updateHonorar} onDelete={() => deleteHonorar(h.id)} />
               ))}
             </div>
           )}
 
-          {/* Inaktive Einträge */}
           {inaktiveHonorare.length > 0 && (
-            <InaktiveSection
-              honorare={inaktiveHonorare}
-              onUpdate={updateHonorar}
-              onDelete={deleteHonorar}
-            />
+            <InaktiveSection honorare={inaktiveHonorare} onUpdate={updateHonorar} onDelete={deleteHonorar} />
           )}
         </div>
       </div>
 
-      {/* Hinweis */}
       <div style={{ fontSize: '11px', color: 'var(--text-muted)', lineHeight: 1.6, padding: '0 2px' }}>
         💡 Diese Preisvereinbarungen sind rein intern zur Planung und ersetzen keine Buchhaltung.
         Alle aktiven Positionen erscheinen in der globalen <strong>Honorar-Übersicht</strong> in der Seitenleiste.
