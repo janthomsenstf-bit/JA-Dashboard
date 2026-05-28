@@ -7,7 +7,7 @@
  *                         z. B. ['lohn'] oder ['fibu', 'ust']
  *   onUpdate            – (patch) => void  (zum Speichern)
  *   onNavigateToTab     – (tabIndex) => void  (Sprung zum Aufträge-Tab)
- *   auftraegeTabIndex   – Index des Aufträge-Tabs (default 14)
+ *   auftraegeTabIndex   – Index des Aufträge-Tabs (default 13)
  */
 import { AUFTRAGS_TYP_CFG, AUFTRAGS_STATUS_CFG } from './AuftraegeTab.jsx'
 
@@ -31,7 +31,7 @@ export default function AuftragKontextPanel({
   typen,
   onUpdate,
   onNavigateToTab,
-  auftraegeTabIndex = 14,
+  auftraegeTabIndex = 13,
 }) {
   const alle     = client.auftraege ?? []
   const relevant = alle.filter(a => typen.includes(a.typ) && a.status !== 'erledigt')

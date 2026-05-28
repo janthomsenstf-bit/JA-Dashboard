@@ -587,7 +587,7 @@ export default function App() {
   }
 
   function openClientAtKomm(clientId) {
-    setDetailInitialTab(7)
+    setDetailInitialTab(6)
     setSelectedId(clientId)
   }
 
@@ -1207,19 +1207,15 @@ export default function App() {
             <div style={{ flex: 1, overflowY: 'auto' }}>
               <GlobalTodoView
                 clients={clients}
-                aufgabenListe={aufgabenListe}
                 onUpdateClient={updateClient}
                 onSelectClient={id => setSelectedId(id)}
-                onAddAufgabe={addAufgabe}
-                onUpdateAufgabe={updateAufgabe}
-                onDeleteAufgabe={deleteAufgabe}
               />
             </div>
           ) : selectedId === '__budget__' ? (
             <div style={{ flex: 1, overflowY: 'auto' }}>
               <BudgetView
                 clients={clients}
-                onSelectClient={(id) => { setDetailInitialTab(15); setSelectedId(id) }}
+                onSelectClient={(id) => { setDetailInitialTab(14); setSelectedId(id) }}
               />
             </div>
           ) : selectedClient ? (

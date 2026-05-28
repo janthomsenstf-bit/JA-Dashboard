@@ -221,8 +221,9 @@ function Tile({ title, color, warn, ok, onClick, children }) {
 }
 
 // Tab-Indices:
-// 0 Dashboard, 1 Stammdaten, 2 Historie, 3 Aufgaben,
-// 4 Abschluss, 5 Lohn, 6 Beratung, 7 Kommunikation, 8 Dokumente, 9 ESt, 10 USt
+// 0 Dashboard, 1 Stammdaten, 2 Historie,
+// 3 Abschluss, 4 Lohn, 5 Beratung, 6 Kommunikation, 7 Dokumente, 8 ESt, 9 USt,
+// 10 Formulare, 11 SuSa, 12 FIBU, 13 Aufträge, 14 Honorare
 
 export default function UebersichtTab({ client, onNavigateToTab, onUpdate }) {
   const status    = getMandantStatus(client)
@@ -284,7 +285,7 @@ export default function UebersichtTab({ client, onNavigateToTab, onUpdate }) {
         </Tile>
 
         {/* Kachel 3: Letzte E-Mail */}
-        <Tile title="Letzte Kommunikation" onClick={() => onNavigateToTab(7)}>
+        <Tile title="Letzte Kommunikation" onClick={() => onNavigateToTab(6)}>
           {lastEmail ? (
             <>
               <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{fmtDate(lastEmail.erstelltAm)}</div>
@@ -321,7 +322,7 @@ export default function UebersichtTab({ client, onNavigateToTab, onUpdate }) {
         </Tile>
 
         {/* Kachel 5: Letzte Anhänge */}
-        <Tile title="Letzte Anhänge" onClick={() => onNavigateToTab(7)}>
+        <Tile title="Letzte Anhänge" onClick={() => onNavigateToTab(6)}>
           {anlagen.length === 0 ? (
             <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Keine Anhänge vorhanden</span>
           ) : (
@@ -343,7 +344,7 @@ export default function UebersichtTab({ client, onNavigateToTab, onUpdate }) {
         </Tile>
 
         {/* Kachel 6: Notizen */}
-        <Tile title="Notizen" onClick={() => onNavigateToTab(6)}>
+        <Tile title="Notizen" onClick={() => onNavigateToTab(5)}>
           {client.notizen ? (
             <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-secondary)', lineHeight: '1.5', whiteSpace: 'pre-wrap' }}>
               {truncate(client.notizen, 160)}

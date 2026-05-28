@@ -98,7 +98,7 @@ export default function LohnTab({ client, onUpdate }) {
         client={client}
         typen={['lohn']}
         onUpdate={onUpdate}
-        auftraegeTabIndex={14}
+        auftraegeTabIndex={13}
       />
 
       {/* ── Lohnabrechnung ── */}

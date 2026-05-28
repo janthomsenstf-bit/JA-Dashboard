@@ -1,37 +1,36 @@
 /**
  * MobileBottomNav – Bottom Navigation Bar für mobile Nutzung.
  * Nur sichtbar auf Screens ≤ 768px (via CSS).
- * Enthält 5 Haupt-Tabs + "Mehr"-Sheet für alle 16 Reiter.
+ * Enthält 5 Haupt-Tabs + "Mehr"-Sheet für alle 15 Reiter.
  */
 import { useState } from 'react'
 
-// Alle 16 Reiter (identisch mit DetailView TAB_NAV)
+// Alle 15 Reiter (identisch mit DetailView TAB_NAV)
 const ALL_TABS = [
   { icon: '🏠', short: 'Dashboard'  },  // 0
   { icon: '🗂', short: 'Stammdaten' },  // 1
   { icon: '📊', short: 'Historie'   },  // 2
-  { icon: '✅', short: 'Aufgaben'   },  // 3
-  { icon: '📁', short: 'Abschluss'  },  // 4
-  { icon: '💼', short: 'Lohn'       },  // 5
-  { icon: '🧠', short: 'Beratung'   },  // 6
-  { icon: '✉️', short: 'Nachrichten' },  // 7
-  { icon: '📂', short: 'Dokumente'  },  // 8
-  { icon: '📊', short: 'ESt'        },  // 9
-  { icon: '🧾', short: 'USt'        },  // 10
-  { icon: '📋', short: 'Formulare'  },  // 11
-  { icon: '📊', short: 'SuSa'       },  // 12
-  { icon: '📒', short: 'FIBU'       },  // 13
-  { icon: '📋', short: 'Aufträge'   },  // 14
-  { icon: '💰', short: 'Honorare'  },  // 15
+  { icon: '📁', short: 'Abschluss'  },  // 3
+  { icon: '💼', short: 'Lohn'       },  // 4
+  { icon: '🧠', short: 'Beratung'   },  // 5
+  { icon: '✉️', short: 'Nachrichten' },  // 6
+  { icon: '📂', short: 'Dokumente'  },  // 7
+  { icon: '📊', short: 'ESt'        },  // 8
+  { icon: '🧾', short: 'USt'        },  // 9
+  { icon: '📋', short: 'Formulare'  },  // 10
+  { icon: '📊', short: 'SuSa'       },  // 11
+  { icon: '📒', short: 'FIBU'       },  // 12
+  { icon: '📋', short: 'Aufträge'   },  // 13
+  { icon: '💰', short: 'Honorare'  },  // 14
 ]
 
 // 5 Tabs in der Bottom Bar
 const BOTTOM_TABS = [
-  { icon: '🏠', label: 'Start',    idx: 0  },
-  { icon: '✉️', label: 'Nachrichten', idx: 7 },
-  { icon: '✅', label: 'Aufgaben', idx: 3  },
-  { icon: '📊', label: 'Historie', idx: 2  },
-  { icon: '⋯',  label: 'Mehr',    idx: -1 },
+  { icon: '🏠', label: 'Start',       idx: 0  },
+  { icon: '✉️', label: 'Nachrichten', idx: 6  },
+  { icon: '📋', label: 'Aufträge',    idx: 13 },
+  { icon: '📊', label: 'Historie',    idx: 2  },
+  { icon: '⋯',  label: 'Mehr',       idx: -1 },
 ]
 
 export default function MobileBottomNav({ activeTab, setActiveTab }) {

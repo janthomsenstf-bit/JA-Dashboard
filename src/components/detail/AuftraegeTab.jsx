@@ -19,6 +19,13 @@ export const AUFTRAGS_STATUS_CFG = {
 const MONATE = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez']
 const STATUS_ORDER = ['offen', 'in_bearbeitung', 'erledigt']
 
+const SERIE_RHYTHMUS = [
+  { key: 'monatlich',      label: 'Monatlich (12×)',      monate: [1,2,3,4,5,6,7,8,9,10,11,12] },
+  { key: 'quartalsweise',  label: 'Quartalsweise (4×)',   monate: [3,6,9,12] },
+  { key: 'halbjaehrlich',  label: 'Halbjährlich (2×)',    monate: [6,12] },
+  { key: 'jaehrlich',      label: 'Jährlich (1×)',        monate: [12] },
+]
+
 // ── Factories ─────────────────────────────────────────────────────────────────
 function mkAuftrag(typ = 'freitext') {
   return {
@@ -249,6 +256,72 @@ function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete }) {
 const labelStyle = { fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }
 const inputStyle  = { padding: '6px 10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text)', fontSize: '12px', width: '100%', boxSizing: 'border-box' }
 
+// ── Serie-Panel ───────────────────────────────────────────────────────────────
+function SeriePanel({ onCreate, onClose }) {
+  const [typ,       setTyp]       = useState('lohn')
+  const [jahr,      setJahr]      = useState(new Date().getFullYear())
+  const [rhythmus,  setRhythmus]  = useState('monatlich')
+
+  const preview = SERIE_RHYTHMUS.find(r => r.key === rhythmus)?.monate ?? []
+
+  function handleCreate() {
+    const monate = SERIE_RHYTHMUS.find(r => r.key === rhythmus)?.monate ?? []
+    onCreate(typ, jahr, monate)
+  }
+
+  return (
+    <div style={{
+      background: 'var(--surface)',
+      border: '1px solid var(--accent)',
+      borderRadius: '10px',
+      padding: '14px 16px',
+      marginBottom: '12px',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+        <span style={{ fontWeight: 700, fontSize: '13px' }}>📅 Serie erstellen</span>
+        <button onClick={onClose} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '16px' }}>✕</button>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', marginBottom: '12px' }}>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <span style={labelStyle}>Typ</span>
+          <select value={typ} onChange={e => setTyp(e.target.value)} style={inputStyle}>
+            {Object.entries(AUFTRAGS_TYP_CFG).map(([k, v]) => (
+              <option key={k} value={k}>{v.icon} {v.label}</option>
+            ))}
+          </select>
+        </label>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <span style={labelStyle}>Jahr</span>
+          <input type="number" value={jahr} min="2020" max="2035"
+            onChange={e => setJahr(parseInt(e.target.value) || jahr)}
+            style={inputStyle} />
+        </label>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <span style={labelStyle}>Rhythmus</span>
+          <select value={rhythmus} onChange={e => setRhythmus(e.target.value)} style={inputStyle}>
+            {SERIE_RHYTHMUS.map(r => <option key={r.key} value={r.key}>{r.label}</option>)}
+          </select>
+        </label>
+      </div>
+      {/* Vorschau */}
+      <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '10px' }}>
+        Erstellt <strong style={{ color: 'var(--text)' }}>{preview.length} Aufträge</strong> für{' '}
+        {preview.map(m => MONATE[m - 1]).join(', ')} {jahr}
+      </div>
+      <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+        <button onClick={onClose}
+          style={{ padding: '6px 14px', borderRadius: '6px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-muted)', fontSize: '12px', cursor: 'pointer' }}>
+          Abbrechen
+        </button>
+        <button onClick={handleCreate}
+          style={{ padding: '6px 16px', borderRadius: '6px', border: 'none', background: 'var(--accent)', color: '#fff', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
+          ✓ {preview.length} Aufträge anlegen
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ── Hauptkomponente ───────────────────────────────────────────────────────────
 export default function AuftraegeTab({ client, onUpdate }) {
   const auftraege = client.auftraege ?? []
@@ -257,6 +330,7 @@ export default function AuftraegeTab({ client, onUpdate }) {
   const [filterTyp,    setFilterTyp]    = useState('alle')
   const [expandedId,   setExpandedId]   = useState(null)
   const [quickTyp,     setQuickTyp]     = useState('lohn')   // für Quick-Create
+  const [showSerie,    setShowSerie]    = useState(false)     // Serie-Panel
 
   function save(list) { onUpdate({ auftraege: list }) }
 
@@ -264,6 +338,19 @@ export default function AuftraegeTab({ client, onUpdate }) {
     const au = mkAuftrag(quickTyp)
     save([au, ...auftraege])
     setExpandedId(au.id)
+    setFilterStatus('aktiv')
+    setFilterTyp('alle')
+  }
+
+  function createSerie(typ, jahr, monate) {
+    const newAuftraege = monate.map(monat => ({
+      ...mkAuftrag(typ),
+      id:   'au_' + Date.now().toString(36) + monat + Math.random().toString(36).slice(2, 4),
+      jahr,
+      monat,
+    }))
+    save([...newAuftraege, ...auftraege])
+    setShowSerie(false)
     setFilterStatus('aktiv')
     setFilterTyp('alle')
   }
@@ -318,8 +405,18 @@ export default function AuftraegeTab({ client, onUpdate }) {
             style={{ padding: '7px 16px', borderRadius: '7px', border: 'none', background: 'var(--accent)', color: '#fff', fontSize: '12px', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
             + Neuer Auftrag
           </button>
+          <button onClick={() => setShowSerie(v => !v)}
+            title="Mehrere Aufträge als Serie anlegen"
+            style={{ padding: '7px 12px', borderRadius: '7px', border: `1px solid ${showSerie ? 'var(--accent)' : 'var(--border)'}`, background: showSerie ? 'rgba(59,130,246,0.1)' : 'var(--surface2)', color: showSerie ? 'var(--accent)' : 'var(--text-muted)', fontSize: '12px', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+            📅 Serie
+          </button>
         </div>
       </div>
+
+      {/* ── Serie-Panel ── */}
+      {showSerie && (
+        <SeriePanel onCreate={createSerie} onClose={() => setShowSerie(false)} />
+      )}
 
       {/* ── Status-Filter ── */}
       <div style={{ display: 'flex', gap: '5px', marginBottom: '8px', flexWrap: 'wrap' }}>
