@@ -51,6 +51,14 @@ function isSameDay(d1, d2) {
     d1.getMonth() === d2.getMonth() && d1.getDate() === d2.getDate()
 }
 
+// Anzahl Tage, seit die Aufgabe überfällig ist (0 = heute/zukunft)
+function daysSince(dateStr) {
+  const heute = new Date(); heute.setHours(0,0,0,0)
+  const d = new Date(dateStr + 'T00:00:00')
+  if (d >= heute) return 0
+  return Math.floor((heute - d) / 86400000)
+}
+
 function getKW(date) {
   const d = new Date(date); d.setHours(0,0,0,0)
   d.setDate(d.getDate() + 4 - (d.getDay() || 7))
@@ -65,7 +73,7 @@ function fmtDE(date, opts) {
 // ── Gemeinsame Tabellenzeile ───────────────────────────────────────────────────
 const thStyle = { padding:'8px 12px', textAlign:'left', fontWeight:600, color:'var(--text-muted)', fontSize:'11px', borderBottom:'2px solid var(--border)' }
 
-function AuftragRow({ au, idx, onSelectClient, onCycleStatus }) {
+function AuftragRow({ au, idx, onSelectClient, onCycleStatus, overdueDays }) {
   const typCfg    = AUFTRAGS_TYP_CFG[au.typ]      ?? AUFTRAGS_TYP_CFG.freitext
   const statusCfg = AUFTRAGS_STATUS_CFG[au.status] ?? AUFTRAGS_STATUS_CFG.offen
   const frist     = fmtFrist(au.frist)
@@ -119,8 +127,20 @@ function AuftragRow({ au, idx, onSelectClient, onCycleStatus }) {
         )}
       </td>
       <td style={{ padding:'8px 12px', whiteSpace:'nowrap', fontSize:'12px' }}>
-        {frist ? <span style={{ color:frist.color, fontWeight:frist.overfaellig ? 700 : 400 }}>{frist.overfaellig ? '⚠ ' : ''}{frist.text}</span>
-               : <span style={{ color:'var(--text-muted)' }}>–</span>}
+        {overdueDays != null ? (
+          <div>
+            <span style={{ color:'#ef4444', fontWeight:700 }}>⚠ seit {overdueDays} Tag{overdueDays !== 1 ? 'en' : ''} offen</span>
+            {au._carryFromDate && (
+              <div style={{ fontSize:'10px', fontWeight:400, color:'var(--text-muted)', marginTop:'1px' }}>
+                Frist: {fmtDE(new Date(au._carryFromDate + 'T00:00:00'), { day:'2-digit', month:'2-digit', year:'2-digit' })}
+              </div>
+            )}
+          </div>
+        ) : frist ? (
+          <span style={{ color:frist.color, fontWeight:frist.overfaellig ? 700 : 400 }}>{frist.overfaellig ? '⚠ ' : ''}{frist.text}</span>
+        ) : (
+          <span style={{ color:'var(--text-muted)' }}>–</span>
+        )}
       </td>
       <td style={{ padding:'8px 12px' }}>
         <button onClick={() => onCycleStatus(au)} title="Status wechseln"
@@ -228,17 +248,28 @@ function WeekCard({ au, onSelectClient, onCycleStatus }) {
   const typCfg    = AUFTRAGS_TYP_CFG[au.typ]      ?? AUFTRAGS_TYP_CFG.freitext
   const statusCfg = AUFTRAGS_STATUS_CFG[au.status] ?? AUFTRAGS_STATUS_CFG.offen
   const erledigt  = au.status === 'erledigt'
+  const heute     = new Date(); heute.setHours(0,0,0,0)
+  const exact     = getExactDate(au)
+  const isOverdue = !erledigt && exact && new Date(exact + 'T00:00:00') < heute
+  const overdueDays = isOverdue ? daysSince(exact) : 0
   return (
-    <div style={{ padding:'5px 7px', borderRadius:'6px', marginBottom:'3px', border:`1px solid ${typCfg.border}`, background: erledigt ? 'rgba(22,163,74,0.04)' : typCfg.bg, opacity: erledigt ? 0.6 : 1 }}>
+    <div style={{
+      padding:'5px 7px', borderRadius:'6px', marginBottom:'3px',
+      border:`1px solid ${isOverdue ? 'rgba(239,68,68,0.4)' : typCfg.border}`,
+      borderLeft: isOverdue ? '3px solid #ef4444' : `1px solid ${typCfg.border}`,
+      background: erledigt ? 'rgba(22,163,74,0.04)' : isOverdue ? 'rgba(239,68,68,0.05)' : typCfg.bg,
+      opacity: erledigt ? 0.6 : 1,
+    }}>
       <div style={{ display:'flex', alignItems:'center', gap:'4px', marginBottom:'2px' }}>
         <span style={{ fontSize:'11px' }}>{typCfg.icon}</span>
         {au.istSerie && <span style={{ fontSize:'9px', color:'rgba(99,102,241,0.8)', fontWeight:700 }}>🔁</span>}
+        {isOverdue && <span style={{ fontSize:'9px', color:'#ef4444', fontWeight:700 }}>⚠{overdueDays}d</span>}
         <button onClick={() => onCycleStatus(au)} title="Status wechseln"
           style={{ marginLeft:'auto', fontSize:'9px', fontWeight:700, padding:'1px 5px', borderRadius:'10px', border:`1px solid ${statusCfg.border}`, background:statusCfg.bg, color:statusCfg.color, cursor:'pointer', flexShrink:0 }}>
           {statusCfg.icon}
         </button>
       </div>
-      <div style={{ fontSize:'11px', fontWeight:500, color: erledigt ? 'var(--text-muted)' : 'var(--text)', textDecoration: erledigt ? 'line-through' : 'none', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+      <div style={{ fontSize:'11px', fontWeight:500, color: erledigt ? 'var(--text-muted)' : isOverdue ? '#dc2626' : 'var(--text)', textDecoration: erledigt ? 'line-through' : 'none', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
         {au.bezeichnung || typCfg.label}
       </div>
       <button onClick={() => onSelectClient(au.client.id)}
@@ -252,16 +283,48 @@ function WeekCard({ au, onSelectClient, onCycleStatus }) {
 // ── Tages-Ansicht ─────────────────────────────────────────────────────────────
 function DayTable({ items, date, onSelectClient, onCycleStatus, onQuickCreate }) {
   const heute = new Date(); heute.setHours(0,0,0,0)
-  const istHeute = isSameDay(date, heute)
+  const istHeute    = isSameDay(date, heute)
+  const carryItems  = items.filter(a => a._carryForward)
+  const todayItems  = items.filter(a => !a._carryForward)
+
+  function TableSection({ rows, startIdx = 0 }) {
+    return (
+      <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'13px' }}>
+        <thead>
+          <tr style={{ background:'var(--surface)', position:'sticky', top:0, zIndex:1 }}>
+            <th style={thStyle}>Mandant</th>
+            <th style={thStyle}>Typ</th>
+            <th style={thStyle}>Bezeichnung</th>
+            <th style={thStyle}>Zeitraum</th>
+            <th style={thStyle}>Frist</th>
+            <th style={thStyle}>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((au, idx) => (
+            <AuftragRow key={au.id} au={au} idx={startIdx + idx}
+              onSelectClient={onSelectClient} onCycleStatus={onCycleStatus}
+              overdueDays={au._carryForward ? au._carryDays : undefined} />
+          ))}
+        </tbody>
+      </table>
+    )
+  }
 
   return (
     <div style={{ flex:1, overflowY:'auto', background:'var(--bg)' }}>
-      <div style={{ padding:'12px 16px', borderBottom:'1px solid var(--border)', background:'var(--surface)', display:'flex', alignItems:'center', gap:'10px' }}>
+      {/* Tages-Header */}
+      <div style={{ padding:'12px 16px', borderBottom:'1px solid var(--border)', background:'var(--surface)', display:'flex', alignItems:'center', gap:'10px', flexWrap:'wrap' }}>
         <span style={{ fontSize:'11px', color:'var(--text-muted)' }}>KW {getKW(date)}</span>
         <span style={{ fontSize:'12px', fontWeight:600, color:'var(--text)' }}>
           {WOCHENTAG_L[date.getDay()]}, {fmtDE(date, { day:'2-digit', month:'long', year:'numeric' })}
           {istHeute && <span style={{ marginLeft:'6px', fontSize:'11px', color:'#3b82f6', fontWeight:700 }}>● Heute</span>}
         </span>
+        {carryItems.length > 0 && (
+          <span style={{ fontSize:'11px', fontWeight:700, padding:'2px 9px', borderRadius:'20px', background:'rgba(239,68,68,0.12)', color:'#ef4444', border:'1px solid rgba(239,68,68,0.3)' }}>
+            ⚠ {carryItems.length} mitgenommen
+          </span>
+        )}
         <button onClick={() => onQuickCreate(date)}
           style={{ marginLeft:'auto', padding:'5px 12px', borderRadius:'7px', border:'1px dashed var(--border)', background:'transparent', color:'var(--accent)', fontSize:'12px', cursor:'pointer' }}>
           + Auftrag für diesen Tag
@@ -276,23 +339,34 @@ function DayTable({ items, date, onSelectClient, onCycleStatus, onQuickCreate })
           </div>
         </div>
       ) : (
-        <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'13px' }}>
-          <thead>
-            <tr style={{ background:'var(--surface)', position:'sticky', top:0, zIndex:1 }}>
-              <th style={thStyle}>Mandant</th>
-              <th style={thStyle}>Typ</th>
-              <th style={thStyle}>Bezeichnung</th>
-              <th style={thStyle}>Zeitraum</th>
-              <th style={thStyle}>Frist</th>
-              <th style={thStyle}>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((au, idx) => (
-              <AuftragRow key={au.id} au={au} idx={idx} onSelectClient={onSelectClient} onCycleStatus={onCycleStatus} />
-            ))}
-          </tbody>
-        </table>
+        <>
+          {/* Sektion: Mitgenommene überfällige Aufgaben */}
+          {carryItems.length > 0 && (
+            <div>
+              <div style={{ padding:'8px 16px 6px', background:'rgba(239,68,68,0.06)', borderBottom:'1px solid rgba(239,68,68,0.15)', display:'flex', alignItems:'center', gap:'7px' }}>
+                <span style={{ fontSize:'13px' }}>📌</span>
+                <span style={{ fontSize:'12px', fontWeight:700, color:'#ef4444' }}>Mitgenommene Aufgaben ({carryItems.length})</span>
+                <span style={{ fontSize:'11px', color:'var(--text-muted)' }}>– offen seit einem früheren Tag</span>
+              </div>
+              <div style={{ background:'rgba(239,68,68,0.015)' }}>
+                <TableSection rows={carryItems} startIdx={0} />
+              </div>
+            </div>
+          )}
+
+          {/* Sektion: Heute fällige Aufgaben */}
+          {todayItems.length > 0 && (
+            <div>
+              {carryItems.length > 0 && (
+                <div style={{ padding:'8px 16px 6px', background:'rgba(59,130,246,0.05)', borderBottom:'1px solid rgba(59,130,246,0.12)', borderTop:'2px solid var(--border)', display:'flex', alignItems:'center', gap:'7px' }}>
+                  <span style={{ fontSize:'13px' }}>📅</span>
+                  <span style={{ fontSize:'12px', fontWeight:700, color:'#60a5fa' }}>Heute fällig ({todayItems.length})</span>
+                </div>
+              )}
+              <TableSection rows={todayItems} startIdx={carryItems.length} />
+            </div>
+          )}
+        </>
       )}
     </div>
   )
@@ -464,15 +538,29 @@ export default function GlobalTodoView({ clients, onUpdateClient, onSelectClient
     return days
   }, [alleAuftraege, viewMode, navDate, passesCommon])
 
-  // ── Tagessicht: Items für einen Tag ───────────────────────────────────────
+  // ── Tagessicht: Items für einen Tag (inkl. mitgenommene überfällige) ──────
   const dayItems = useMemo(() => {
     if (viewMode !== 'tag') return null
-    return alleAuftraege.filter(au => {
-      if (!passesCommon(au)) return false
+    const heute = new Date(); heute.setHours(0,0,0,0)
+    const navDay = new Date(navDate); navDay.setHours(0,0,0,0)
+    const isCurrentOrFuture = navDay >= heute
+    const result = []
+    for (const au of alleAuftraege) {
+      if (!passesCommon(au)) continue
       const exact = getExactDate(au)
-      if (!exact) return false
-      return isSameDay(new Date(exact + 'T00:00:00'), navDate)
-    })
+      if (!exact) continue
+      const exactDate = new Date(exact + 'T00:00:00')
+      if (isSameDay(exactDate, navDate)) {
+        result.push(au)
+      } else if (isCurrentOrFuture && exactDate < navDay && au.status !== 'erledigt') {
+        result.push({ ...au,
+          _carryForward: true,
+          _carryDays:    Math.floor((navDay - exactDate) / 86400000),
+          _carryFromDate: exact,
+        })
+      }
+    }
+    return result
   }, [alleAuftraege, viewMode, navDate, passesCommon])
 
   // ── Statistiken (status-unabhängig für korrekte Übersicht) ────────────────
@@ -502,10 +590,16 @@ export default function GlobalTodoView({ clients, onUpdateClient, onSelectClient
         return true
       })
     } else if (viewMode === 'tag') {
+      const heute2 = new Date(); heute2.setHours(0,0,0,0)
+      const navDay2 = new Date(navDate); navDay2.setHours(0,0,0,0)
+      const isCurrentOrFuture2 = navDay2 >= heute2
       basis = alleAuftraege.filter(au => {
         const exact = getExactDate(au)
         if (!exact) return false
-        if (!isSameDay(new Date(exact + 'T00:00:00'), navDate)) return false
+        const exactDate = new Date(exact + 'T00:00:00')
+        const isToday  = isSameDay(exactDate, navDate)
+        const isCarry  = isCurrentOrFuture2 && exactDate < navDay2 && au.status !== 'erledigt'
+        if (!isToday && !isCarry) return false
         if (filterTyp !== 'alle' && au.typ !== filterTyp) return false
         if (filterMandatstyp !== 'alle' && (au.client.mandatstyp ?? 'extern') !== filterMandatstyp) return false
         return true
@@ -626,7 +720,13 @@ export default function GlobalTodoView({ clients, onUpdateClient, onSelectClient
   const footerInfo = useMemo(() => {
     if (viewMode === 'monat') return `${gefiltert.length} Einträge angezeigt`
     if (viewMode === 'woche') return `${weekDays?.flatMap(d => d.items).length ?? 0} Einträge diese Woche`
-    return `${dayItems?.length ?? 0} Einträge heute`
+    if (viewMode === 'tag') {
+      const carry = dayItems?.filter(a => a._carryForward).length ?? 0
+      const total = dayItems?.length ?? 0
+      if (carry > 0) return `${total} Einträge · davon ${carry} mitgenommen`
+      return `${total} Einträge`
+    }
+    return ''
   }, [viewMode, gefiltert.length, weekDays, dayItems])
 
   // ── Styles ────────────────────────────────────────────────────────────────
