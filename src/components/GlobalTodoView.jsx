@@ -22,6 +22,19 @@ function fmtFrist(iso) {
   return { text: ds, color: 'var(--text-muted)', overfaellig: false }
 }
 
+// ── Effektiver Anzeige-Zeitraum ────────────────────────────────────────────────
+// Wenn ein Frist-Datum gesetzt ist, wird nach dem Frist-Monat/-Jahr gefiltert
+// (= wann die Aufgabe tatsächlich fällig ist, nicht wann die Leistung erbracht wird).
+function getDisplayPeriod(au) {
+  if (au.frist) {
+    const d = new Date(au.frist + 'T12:00:00')
+    if (!isNaN(d.getTime())) {
+      return { monat: d.getMonth() + 1, jahr: d.getFullYear() }
+    }
+  }
+  return { monat: au.monat, jahr: au.jahr }
+}
+
 // ── Statistik-Badge ─────────────────────────────────────────────────────────────
 function StatBadge({ label, count, color, bg }) {
   return (
@@ -53,34 +66,43 @@ export default function GlobalTodoView({ clients, onUpdateClient, onSelectClient
     return result
   }, [aktiveClients])
 
-  // ── Verfügbare Jahre (aus Daten + aktuelles/nächstes) ─────────────────────────
+  // ── Verfügbare Jahre (Leistungsjahre + Frist-Jahre + aktuelles/nächstes) ──────
   const verfuegbareJahre = useMemo(() => {
-    const jahre = new Set(alleAuftraege.map(a => a.jahr).filter(Boolean))
+    const jahre = new Set()
+    for (const au of alleAuftraege) {
+      if (au.jahr) jahre.add(au.jahr)
+      // Frist kann in einem anderen Jahr liegen (z. B. Dez → Jan-Frist)
+      const dp = getDisplayPeriod(au)
+      if (dp.jahr) jahre.add(dp.jahr)
+    }
     jahre.add(CUR_JAHR)
     jahre.add(CUR_JAHR + 1)
     return [...jahre].sort((a, b) => b - a)
   }, [alleAuftraege])
 
   // ── Gefilterte Aufträge ───────────────────────────────────────────────────────
+  // Gefiltert wird nach dem Anzeige-Zeitraum (= Frist-Monat wenn gesetzt, sonst Leistungsmonat)
   const gefiltert = useMemo(() => {
     return alleAuftraege.filter(au => {
-      if (au.jahr !== filterJahr) return false
-      if (filterMonat !== null && au.monat !== null && au.monat !== filterMonat) return false
+      const dp = getDisplayPeriod(au)
+      if (dp.jahr !== filterJahr) return false
+      if (filterMonat !== null && dp.monat !== null && dp.monat !== filterMonat) return false
       if (filterTyp !== 'alle' && au.typ !== filterTyp) return false
-      if (filterStatus === 'aktiv'  && au.status === 'erledigt')      return false
-      if (filterStatus === 'offen'  && au.status !== 'offen')         return false
-      if (filterStatus === 'in_bearbeitung' && au.status !== 'in_bearbeitung') return false
-      if (filterStatus === 'erledigt' && au.status !== 'erledigt')    return false
+      if (filterStatus === 'aktiv'  && au.status === 'erledigt')                return false
+      if (filterStatus === 'offen'  && au.status !== 'offen')                   return false
+      if (filterStatus === 'in_bearbeitung' && au.status !== 'in_bearbeitung')  return false
+      if (filterStatus === 'erledigt' && au.status !== 'erledigt')              return false
       return true
     })
   }, [alleAuftraege, filterJahr, filterMonat, filterTyp, filterStatus])
 
   // ── Statistiken ───────────────────────────────────────────────────────────────
   const stats = useMemo(() => {
-    const basis = alleAuftraege.filter(au =>
-      au.jahr === filterJahr &&
-      (filterMonat === null || au.monat === null || au.monat === filterMonat)
-    )
+    const basis = alleAuftraege.filter(au => {
+      const dp = getDisplayPeriod(au)
+      return dp.jahr === filterJahr &&
+        (filterMonat === null || dp.monat === null || dp.monat === filterMonat)
+    })
     const ueberfaellig = basis.filter(au => {
       if (au.status === 'erledigt') return false
       if (!au.frist) return false
@@ -234,6 +256,9 @@ export default function GlobalTodoView({ clients, onUpdateClient, onSelectClient
                 const zeitraum    = au.monat
                   ? `${MONAT_KURZ[au.monat - 1]} ${au.jahr}`
                   : au.jahr ? String(au.jahr) : '—'
+                // Zeige Hinweis wenn Frist-Monat ≠ Leistungsmonat
+                const dp = getDisplayPeriod(au)
+                const fristAbweicht = au.frist && au.monat && (dp.monat !== au.monat || dp.jahr !== au.jahr)
 
                 return (
                   <tr key={au.id + au.client.id} style={{
@@ -281,9 +306,14 @@ export default function GlobalTodoView({ clients, onUpdateClient, onSelectClient
                       )}
                     </td>
 
-                    {/* Zeitraum */}
-                    <td style={{ padding: '8px 12px', whiteSpace: 'nowrap', fontSize: '12px', color: 'var(--text-muted)', fontFamily: 'monospace' }}>
-                      {zeitraum}
+                    {/* Zeitraum (Leistungsmonat) */}
+                    <td style={{ padding: '8px 12px', whiteSpace: 'nowrap', fontSize: '12px' }}>
+                      <span style={{ color: 'var(--text-muted)', fontFamily: 'monospace' }}>{zeitraum}</span>
+                      {fristAbweicht && (
+                        <div style={{ fontSize: '9px', color: 'var(--accent)', marginTop: '1px', fontFamily: 'monospace' }}>
+                          → fällig {MONAT_KURZ[dp.monat - 1]}{dp.jahr !== au.jahr ? ` ${dp.jahr}` : ''}
+                        </div>
+                      )}
                     </td>
 
                     {/* Frist */}

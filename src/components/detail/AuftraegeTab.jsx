@@ -26,6 +26,47 @@ const SERIE_RHYTHMUS = [
   { key: 'jaehrlich',      label: 'Jährlich (1×)',        monate: [12] },
 ]
 
+// ── Frist-Defaults pro Auftragstyp ────────────────────────────────────────────
+const FRIST_DEFAULTS = {
+  lohn:            { modus: 'gleicher',   tag: 22 },  // 22. des Leistungsmonats
+  fibu:            { modus: 'folgemonat', tag: 10 },  // 10. des Folgemonats
+  ust:             { modus: 'folgemonat', tag: 10 },  // 10. des Folgemonats
+  jahresabschluss: { modus: 'kein',       tag: 1  },
+  beratung:        { modus: 'kein',       tag: 1  },
+  freitext:        { modus: 'kein',       tag: 1  },
+}
+
+/**
+ * Berechnet das Frist-Datum für einen Serienauftrag.
+ * @param {number} ljahr   – Leistungsjahr
+ * @param {number} lmonat  – Leistungsmonat (1-12)
+ * @param {string} modus   – 'kein' | 'gleicher' | 'folgemonat' | 'tage'
+ * @param {number} tag     – Tag im Monat (für gleicher/folgemonat)
+ * @param {number} tage    – Anzahl Tage nach Monatsende (für 'tage')
+ * @returns {string} ISO-Datum 'YYYY-MM-DD' oder ''
+ */
+function calcFrist(ljahr, lmonat, modus, tag, tage) {
+  if (modus === 'kein') return ''
+
+  if (modus === 'tage') {
+    // X Tage nach letztem Tag des Leistungsmonats
+    const lastDay = new Date(ljahr, lmonat, 0)      // day-0 trick = letzter Tag des Monats
+    lastDay.setDate(lastDay.getDate() + (tage || 0))
+    return lastDay.toISOString().slice(0, 10)
+  }
+
+  // 'gleicher' oder 'folgemonat'
+  let fJahr = ljahr
+  let fMonat = lmonat
+  if (modus === 'folgemonat') {
+    fMonat++
+    if (fMonat > 12) { fMonat = 1; fJahr++ }
+  }
+  const maxDay = new Date(fJahr, fMonat, 0).getDate()
+  const d      = Math.min(Math.max(1, tag || 1), maxDay)
+  return `${fJahr}-${String(fMonat).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+}
+
 // ── Factories ─────────────────────────────────────────────────────────────────
 function mkAuftrag(typ = 'freitext') {
   return {
@@ -257,17 +298,46 @@ const labelStyle = { fontSize: '10px', fontWeight: 700, color: 'var(--text-muted
 const inputStyle  = { padding: '6px 10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text)', fontSize: '12px', width: '100%', boxSizing: 'border-box' }
 
 // ── Serie-Panel ───────────────────────────────────────────────────────────────
-function SeriePanel({ onCreate, onClose }) {
-  const [typ,       setTyp]       = useState('lohn')
-  const [jahr,      setJahr]      = useState(new Date().getFullYear())
-  const [rhythmus,  setRhythmus]  = useState('monatlich')
+const FRIST_MODI = [
+  { key: 'kein',       label: 'Keine Frist'           },
+  { key: 'gleicher',   label: 'Gleicher Monat'         },
+  { key: 'folgemonat', label: 'Folgemonat'             },
+  { key: 'tage',       label: 'X Tage nach Monatsende' },
+]
 
-  const preview = SERIE_RHYTHMUS.find(r => r.key === rhythmus)?.monate ?? []
+function SeriePanel({ onCreate, onClose }) {
+  const initDef = FRIST_DEFAULTS.lohn   // lohn ist default-Typ
+  const [typ,        setTyp]        = useState('lohn')
+  const [jahr,       setJahr]       = useState(new Date().getFullYear())
+  const [rhythmus,   setRhythmus]   = useState('monatlich')
+  const [fristModus, setFristModus] = useState(initDef.modus)
+  const [fristTag,   setFristTag]   = useState(initDef.tag)
+  const [fristTage,  setFristTage]  = useState(10)
+
+  // Smarte Defaults beim Typ-Wechsel
+  function handleTypChange(newTyp) {
+    setTyp(newTyp)
+    const def = FRIST_DEFAULTS[newTyp]
+    if (def) { setFristModus(def.modus); setFristTag(def.tag) }
+  }
+
+  const monate  = SERIE_RHYTHMUS.find(r => r.key === rhythmus)?.monate ?? []
+  const vorschau = monate.map(monat => ({
+    monat,
+    frist: calcFrist(jahr, monat, fristModus, fristTag, fristTage),
+  }))
 
   function handleCreate() {
-    const monate = SERIE_RHYTHMUS.find(r => r.key === rhythmus)?.monate ?? []
-    onCreate(typ, jahr, monate)
+    onCreate(typ, jahr, monate, { modus: fristModus, tag: fristTag, tage: fristTage })
   }
+
+  const fmtPreviewFrist = iso => {
+    if (!iso) return '—'
+    const d = new Date(iso + 'T12:00:00')
+    return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit' })
+  }
+
+  const smallInputStyle = { ...inputStyle, width: '62px', flex: 'none', padding: '5px 8px' }
 
   return (
     <div style={{
@@ -277,14 +347,17 @@ function SeriePanel({ onCreate, onClose }) {
       padding: '14px 16px',
       marginBottom: '12px',
     }}>
+      {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
         <span style={{ fontWeight: 700, fontSize: '13px' }}>📅 Serie erstellen</span>
         <button onClick={onClose} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '16px' }}>✕</button>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', marginBottom: '12px' }}>
+
+      {/* Zeile 1: Typ / Jahr / Rhythmus */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px 1fr', gap: '10px', marginBottom: '12px' }}>
         <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
           <span style={labelStyle}>Typ</span>
-          <select value={typ} onChange={e => setTyp(e.target.value)} style={inputStyle}>
+          <select value={typ} onChange={e => handleTypChange(e.target.value)} style={inputStyle}>
             {Object.entries(AUFTRAGS_TYP_CFG).map(([k, v]) => (
               <option key={k} value={k}>{v.icon} {v.label}</option>
             ))}
@@ -303,11 +376,86 @@ function SeriePanel({ onCreate, onClose }) {
           </select>
         </label>
       </div>
-      {/* Vorschau */}
-      <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '10px' }}>
-        Erstellt <strong style={{ color: 'var(--text)' }}>{preview.length} Aufträge</strong> für{' '}
-        {preview.map(m => MONATE[m - 1]).join(', ')} {jahr}
+
+      {/* Zeile 2: Fristlogik */}
+      <div style={{ background: 'var(--surface2)', borderRadius: '8px', padding: '10px 12px', marginBottom: '12px' }}>
+        <div style={{ ...labelStyle, display: 'block', marginBottom: '8px' }}>Fristlogik</div>
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+          {FRIST_MODI.map(o => (
+            <button
+              key={o.key}
+              type="button"
+              onClick={() => setFristModus(o.key)}
+              style={{
+                padding: '4px 10px', borderRadius: '20px', fontSize: '11px', cursor: 'pointer',
+                border: `1px solid ${fristModus === o.key ? 'var(--accent)' : 'var(--border)'}`,
+                background: fristModus === o.key ? 'rgba(59,130,246,0.12)' : 'transparent',
+                color: fristModus === o.key ? 'var(--accent)' : 'var(--text-muted)',
+                fontWeight: fristModus === o.key ? 700 : 400,
+              }}
+            >
+              {o.label}
+            </button>
+          ))}
+
+          {/* Tag-Eingabe für gleicher / folgemonat */}
+          {(fristModus === 'gleicher' || fristModus === 'folgemonat') && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginLeft: '4px' }}>
+              <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Tag:</span>
+              <input
+                type="number" min={1} max={28} value={fristTag}
+                onChange={e => setFristTag(Math.min(28, Math.max(1, parseInt(e.target.value) || 1)))}
+                style={smallInputStyle}
+              />
+            </div>
+          )}
+
+          {/* Tage-Eingabe für 'tage' */}
+          {fristModus === 'tage' && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginLeft: '4px' }}>
+              <input
+                type="number" min={0} max={90} value={fristTage}
+                onChange={e => setFristTage(Math.max(0, parseInt(e.target.value) || 0))}
+                style={smallInputStyle}
+              />
+              <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Tage nach Monatsende</span>
+            </div>
+          )}
+        </div>
+
+        {/* Beschreibung des gewählten Modus */}
+        <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '6px', fontStyle: 'italic' }}>
+          {fristModus === 'kein'       && 'Es wird kein Fälligkeitsdatum gesetzt.'}
+          {fristModus === 'gleicher'   && `Frist = ${fristTag}. des Leistungsmonats (z. B. Lohn: 22. des gleichen Monats)`}
+          {fristModus === 'folgemonat' && `Frist = ${fristTag}. des Folgemonats (z. B. FIBU/USt: 10. des Folgemonats)`}
+          {fristModus === 'tage'       && `Frist = ${fristTage} Tag${fristTage !== 1 ? 'e' : ''} nach dem letzten Tag des Leistungsmonats`}
+        </div>
       </div>
+
+      {/* Vorschau */}
+      <div style={{ marginBottom: '12px' }}>
+        <div style={{ ...labelStyle, display: 'block', marginBottom: '6px' }}>
+          Vorschau – {monate.length} Aufträge
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '4px' }}>
+          {vorschau.map(({ monat, frist }) => (
+            <div key={monat} style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              padding: '5px 10px', background: 'var(--surface2)', borderRadius: '6px',
+              border: '1px solid var(--border)', fontSize: '11px',
+            }}>
+              <span style={{ color: 'var(--text)', fontWeight: 600 }}>
+                {MONATE[monat - 1]} {jahr}
+              </span>
+              <span style={{ color: frist ? 'var(--accent)' : 'var(--text-muted)', fontFamily: 'monospace', fontSize: '10px' }}>
+                {frist ? `→ ${fmtPreviewFrist(frist)}` : '→ —'}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Buttons */}
       <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
         <button onClick={onClose}
           style={{ padding: '6px 14px', borderRadius: '6px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-muted)', fontSize: '12px', cursor: 'pointer' }}>
@@ -315,7 +463,7 @@ function SeriePanel({ onCreate, onClose }) {
         </button>
         <button onClick={handleCreate}
           style={{ padding: '6px 16px', borderRadius: '6px', border: 'none', background: 'var(--accent)', color: '#fff', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
-          ✓ {preview.length} Aufträge anlegen
+          ✓ {monate.length} Aufträge anlegen
         </button>
       </div>
     </div>
@@ -342,12 +490,13 @@ export default function AuftraegeTab({ client, onUpdate }) {
     setFilterTyp('alle')
   }
 
-  function createSerie(typ, jahr, monate) {
+  function createSerie(typ, jahr, monate, fristKonfig = { modus: 'kein', tag: 1, tage: 0 }) {
     const newAuftraege = monate.map(monat => ({
       ...mkAuftrag(typ),
       id:   'au_' + Date.now().toString(36) + monat + Math.random().toString(36).slice(2, 4),
       jahr,
       monat,
+      frist: calcFrist(jahr, monat, fristKonfig.modus, fristKonfig.tag, fristKonfig.tage),
     }))
     save([...newAuftraege, ...auftraege])
     setShowSerie(false)
