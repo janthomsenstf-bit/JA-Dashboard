@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { AUFTRAGS_TYP_CFG, AUFTRAGS_STATUS_CFG } from './detail/AuftraegeTab.jsx'
+import { AUFTRAGS_TYP_CFG, AUFTRAGS_STATUS_CFG, generateSerieInstanzen, intervallLabel } from './detail/AuftraegeTab.jsx'
 
 const HEUTE     = new Date()
 const CUR_MONAT = HEUTE.getMonth() + 1
@@ -55,12 +55,35 @@ export default function GlobalTodoView({ clients, onUpdateClient, onSelectClient
   const [filterTyp,    setFilterTyp]    = useState('alle')
   const [filterStatus, setFilterStatus] = useState('aktiv')  // aktiv = offen+in_bearbeitung
 
-  // ── Alle Aufträge aus allen Mandanten ─────────────────────────────────────────
+  // ── Alle Aufträge aus allen Mandanten (Serien werden zu virtuellen Instanz-Zeilen expandiert) ──
   const alleAuftraege = useMemo(() => {
     const result = []
     for (const client of aktiveClients) {
       for (const au of (client.auftraege ?? [])) {
-        result.push({ ...au, client })
+        if (au.istSerie) {
+          // Jede generierte Instanz wird zu einer eigenen virtuellen Zeile
+          const instanzen = generateSerieInstanzen(au)
+          for (const inst of instanzen) {
+            result.push({
+              id:          `${au.id}_${inst.key}`,  // eindeutiger React-Key
+              serieId:     au.id,
+              serieKey:    inst.key,
+              istSerie:    true,
+              typ:         au.typ,
+              bezeichnung: au.bezeichnung,
+              notiz:       au.notiz,
+              jahr:        inst.datum.getFullYear(),
+              monat:       inst.datum.getMonth() + 1,
+              frist:       null,  // Serieninstanzen haben keine individuelle Frist
+              status:      inst.status,
+              erledigtAm:  inst.erledigtAm,
+              serieLabel:  intervallLabel(au.serie),
+              client,
+            })
+          }
+        } else {
+          result.push({ ...au, client })
+        }
       }
     }
     return result
@@ -120,12 +143,27 @@ export default function GlobalTodoView({ clients, onUpdateClient, onSelectClient
   // ── Status eines Auftrags umschalten ──────────────────────────────────────────
   function cycleStatus(au) {
     const next = STATUS_ORDER[(STATUS_ORDER.indexOf(au.status) + 1) % STATUS_ORDER.length]
-    const updated = (au.client.auftraege ?? []).map(a =>
-      a.id === au.id
-        ? { ...a, status: next, erledigtAm: next === 'erledigt' ? new Date().toISOString() : null }
-        : a
-    )
-    onUpdateClient(au.client.id, { auftraege: updated })
+
+    if (au.istSerie && au.serieId && au.serieKey) {
+      // Serieninstanz: nur den instanzen-Eintrag des Serienauftrags updaten
+      const updatedAuftraege = (au.client.auftraege ?? []).map(a => {
+        if (a.id !== au.serieId) return a
+        const instanzen = {
+          ...(a.instanzen ?? {}),
+          [au.serieKey]: { status: next, erledigtAm: next === 'erledigt' ? new Date().toISOString() : null },
+        }
+        return { ...a, instanzen }
+      })
+      onUpdateClient(au.client.id, { auftraege: updatedAuftraege })
+    } else {
+      // Einzelauftrag: direkt status updaten
+      const updated = (au.client.auftraege ?? []).map(a =>
+        a.id === au.id
+          ? { ...a, status: next, erledigtAm: next === 'erledigt' ? new Date().toISOString() : null }
+          : a
+      )
+      onUpdateClient(au.client.id, { auftraege: updated })
+    }
   }
 
   const inputStyle = {
@@ -256,12 +294,12 @@ export default function GlobalTodoView({ clients, onUpdateClient, onSelectClient
                 const zeitraum    = au.monat
                   ? `${MONAT_KURZ[au.monat - 1]} ${au.jahr}`
                   : au.jahr ? String(au.jahr) : '—'
-                // Zeige Hinweis wenn Frist-Monat ≠ Leistungsmonat
+                // Zeige Hinweis wenn Frist-Monat ≠ Leistungsmonat (nur bei Einzelaufträgen mit Frist)
                 const dp = getDisplayPeriod(au)
-                const fristAbweicht = au.frist && au.monat && (dp.monat !== au.monat || dp.jahr !== au.jahr)
+                const fristAbweicht = !au.istSerie && au.frist && au.monat && (dp.monat !== au.monat || dp.jahr !== au.jahr)
 
                 return (
-                  <tr key={au.id + au.client.id} style={{
+                  <tr key={au.id} style={{
                     background: erledigt ? 'transparent' : frist?.overfaellig ? 'rgba(239,68,68,0.03)' : idx % 2 === 0 ? 'var(--surface)' : 'transparent',
                     borderBottom: '1px solid var(--border)',
                     opacity: erledigt ? 0.55 : 1,
@@ -296,8 +334,15 @@ export default function GlobalTodoView({ clients, onUpdateClient, onSelectClient
 
                     {/* Bezeichnung */}
                     <td style={{ padding: '8px 12px', color: 'var(--text)', textDecoration: erledigt ? 'line-through' : 'none', maxWidth: '260px' }}>
-                      <div style={{ fontWeight: bezeichnung ? 500 : 400, color: bezeichnung ? 'var(--text)' : 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {bezeichnung ?? `${typCfg.label} ${zeitraum}`}
+                      <div style={{ fontWeight: bezeichnung ? 500 : 400, color: bezeichnung ? 'var(--text)' : 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                        {au.istSerie && (
+                          <span title={`Serienauftrag – ${au.serieLabel}`} style={{ fontSize: '10px', color: 'rgba(99,102,241,0.85)', background: 'rgba(99,102,241,0.08)', padding: '1px 5px', borderRadius: '6px', border: '1px solid rgba(99,102,241,0.2)', flexShrink: 0, fontWeight: 700 }}>
+                            🔁 {au.serieLabel}
+                          </span>
+                        )}
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {bezeichnung ?? `${typCfg.label} ${zeitraum}`}
+                        </span>
                       </div>
                       {au.notiz && (
                         <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '1px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -357,9 +402,9 @@ export default function GlobalTodoView({ clients, onUpdateClient, onSelectClient
 
       {/* ── Footer ── */}
       <div style={{ padding: '6px 16px', background: 'var(--surface)', borderTop: '1px solid var(--border)', fontSize: '11px', color: 'var(--text-muted)', display: 'flex', gap: '16px', alignItems: 'center', flexShrink: 0 }}>
-        <span>{gefiltert.length} Aufträge angezeigt</span>
+        <span>{gefiltert.length} Einträge angezeigt</span>
         <span>{aktiveClients.length} Mandate aktiv</span>
-        <span>{alleAuftraege.length} Aufträge gesamt</span>
+        <span>{alleAuftraege.filter(a => !a.istSerie).length} Einzelaufträge · {alleAuftraege.filter(a => a.istSerie).length} Serieninstanzen</span>
         <span style={{ marginLeft: 'auto' }}>
           Tipp: Klick auf Mandantenname öffnet die Detail-Ansicht · Klick auf Status wechselt ihn
         </span>
