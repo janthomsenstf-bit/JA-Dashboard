@@ -50,10 +50,11 @@ export default function GlobalTodoView({ clients, onUpdateClient, onSelectClient
   const aktiveClients = useMemo(() => clients.filter(c => !c.archiviert), [clients])
 
   // ── Filter-State ─────────────────────────────────────────────────────────────
-  const [filterJahr,   setFilterJahr]   = useState(CUR_JAHR)
-  const [filterMonat,  setFilterMonat]  = useState(CUR_MONAT)
-  const [filterTyp,    setFilterTyp]    = useState('alle')
-  const [filterStatus, setFilterStatus] = useState('aktiv')  // aktiv = offen+in_bearbeitung
+  const [filterJahr,       setFilterJahr]       = useState(CUR_JAHR)
+  const [filterMonat,      setFilterMonat]      = useState(CUR_MONAT)
+  const [filterTyp,        setFilterTyp]        = useState('alle')
+  const [filterStatus,     setFilterStatus]     = useState('aktiv')  // aktiv = offen+in_bearbeitung
+  const [filterMandatstyp, setFilterMandatstyp] = useState('alle')   // alle | intern | extern
 
   // ── Alle Aufträge aus allen Mandanten (Serien werden zu virtuellen Instanz-Zeilen expandiert) ──
   const alleAuftraege = useMemo(() => {
@@ -115,16 +116,19 @@ export default function GlobalTodoView({ clients, onUpdateClient, onSelectClient
       if (filterStatus === 'offen'  && au.status !== 'offen')                   return false
       if (filterStatus === 'in_bearbeitung' && au.status !== 'in_bearbeitung')  return false
       if (filterStatus === 'erledigt' && au.status !== 'erledigt')              return false
+      if (filterMandatstyp !== 'alle' && (au.client.mandatstyp ?? 'extern') !== filterMandatstyp) return false
       return true
     })
-  }, [alleAuftraege, filterJahr, filterMonat, filterTyp, filterStatus])
+  }, [alleAuftraege, filterJahr, filterMonat, filterTyp, filterStatus, filterMandatstyp])
 
   // ── Statistiken ───────────────────────────────────────────────────────────────
   const stats = useMemo(() => {
     const basis = alleAuftraege.filter(au => {
       const dp = getDisplayPeriod(au)
-      return dp.jahr === filterJahr &&
-        (filterMonat === null || dp.monat === null || dp.monat === filterMonat)
+      if (dp.jahr !== filterJahr) return false
+      if (filterMonat !== null && dp.monat !== null && dp.monat !== filterMonat) return false
+      if (filterMandatstyp !== 'alle' && (au.client.mandatstyp ?? 'extern') !== filterMandatstyp) return false
+      return true
     })
     const ueberfaellig = basis.filter(au => {
       if (au.status === 'erledigt') return false
@@ -138,7 +142,7 @@ export default function GlobalTodoView({ clients, onUpdateClient, onSelectClient
       erledigt:     basis.filter(au => au.status === 'erledigt').length,
       ueberfaellig,
     }
-  }, [alleAuftraege, filterJahr, filterMonat])
+  }, [alleAuftraege, filterJahr, filterMonat, filterMandatstyp])
 
   // ── Status eines Auftrags umschalten ──────────────────────────────────────────
   function cycleStatus(au) {
@@ -261,6 +265,23 @@ export default function GlobalTodoView({ clients, onUpdateClient, onSelectClient
               fontWeight: filterStatus === f.key ? 700 : 400,
             }}>{f.label}</button>
           ))}
+
+          <div style={{ height: '20px', width: '1px', background: 'rgba(255,255,255,0.15)' }} />
+
+          {/* Mandatstyp-Filter */}
+          {[
+            { key: 'alle',   label: '👥 Alle' },
+            { key: 'extern', label: '🏢 Extern' },
+            { key: 'intern', label: '🏠 Intern' },
+          ].map(f => (
+            <button key={f.key} onClick={() => setFilterMandatstyp(f.key)} style={{
+              padding: '4px 10px', borderRadius: '20px', fontSize: '11px', cursor: 'pointer',
+              border: `1px solid ${filterMandatstyp === f.key ? '#f59e0b' : 'rgba(255,255,255,0.2)'}`,
+              background: filterMandatstyp === f.key ? 'rgba(245,158,11,0.2)' : 'transparent',
+              color: filterMandatstyp === f.key ? '#fbbf24' : 'rgba(255,255,255,0.6)',
+              fontWeight: filterMandatstyp === f.key ? 700 : 400,
+            }}>{f.label}</button>
+          ))}
         </div>
       </div>
 
@@ -312,7 +333,14 @@ export default function GlobalTodoView({ clients, onUpdateClient, onSelectClient
                         style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent)', fontWeight: 600, fontSize: '13px', padding: 0, textAlign: 'left' }}
                         title="Mandant öffnen (Aufträge-Tab)"
                       >
-                        {au.client.name}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                          {au.client.name}
+                          {(au.client.mandatstyp ?? 'extern') === 'intern' && (
+                            <span style={{ fontSize: '9px', fontWeight: 700, padding: '1px 5px', borderRadius: '8px', background: 'rgba(124,58,237,0.1)', color: '#7c3aed', border: '1px solid rgba(124,58,237,0.25)', flexShrink: 0 }}>
+                              INTERN
+                            </span>
+                          )}
+                        </div>
                         {au.client.mandantennummer && (
                           <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontFamily: 'monospace', fontWeight: 400 }}>
                             {au.client.mandantennummer}
