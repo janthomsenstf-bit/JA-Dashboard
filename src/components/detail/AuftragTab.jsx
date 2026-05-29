@@ -1110,19 +1110,16 @@ export default function AuftragTab({ client, onUpdate, claudeApiKey, onUpdateCla
         )}
       </div>
 
-      {/* ══════════════════ 2. LAUFENDE AUFTRÄGE ══════════════════ */}
-      <AuftragsBlock client={client} onUpdate={onUpdate} />
-
-      {/* ══════════════════ 3. KONTAKTPERSONEN ══════════════════ */}
+      {/* ══════════════════ 2. KONTAKTPERSONEN ══════════════════ */}
       <KontaktpersonenSection client={client} onUpdate={onUpdate} />
 
-      {/* ══════════════════ 4. ABSENDER ══════════════════ */}
+      {/* ══════════════════ 3. ABSENDER ══════════════════ */}
       <AbsenderSection client={client} onUpdate={onUpdate} />
 
-      {/* ══════════════════ 5. STANDARD-SIGNATUR ══════════════════ */}
+      {/* ══════════════════ 4. STANDARD-SIGNATUR ══════════════════ */}
       <SignaturSection client={client} onUpdate={onUpdate} emailSignaturen={emailSignaturen} />
 
-      {/* ══════════════════ 6. API-SCHLÜSSEL ══════════════════ */}
+      {/* ══════════════════ 5. API-SCHLÜSSEL ══════════════════ */}
       <ApiKeySection claudeApiKey={claudeApiKey} onUpdateClaudeApiKey={onUpdateClaudeApiKey} />
 
     </div>
