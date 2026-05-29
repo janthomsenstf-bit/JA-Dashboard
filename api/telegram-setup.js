@@ -17,7 +17,8 @@ export default async function handler(req, res) {
 
   const token  = process.env.TELEGRAM_BOT_TOKEN
   const secret = process.env.TELEGRAM_WEBHOOK_SECRET
-  const host   = process.env.VERCEL_URL || req.headers.host
+  // VERCEL_URL liefert deployment-spezifische URL – stattdessen feste Produktions-Domain verwenden
+  const host   = process.env.VERCEL_PROJECT_PRODUCTION_URL || 'ja-dashboard-three.vercel.app'
 
   if (!token) {
     return res.status(500).json({ error: 'TELEGRAM_BOT_TOKEN nicht gesetzt' })
