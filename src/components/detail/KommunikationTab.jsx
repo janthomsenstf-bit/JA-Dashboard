@@ -2128,489 +2128,519 @@ function EmailDetailPanel({
     onClose()
   }
 
+  const isNarrow = typeof window !== 'undefined' && window.innerWidth < 768
+
+  // Sidebar action button style helper
+  const sideBtn = (extra = {}) => ({
+    width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '8px',
+    padding: '9px 14px', borderRadius: '10px', border: '1px solid transparent',
+    background: 'transparent', cursor: 'pointer', fontSize: '12px', fontWeight: 500,
+    color: 'var(--text)', transition: 'all 0.15s',
+    ...extra,
+  })
+
   return (
     <>
-      <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 1799 }} />
-      <div style={{
-        position: 'fixed', top: 0, right: 0, bottom: 0,
-        width: 'min(860px, 96vw)',
+      <div onClick={onClose} style={{
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1799,
+        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: isNarrow ? '8px' : '24px',
+      }} />
+      <div onClick={e => e.stopPropagation()} style={{
+        position: 'fixed',
+        top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+        width: isNarrow ? '98vw' : '92vw',
+        maxWidth: '1200px',
+        height: isNarrow ? '96vh' : '90vh',
         background: 'var(--surface)',
-        borderLeft: '1px solid var(--border)',
-        boxShadow: '-6px 0 40px rgba(0,0,0,0.4)',
-        zIndex: 1800, display: 'flex', flexDirection: 'column', overflow: 'hidden',
+        borderRadius: '16px',
+        border: '1px solid var(--border)',
+        boxShadow: '0 16px 64px rgba(0,0,0,0.5)',
+        zIndex: 1800,
+        display: 'flex', flexDirection: 'column', overflow: 'hidden',
       }}>
-        {/* Header */}
-        <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
-            <button className="btn btn-ghost btn-sm" onClick={onClose} style={{ fontSize: '16px', padding: '2px 8px' }}>✕</button>
-            <span style={{ fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '20px', background: cfg.bg, color: cfg.color }}>
-              {cfg.icon} {cfg.label}
+
+        {/* ═══ Modal Header ═══ */}
+        <div style={{
+          padding: '14px 24px', borderBottom: '1px solid var(--border)', flexShrink: 0,
+          display: 'flex', alignItems: 'center', gap: '10px',
+          background: 'linear-gradient(180deg, var(--surface) 0%, var(--surface2) 100%)',
+        }}>
+          <span style={{ fontSize: '10px', fontWeight: 700, padding: '3px 10px', borderRadius: '20px', background: cfg.bg, color: cfg.color }}>
+            {cfg.icon} {cfg.label}
+          </span>
+          <span style={{ fontSize: '10px', fontWeight: 700, padding: '3px 10px', borderRadius: '20px', background: sbCfg.bg, color: sbCfg.color }}>
+            {sbCfg.label}
+          </span>
+          {entry.versandweg === 'outlook' && (
+            <span style={{ fontSize: '10px', fontWeight: 700, padding: '3px 10px', borderRadius: '20px', background: 'rgba(0,120,212,0.12)', color: '#0078d4', border: '1px solid rgba(0,120,212,0.3)' }}>
+              📨 Outlook
             </span>
-            <span style={{ fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '20px', background: sbCfg.bg, color: sbCfg.color }}>
-              {sbCfg.label}
-            </span>
-            {entry.versandweg === 'outlook' && (
-              <span style={{ fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '20px', background: 'rgba(0,120,212,0.12)', color: '#0078d4', border: '1px solid rgba(0,120,212,0.3)' }}>
-                📨 Outlook gesendet
-              </span>
-            )}
-            {entry.erledigtAm && <span style={{ fontSize: '10px', color: 'var(--green)', fontWeight: 700 }}>✓ Erledigt</span>}
-            <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginLeft: 'auto', fontFamily: 'var(--font-mono)' }}>
-              {fmtD(entry.gesendetAm ?? entry.erstelltAm)}
-            </span>
-          </div>
-          <div style={{ fontSize: '16px', fontWeight: 700, marginBottom: '8px', lineHeight: 1.3 }}>
-            {entry.betreff || '(kein Betreff)'}
-          </div>
-          <div style={{ fontSize: '12px', color: 'var(--text-muted)', display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
-            {entry.absender   && <span><strong style={{ color: 'var(--text)' }}>Von:</strong> {entry.absender}</span>}
-            {entry.empfaenger && <span><strong style={{ color: 'var(--text)' }}>An:</strong> {entry.empfaenger}</span>}
-            {entry.cc         && <span><strong style={{ color: 'var(--text)' }}>CC:</strong> {entry.cc}</span>}
-            {entry.bcc        && <span><strong style={{ color: 'var(--text)' }}>BCC:</strong> {entry.bcc}</span>}
-          </div>
+          )}
+          {entry.erledigtAm && <span style={{ fontSize: '10px', color: 'var(--green)', fontWeight: 700 }}>✓ Erledigt</span>}
+          <span style={{ flex: 1 }} />
+          <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+            {fmtD(entry.gesendetAm ?? entry.erstelltAm)}
+          </span>
+          <button onClick={onClose} style={{
+            background: 'none', border: '1px solid var(--border)', borderRadius: '8px',
+            cursor: 'pointer', color: 'var(--text-muted)', fontSize: '16px', padding: '4px 10px',
+            lineHeight: 1, transition: 'all 0.15s',
+          }}>✕</button>
         </div>
 
-        {/* Anhänge — prominent direkt nach Header */}
-        {entry.anlagen?.length > 0 && (
-          <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--border)', flexShrink: 0, background: 'rgba(245,158,11,0.04)' }}>
-            <div style={{ fontSize: '11px', fontWeight: 700, color: '#f59e0b', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-              📎 {entry.anlagen.length} Anhang{entry.anlagen.length !== 1 ? 'änge' : ''}
-            </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-              {entry.anlagen.map((a, i) => {
-                const bin   = attachmentData[entry.id]?.[i]
-                const canDl = bin?.data && !a.tooLarge
-                return (
-                  <div key={i} style={{
-                    display: 'flex', alignItems: 'center', gap: '6px', padding: '5px 10px', borderRadius: '8px',
-                    background: 'var(--bg)', border: `1px solid ${canDl ? 'rgba(245,158,11,0.5)' : 'rgba(245,158,11,0.2)'}`, fontSize: '12px',
-                  }}>
-                    <span>{fileIcon(a.contentType)}</span>
-                    <span style={{ fontWeight: 600 }}>{a.name}</span>
-                    {a.size > 0 && <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>({fmtSz(a.size)})</span>}
-                    {canDl ? (
-                      <button onClick={e => { e.stopPropagation(); onDownload(bin) }}
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#f59e0b', fontSize: '11px', padding: '0 2px', fontWeight: 700 }}>
-                        ⬇ Herunterladen
-                      </button>
-                    ) : a.tooLarge ? (
-                      <a
-                        href={`/api/download-attachment?uid=${encodeURIComponent(entry.sourceUid)}&account=${encodeURIComponent(entry.sourceAccount)}&name=${encodeURIComponent(a.name)}`}
-                        download={a.name}
-                        onClick={e => e.stopPropagation()}
-                        style={{ color: '#f59e0b', fontSize: '11px', fontWeight: 700, textDecoration: 'none' }}
-                      >
-                        ⬇ Herunterladen
-                      </a>
-                    ) : (
-                      <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>wird geladen…</span>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        )}
+        {/* ═══ Two-Column Body ═══ */}
+        <div style={{ display: 'flex', flexDirection: isNarrow ? 'column' : 'row', flex: 1, overflow: 'hidden', minHeight: 0 }}>
 
-        {/* Inhalt */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', ...(replyMode ? { maxHeight: '260px' } : {}) }}>
-          {contentLoading[entry.id] && <div style={{ color: 'var(--text-muted)', fontSize: '13px' }}>⏳ E-Mail-Inhalt wird geladen…</div>}
-          {contentError[entry.id] && (
-            <div style={{ fontSize: '12px', color: '#dc2626', padding: '8px 12px', background: 'rgba(220,38,38,0.06)', borderRadius: '6px', marginBottom: '12px', display: 'flex', gap: '8px', alignItems: 'center' }}>
-              ⚠️ {contentError[entry.id]}
-              <button className="btn btn-ghost btn-sm" onClick={() => onFetch(entry)} style={{ fontSize: '10px' }}>Erneut versuchen</button>
-            </div>
-          )}
-          {!contentLoading[entry.id] && (
-            entry.html ? (
-              <iframe srcDoc={entry.html} sandbox="allow-same-origin"
-                style={{ width: '100%', minHeight: '400px', border: '1px solid var(--border)', borderRadius: '6px', background: '#fff', display: 'block' }}
-                onLoad={e => { try { const h = e.target.contentDocument?.body?.scrollHeight; if (h > 50) e.target.style.height = (h + 24) + 'px' } catch {} }}
-              />
-            ) : (
-              <pre style={{ fontFamily: 'inherit', fontSize: '13px', lineHeight: '1.7', whiteSpace: 'pre-wrap', color: 'var(--text)', margin: 0 }}>
-                {entry.text || (entry.sourceUid && !entry.contentLoaded ? '(Inhalt wird geladen…)' : '(kein Text)')}
-              </pre>
-            )
-          )}
-        </div>
+          {/* ─── LEFT COLUMN: E-Mail Content ─── */}
+          <div style={{ flex: 7, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
 
-        {/* Mini-Formulare */}
-        {actionForm === 'aufgabe' && (
-          <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)', background: 'rgba(37,99,235,0.04)', flexShrink: 0 }}>
-            <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--accent)', marginBottom: '8px' }}>📌 Als Aufgabe speichern</div>
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-              <input className="input" value={aufgabeTitel} onChange={e => setAufgabeTitel(e.target.value)}
-                placeholder="Aufgabe Titel…" style={{ flex: '1 1 200px', fontSize: '12px', padding: '6px 10px' }} />
-              <select className="input" value={aufgabePrio} onChange={e => setAufgabePrio(e.target.value)}
-                style={{ fontSize: '12px', padding: '6px 8px', width: '100px' }}>
-                <option value="hoch">Hoch</option>
-                <option value="mittel">Mittel</option>
-                <option value="niedrig">Niedrig</option>
-              </select>
-              <input type="date" className="input" value={aufgabeFaellig} onChange={e => setAufgabeFaellig(e.target.value)}
-                style={{ fontSize: '12px', padding: '6px 8px', width: '150px' }} />
-              <button className="btn btn-primary btn-sm" onClick={handleAufgabe} style={{ fontSize: '12px' }}>Speichern</button>
-              <button className="btn btn-ghost btn-sm" onClick={() => setActionForm(null)} style={{ fontSize: '12px' }}>Abbrechen</button>
-            </div>
-          </div>
-        )}
-        {actionForm === 'erinnerung' && (
-          <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)', background: 'rgba(249,115,22,0.04)', flexShrink: 0 }}>
-            <div style={{ fontSize: '11px', fontWeight: 700, color: '#f97316', marginBottom: '8px' }}>🔔 Erinnerung setzen</div>
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-              <input type="date" className="input" value={erDatum} onChange={e => setErDatum(e.target.value)}
-                style={{ fontSize: '12px', padding: '6px 8px', width: '150px' }} />
-              <input className="input" value={erText} onChange={e => setErText(e.target.value)}
-                placeholder="Erinnerungstext…" style={{ flex: '1 1 200px', fontSize: '12px', padding: '6px 10px' }} />
-              <button className="btn btn-primary btn-sm" onClick={handleErinnerung} style={{ fontSize: '12px' }}>Speichern</button>
-              <button className="btn btn-ghost btn-sm" onClick={() => setActionForm(null)} style={{ fontSize: '12px' }}>Abbrechen</button>
-            </div>
-          </div>
-        )}
-
-        {/* KI-Leiste im Panel */}
-        <div style={{ padding: '8px 20px', borderTop: '1px solid var(--border)', background: 'rgba(124,58,237,0.03)', flexShrink: 0 }}>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
-            <span style={{ fontSize: '11px', color: '#7c3aed', fontWeight: 700 }}>🧠 KI:</span>
-            <button className="btn btn-ghost btn-sm" onClick={() => handlePanelKI('zusammenfassen')} disabled={panelAiLoad} style={{ fontSize: '11px' }}>
-              {panelAiLoad ? '⏳' : '📋'} Zusammenfassen
-            </button>
-            <button className="btn btn-ghost btn-sm" onClick={() => handlePanelKI('antwort')} disabled={panelAiLoad} style={{ fontSize: '11px' }}>
-              ✍️ Antwort-Entwurf
-            </button>
-            <button
-              className={`btn btn-sm ${showTranslate ? 'btn-primary' : 'btn-ghost'}`}
-              onClick={() => setShowTranslate(v => !v)}
-              disabled={panelAiLoad}
-              style={{ fontSize: '11px' }}
-            >
-              🌐 Übersetzen
-            </button>
-            {showTranslate && (
-              <>
-                <select className="input" value={translateLang} onChange={e => setTranslateLang(e.target.value)}
-                  style={{ fontSize: '11px', padding: '3px 7px', width: '120px' }}>
-                  {['Deutsch','Englisch','Französisch','Spanisch','Polnisch','Türkisch','Arabisch'].map(l => (
-                    <option key={l}>{l}</option>
-                  ))}
-                </select>
-                <button className="btn btn-primary btn-sm" onClick={() => { handlePanelKI('uebersetzen', translateLang); setShowTranslate(false) }} disabled={panelAiLoad} style={{ fontSize: '11px' }}>
-                  → Los
-                </button>
-              </>
-            )}
-          </div>
-          {panelAiError && (
-            <div style={{ fontSize: '11px', color: '#dc2626', marginTop: '6px' }}>⚠️ {panelAiError}</div>
-          )}
-          {panelAiResult && !panelAiError && (
-            <div style={{ marginTop: '8px', padding: '8px 12px', background: 'var(--surface2)', borderRadius: '6px', fontSize: '12px', lineHeight: '1.6', whiteSpace: 'pre-wrap', border: '1px solid rgba(124,58,237,0.2)' }}>
-              {panelAiResult}
-            </div>
-          )}
-        </div>
-
-        {/* ── Inline-Antwort-Formular ────────────────────────────────── */}
-        {replyMode && (
-          <div style={{
-            borderTop: '2px solid var(--accent)', flexShrink: 0,
-            background: 'rgba(37,99,235,0.03)', display: 'flex', flexDirection: 'column', gap: '8px',
-            padding: '12px 20px',
-          }}>
-            {/* Kopfzeile */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--accent)' }}>
-                {replyMode === 'forward' ? '→ Weiterleiten' : replyMode === 'replyAll' ? '↩↩ Allen antworten' : '↩ Antwort verfassen'}
-              </span>
-              <button className="btn btn-ghost btn-sm" onClick={() => setReplyMode('')} style={{ fontSize: '13px', lineHeight: 1 }}>✕</button>
+            {/* Email Header */}
+            <div style={{ padding: '20px 24px 16px', flexShrink: 0 }}>
+              <div style={{ fontSize: '18px', fontWeight: 700, lineHeight: 1.3, marginBottom: '12px', color: 'var(--text)' }}>
+                {entry.betreff || '(kein Betreff)'}
+              </div>
+              <div style={{ fontSize: '13px', color: 'var(--text-muted)', display: 'flex', flexWrap: 'wrap', gap: '16px', lineHeight: 1.6 }}>
+                {entry.absender   && <span><strong style={{ color: 'var(--text)', fontWeight: 600 }}>Von:</strong> {entry.absender}</span>}
+                {entry.empfaenger && <span><strong style={{ color: 'var(--text)', fontWeight: 600 }}>An:</strong> {entry.empfaenger}</span>}
+                {entry.cc         && <span><strong style={{ color: 'var(--text)', fontWeight: 600 }}>CC:</strong> {entry.cc}</span>}
+                {entry.bcc        && <span><strong style={{ color: 'var(--text)', fontWeight: 600 }}>BCC:</strong> {entry.bcc}</span>}
+              </div>
             </div>
 
-            {/* Von + An */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
-              {absenderList.length > 0 && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Von:</span>
-                  <select className="input" value={replyAbsenderVal} onChange={e => setReplyAbsenderVal(e.target.value)}
-                    style={{ flex: 1, fontSize: '11px', padding: '4px 6px' }}>
-                    {absenderList.map(a => (
-                      <option key={a.email} value={a.email}>{a.name ? a.name + ' <' + a.email + '>' : a.email}</option>
-                    ))}
-                  </select>
+            {/* Email Content */}
+            <div style={{ flex: 1, overflowY: 'auto', padding: '0 24px 20px', ...(replyMode ? { maxHeight: '35%' } : {}) }}>
+              {contentLoading[entry.id] && <div style={{ color: 'var(--text-muted)', fontSize: '13px', padding: '20px 0' }}>⏳ E-Mail-Inhalt wird geladen…</div>}
+              {contentError[entry.id] && (
+                <div style={{ fontSize: '12px', color: '#dc2626', padding: '10px 14px', background: 'rgba(220,38,38,0.06)', borderRadius: '10px', marginBottom: '12px', display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  ⚠️ {contentError[entry.id]}
+                  <button className="btn btn-ghost btn-sm" onClick={() => onFetch(entry)} style={{ fontSize: '10px' }}>Erneut versuchen</button>
                 </div>
               )}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>An:</span>
-                <input className="input" value={replyEmpfaenger} onChange={e => setReplyEmpfaenger(e.target.value)}
-                  style={{ flex: 1, fontSize: '11px', padding: '4px 6px' }} />
-              </div>
-            </div>
+              {!contentLoading[entry.id] && (
+                entry.html ? (
+                  <iframe srcDoc={entry.html} sandbox="allow-same-origin"
+                    style={{ width: '100%', minHeight: '300px', maxHeight: '60vh', border: '1px solid var(--border)', borderRadius: '10px', background: '#fff', display: 'block' }}
+                    onLoad={e => { try { const h = e.target.contentDocument?.body?.scrollHeight; if (h > 50) e.target.style.height = Math.min(h + 24, window.innerHeight * 0.6) + 'px' } catch {} }}
+                  />
+                ) : (
+                  <pre style={{ fontFamily: 'inherit', fontSize: '13px', lineHeight: '1.7', whiteSpace: 'pre-wrap', color: 'var(--text)', margin: 0 }}>
+                    {entry.text || (entry.sourceUid && !entry.contentLoaded ? '(Inhalt wird geladen…)' : '(kein Text)')}
+                  </pre>
+                )
+              )}
 
-            {/* CC – bei Allen antworten vorausgefüllt, immer editierbar wenn Inhalt */}
-            {(replyMode === 'replyAll' || replyCC) && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', whiteSpace: 'nowrap', minWidth: '28px' }}>CC:</span>
-                <input className="input" value={replyCC} onChange={e => setReplyCC(e.target.value)}
-                  placeholder="cc@firma.de, weitere@kontakt.de"
-                  style={{ flex: 1, fontSize: '11px', padding: '4px 6px' }} />
-              </div>
-            )}
-
-            {/* Betreff + Signatur */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-              <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Betreff:</span>
-              <input className="input" value={replyBetreff} onChange={e => setReplyBetreff(e.target.value)}
-                style={{ flex: 1, minWidth: '160px', fontSize: '11px', padding: '4px 6px' }} />
-              {emailSignaturen.length > 0 && (
-                <>
-                  <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Signatur:</span>
-                  <select className="input" value={replySigId} onChange={e => setReplySigId(e.target.value)}
-                    style={{ fontSize: '11px', padding: '4px 6px', width: '140px' }}>
-                    <option value="">Keine</option>
-                    {emailSignaturen.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                  </select>
-                </>
+              {/* KI-Ergebnis unter dem Content */}
+              {panelAiResult && !panelAiError && (
+                <div style={{ marginTop: '16px', padding: '12px 16px', background: 'rgba(124,58,237,0.05)', borderRadius: '10px', fontSize: '12px', lineHeight: '1.6', whiteSpace: 'pre-wrap', border: '1px solid rgba(124,58,237,0.2)' }}>
+                  <div style={{ fontSize: '10px', fontWeight: 700, color: '#7c3aed', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '6px' }}>🧠 KI-Ergebnis</div>
+                  {panelAiResult}
+                </div>
               )}
             </div>
 
-            {/* ── Vorlage auswählen ── */}
-            {emailVorlagen.length > 0 && (
-              <div style={{ position: 'relative' }}>
-                <button
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => setShowVorlagenPicker(v => !v)}
-                  style={{ fontSize: '11px', color: '#a78bfa' }}
-                >
-                  📝 Vorlage auswählen ({emailVorlagen.length})
-                </button>
-                {showVorlagenPicker && (
-                  <div style={{
-                    position: 'absolute', bottom: 'calc(100% + 4px)', left: 0, zIndex: 300,
-                    background: 'var(--surface)', border: '1px solid var(--border)',
-                    borderRadius: '10px', boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
-                    minWidth: '240px', maxHeight: '260px', overflowY: 'auto', padding: '6px',
-                  }}>
-                    {emailVorlagen.map(v => (
-                      <button
-                        key={v.id}
-                        onClick={() => {
-                          setReplyText(prev => (prev ? prev + '\n\n' : '') + v.text)
-                          setShowVorlagenPicker(false)
-                        }}
-                        style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 10px', borderRadius: '6px', cursor: 'pointer', background: 'none', border: 'none', color: 'var(--text)', fontSize: '12px' }}
-                        onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
-                        onMouseLeave={e => e.currentTarget.style.background = 'none'}
-                      >
-                        <div style={{ fontWeight: 600 }}>{v.name}</div>
-                        <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '1px' }}>{v.kategorie} · {v.betreff}</div>
-                      </button>
+            {/* ── Inline-Antwort-Editor ── */}
+            {replyMode && (
+              <div style={{
+                borderTop: '2px solid var(--accent)', flexShrink: 0,
+                background: 'rgba(37,99,235,0.03)', display: 'flex', flexDirection: 'column', gap: '8px',
+                padding: '14px 24px', overflowY: 'auto', maxHeight: '55%',
+              }}>
+                {/* Kopfzeile */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--accent)' }}>
+                    {replyMode === 'forward' ? '→ Weiterleiten' : replyMode === 'replyAll' ? '↩↩ Allen antworten' : '↩ Antwort verfassen'}
+                  </span>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setReplyMode('')} style={{ fontSize: '13px', lineHeight: 1 }}>✕</button>
+                </div>
+
+                {/* Von + An */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                  {absenderList.length > 0 && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Von:</span>
+                      <select className="input" value={replyAbsenderVal} onChange={e => setReplyAbsenderVal(e.target.value)}
+                        style={{ flex: 1, fontSize: '11px', padding: '5px 8px', borderRadius: '8px' }}>
+                        {absenderList.map(a => (
+                          <option key={a.email} value={a.email}>{a.name ? a.name + ' <' + a.email + '>' : a.email}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>An:</span>
+                    <input className="input" value={replyEmpfaenger} onChange={e => setReplyEmpfaenger(e.target.value)}
+                      style={{ flex: 1, fontSize: '11px', padding: '5px 8px', borderRadius: '8px' }} />
+                  </div>
+                </div>
+
+                {/* CC */}
+                {(replyMode === 'replyAll' || replyCC) && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', whiteSpace: 'nowrap', minWidth: '28px' }}>CC:</span>
+                    <input className="input" value={replyCC} onChange={e => setReplyCC(e.target.value)}
+                      placeholder="cc@firma.de, weitere@kontakt.de"
+                      style={{ flex: 1, fontSize: '11px', padding: '5px 8px', borderRadius: '8px' }} />
+                  </div>
+                )}
+
+                {/* Betreff + Signatur */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Betreff:</span>
+                  <input className="input" value={replyBetreff} onChange={e => setReplyBetreff(e.target.value)}
+                    style={{ flex: 1, minWidth: '160px', fontSize: '11px', padding: '5px 8px', borderRadius: '8px' }} />
+                  {emailSignaturen.length > 0 && (
+                    <>
+                      <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Signatur:</span>
+                      <select className="input" value={replySigId} onChange={e => setReplySigId(e.target.value)}
+                        style={{ fontSize: '11px', padding: '5px 8px', width: '140px', borderRadius: '8px' }}>
+                        <option value="">Keine</option>
+                        {emailSignaturen.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                      </select>
+                    </>
+                  )}
+                </div>
+
+                {/* Vorlage auswählen */}
+                {emailVorlagen.length > 0 && (
+                  <div style={{ position: 'relative' }}>
+                    <button className="btn btn-ghost btn-sm" onClick={() => setShowVorlagenPicker(v => !v)}
+                      style={{ fontSize: '11px', color: '#a78bfa' }}>
+                      📝 Vorlage auswählen ({emailVorlagen.length})
+                    </button>
+                    {showVorlagenPicker && (
+                      <div style={{
+                        position: 'absolute', bottom: 'calc(100% + 4px)', left: 0, zIndex: 300,
+                        background: 'var(--surface)', border: '1px solid var(--border)',
+                        borderRadius: '12px', boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+                        minWidth: '240px', maxHeight: '260px', overflowY: 'auto', padding: '6px',
+                      }}>
+                        {emailVorlagen.map(v => (
+                          <button key={v.id}
+                            onClick={() => { setReplyText(prev => (prev ? prev + '\n\n' : '') + v.text); setShowVorlagenPicker(false) }}
+                            style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 10px', borderRadius: '8px', cursor: 'pointer', background: 'none', border: 'none', color: 'var(--text)', fontSize: '12px' }}
+                            onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
+                            onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+                            <div style={{ fontWeight: 600 }}>{v.name}</div>
+                            <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '1px' }}>{v.kategorie} · {v.betreff}</div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Editor-Toolbar */}
+                <div style={{
+                  display: 'flex', flexWrap: 'wrap', gap: '4px', alignItems: 'center',
+                  padding: '6px 10px', background: 'var(--surface2)',
+                  borderRadius: '8px', border: '1px solid var(--border)',
+                }}>
+                  <button className="btn btn-sm" onClick={dictating ? stopDictation : startDictation}
+                    title={dictating ? 'Diktat stoppen' : 'Spracheingabe starten (de-DE)'}
+                    style={{
+                      fontSize: '11px', fontWeight: 700,
+                      background: dictating ? '#dc2626' : 'transparent',
+                      color: dictating ? '#fff' : 'var(--text)',
+                      border: dictating ? '1px solid #dc2626' : '1px solid var(--border)',
+                      padding: '3px 8px', borderRadius: '6px',
+                      animation: dictating ? 'dictPulse 1.2s ease-in-out infinite' : 'none',
+                    }}>
+                    {dictating ? '⏹ Stop' : '🎤 Diktieren'}
+                  </button>
+                  <span style={{ borderLeft: '1px solid var(--border)', height: '16px', margin: '0 2px' }} />
+                  <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600 }}>KI:</span>
+                  {[
+                    { key: 'freundlicher', label: '😊 Freundl.' },
+                    { key: 'kuerzer',      label: '✂️ Kürzer' },
+                    { key: 'klarer',       label: '💡 Klarer' },
+                    { key: 'professioneller', label: '👔 Profess.' },
+                  ].map(({ key, label }) => (
+                    <button key={key} className="btn btn-ghost btn-sm"
+                      onClick={() => handleKiOpt(key)} disabled={kiOptLoad || !replyText.trim()}
+                      style={{ fontSize: '10px', padding: '3px 7px' }} title={label}>{label}</button>
+                  ))}
+                  <span style={{ borderLeft: '1px solid var(--border)', height: '16px', margin: '0 2px' }} />
+                  {[{ key: 'du-form', label: 'Du' }, { key: 'sie-form', label: 'Sie' }].map(({ key, label }) => (
+                    <button key={key} className="btn btn-ghost btn-sm"
+                      onClick={() => handleKiOpt(key)} disabled={kiOptLoad || !replyText.trim()}
+                      style={{ fontSize: '10px', padding: '3px 7px' }}>{label}</button>
+                  ))}
+                  <span style={{ borderLeft: '1px solid var(--border)', height: '16px', margin: '0 2px' }} />
+                  {[{ key: 'en', label: '🇬🇧 EN' }, { key: 'dk', label: '🇩🇰 DK' }, { key: 'de', label: '🇩🇪 DE' }].map(({ key, label }) => (
+                    <button key={key} className="btn btn-ghost btn-sm"
+                      onClick={() => handleKiOpt(key)} disabled={kiOptLoad || !replyText.trim()}
+                      style={{ fontSize: '10px', padding: '3px 7px' }}>{label}</button>
+                  ))}
+                  {kiOptLoad && <span style={{ fontSize: '12px', marginLeft: '4px' }}>⏳</span>}
+                </div>
+
+                {kiOptErr && (
+                  <div style={{ fontSize: '11px', color: '#dc2626', padding: '4px 8px', background: 'rgba(220,38,38,0.06)', borderRadius: '6px' }}>
+                    KI-Fehler: {kiOptErr}
+                  </div>
+                )}
+
+                {/* Textarea */}
+                <textarea className="input" value={replyText} onChange={e => setReplyText(e.target.value)}
+                  placeholder="Antworttext… (oder 🎤 Diktieren klicken)" autoFocus
+                  style={{
+                    width: '100%', minHeight: '110px', resize: 'vertical', fontSize: '13px',
+                    fontFamily: 'inherit', lineHeight: '1.6', padding: '10px 12px', boxSizing: 'border-box',
+                    borderRadius: '10px',
+                    ...(dictating ? { borderColor: '#dc2626', boxShadow: '0 0 0 2px rgba(220,38,38,0.15)' } : {}),
+                  }} />
+
+                {/* Anhänge */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => replyFileInputRef.current?.click()}
+                    style={{ fontSize: '11px' }}>📎 Anlage hinzufügen</button>
+                  <input ref={replyFileInputRef} type="file" multiple style={{ display: 'none' }} onChange={handleReplyFileSelect} />
+                  {replyAttachments.length > 0 && (
+                    <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                      {replyAttachments.length} Anhang{replyAttachments.length !== 1 ? 'hänge' : ''} · {fmtSz(replyAttachments.reduce((s, a) => s + a.size, 0))} gesamt
+                    </span>
+                  )}
+                </div>
+                {replyAttachments.length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                    {replyAttachments.map((a, i) => (
+                      <div key={i} style={{
+                        display: 'flex', alignItems: 'center', gap: '6px',
+                        padding: '4px 9px', borderRadius: '8px',
+                        background: 'var(--surface)', border: '1px solid var(--border)', fontSize: '11px',
+                      }}>
+                        <span>{fileIcon(a.type)}</span>
+                        <span style={{ fontWeight: 600 }}>{a.name}</span>
+                        <span style={{ color: 'var(--text-muted)' }}>({fmtSz(a.size)})</span>
+                        <button onClick={() => setReplyAttachments(prev => prev.filter((_, idx) => idx !== i))}
+                          title="Anhang entfernen"
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: '14px', padding: '0 1px', lineHeight: 1, flexShrink: 0 }}>✕</button>
+                      </div>
                     ))}
                   </div>
                 )}
+
+                {/* Zitat-Vorschau */}
+                <div style={{
+                  fontSize: '11px', color: 'var(--text-muted)',
+                  background: 'rgba(100,116,139,0.06)', padding: '8px 12px',
+                  borderRadius: '8px', borderLeft: '3px solid var(--border)',
+                  maxHeight: '56px', overflow: 'hidden',
+                }}>
+                  <strong>— Original-Nachricht —</strong> Von: {entry.absender ?? ''} · {entry.betreff ?? ''}
+                  <div style={{ opacity: 0.7, marginTop: '2px' }}>
+                    {(entry.text ?? '').slice(0, 140)}{(entry.text ?? '').length > 140 ? '…' : ''}
+                  </div>
+                </div>
+
+                {/* Sende-Leiste */}
+                {replyError && <div style={{ fontSize: '11px', color: '#dc2626' }}>⚠️ {replyError}</div>}
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <button className="btn btn-primary btn-sm" onClick={handleSendReply}
+                    disabled={replySending || !replyText.trim()} style={{ fontSize: '12px', borderRadius: '8px', padding: '7px 18px' }}>
+                    {replySending ? '⏳ Sende…' : '📤 Senden'}
+                  </button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setReplyMode('')} style={{ fontSize: '12px' }}>Abbrechen</button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => {
+                    setActivTyp('frei')
+                    setEmpfaenger(replyEmpfaenger)
+                    setAbsenderVal(replyAbsenderVal)
+                    setBetreff(replyBetreff)
+                    const sig = emailSignaturen.find(s => s.id === replySigId)
+                    const quoteHead = '\n\n--- Original-Nachricht ---\nVon: ' + (entry.absender ?? '') + '\n'
+                    setText(replyText + (sig ? '\n\n--\n' + sig.text : '') + quoteHead + (entry.text ?? ''))
+                    setCC(replyCC); setBCC('')
+                    setEditorOpen(true); onClose()
+                  }} style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                    Im Editor öffnen
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* ─── RIGHT COLUMN: Sidebar ─── */}
+          <div style={{
+            flex: isNarrow ? 'none' : 3,
+            minWidth: isNarrow ? undefined : '260px',
+            maxWidth: isNarrow ? undefined : '340px',
+            borderLeft: isNarrow ? 'none' : '1px solid var(--border)',
+            borderTop: isNarrow ? '1px solid var(--border)' : 'none',
+            overflowY: 'auto',
+            display: 'flex', flexDirection: 'column',
+            background: 'rgba(0,0,0,0.015)',
+          }}>
+
+            {/* Toast */}
+            {toast && (
+              <div style={{ padding: '8px 20px', background: 'rgba(22,163,74,0.08)', borderBottom: '1px solid rgba(22,163,74,0.2)' }}>
+                <span style={{ fontSize: '12px', color: 'var(--green)', fontWeight: 700 }}>{toast}</span>
               </div>
             )}
 
-            {/* ── Editor-Toolbar: Diktieren + KI-Optionen ── */}
-            <div style={{
-              display: 'flex', flexWrap: 'wrap', gap: '4px', alignItems: 'center',
-              padding: '5px 8px', background: 'var(--surface2)',
-              borderRadius: '6px', border: '1px solid var(--border)',
-            }}>
-              {/* Mikrofon */}
-              <button
-                className="btn btn-sm"
-                onClick={dictating ? stopDictation : startDictation}
-                title={dictating ? 'Diktat stoppen' : 'Spracheingabe starten (de-DE)'}
-                style={{
-                  fontSize: '11px', fontWeight: 700,
-                  background: dictating ? '#dc2626' : 'transparent',
-                  color: dictating ? '#fff' : 'var(--text)',
-                  border: dictating ? '1px solid #dc2626' : '1px solid var(--border)',
-                  padding: '3px 8px', borderRadius: '5px',
-                  animation: dictating ? 'dictPulse 1.2s ease-in-out infinite' : 'none',
-                }}
-              >
-                {dictating ? '⏹ Stop' : '🎤 Diktieren'}
-              </button>
+            {/* ── Aktionen ── */}
+            <div style={{ padding: '16px 16px 12px' }}>
+              <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-muted)', marginBottom: '10px' }}>
+                Aktionen
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                {entry.typ === 'eingehend' && (
+                  <>
+                    <button onClick={handleReply} style={sideBtn({ background: 'rgba(37,99,235,0.08)', color: 'var(--accent)', fontWeight: 600, border: '1px solid rgba(37,99,235,0.2)' })}>
+                      ↩ Antworten
+                    </button>
+                    <button onClick={handleReplyAll} style={sideBtn()}>↩↩ Allen antworten</button>
+                  </>
+                )}
+                <button onClick={handleForward} style={sideBtn()}>→ Weiterleiten</button>
+                {entry.status === 'entwurf' && (
+                  <button onClick={() => { sendFromHistory(entry); onClose() }} style={sideBtn({ background: 'rgba(37,99,235,0.08)', color: 'var(--accent)', fontWeight: 600, border: '1px solid rgba(37,99,235,0.2)' })}>
+                    📤 Jetzt senden
+                  </button>
+                )}
 
-              {/* Separator */}
-              <span style={{ borderLeft: '1px solid var(--border)', height: '16px', margin: '0 2px' }} />
-              <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600 }}>KI:</span>
+                <div style={{ borderTop: '1px solid var(--border)', margin: '6px 0' }} />
 
-              {/* Ton */}
-              {[
-                { key: 'freundlicher',    label: '😊 Freundl.' },
-                { key: 'kuerzer',         label: '✂️ Kürzer'   },
-                { key: 'klarer',          label: '💡 Klarer'   },
-                { key: 'professioneller', label: '👔 Profess.' },
-              ].map(({ key, label }) => (
-                <button key={key} className="btn btn-ghost btn-sm"
-                  onClick={() => handleKiOpt(key)} disabled={kiOptLoad || !replyText.trim()}
-                  style={{ fontSize: '10px', padding: '3px 7px' }} title={label}>
-                  {label}
+                <button onClick={() => setActionForm(actionForm === 'aufgabe' ? null : 'aufgabe')}
+                  style={sideBtn(actionForm === 'aufgabe' ? { background: 'rgba(37,99,235,0.1)', border: '1px solid rgba(37,99,235,0.3)' } : {})}>
+                  📌 Aufgabe erstellen
                 </button>
-              ))}
-
-              {/* Ansprache */}
-              <span style={{ borderLeft: '1px solid var(--border)', height: '16px', margin: '0 2px' }} />
-              {[
-                { key: 'du-form',  label: 'Du'  },
-                { key: 'sie-form', label: 'Sie' },
-              ].map(({ key, label }) => (
-                <button key={key} className="btn btn-ghost btn-sm"
-                  onClick={() => handleKiOpt(key)} disabled={kiOptLoad || !replyText.trim()}
-                  style={{ fontSize: '10px', padding: '3px 7px' }}>
-                  {label}
+                <button onClick={handleNotiz} style={sideBtn()}>📝 Notiz speichern</button>
+                <button onClick={() => setActionForm(actionForm === 'erinnerung' ? null : 'erinnerung')}
+                  style={sideBtn(actionForm === 'erinnerung' ? { background: 'rgba(249,115,22,0.1)', border: '1px solid rgba(249,115,22,0.3)' } : {})}>
+                  🔔 Erinnerung setzen
                 </button>
-              ))}
 
-              {/* Übersetzen */}
-              <span style={{ borderLeft: '1px solid var(--border)', height: '16px', margin: '0 2px' }} />
-              {[
-                { key: 'en', label: '🇬🇧 EN' },
-                { key: 'dk', label: '🇩🇰 DK' },
-                { key: 'de', label: '🇩🇪 DE' },
-              ].map(({ key, label }) => (
-                <button key={key} className="btn btn-ghost btn-sm"
-                  onClick={() => handleKiOpt(key)} disabled={kiOptLoad || !replyText.trim()}
-                  style={{ fontSize: '10px', padding: '3px 7px' }}>
-                  {label}
-                </button>
-              ))}
+                <div style={{ borderTop: '1px solid var(--border)', margin: '6px 0' }} />
 
-              {kiOptLoad && <span style={{ fontSize: '12px', marginLeft: '4px' }}>⏳</span>}
+                {!entry.erledigtAm && (
+                  <button onClick={handleErledigt} style={sideBtn({ color: 'var(--green)' })}>✓ Als erledigt markieren</button>
+                )}
+                <button onClick={handleLoadEditor} style={sideBtn()}>✏️ Im Editor öffnen</button>
+
+                <div style={{ borderTop: '1px solid var(--border)', margin: '6px 0' }} />
+
+                <button onClick={handleDelete} style={sideBtn({ color: '#ef4444', fontSize: '11px' })}>🗑 E-Mail löschen</button>
+              </div>
             </div>
 
-            {kiOptErr && (
-              <div style={{ fontSize: '11px', color: '#dc2626', padding: '4px 8px', background: 'rgba(220,38,38,0.06)', borderRadius: '4px' }}>
-                KI-Fehler: {kiOptErr}
+            {/* ── Aufgabe-Formular ── */}
+            {actionForm === 'aufgabe' && (
+              <div style={{ padding: '14px 16px', borderTop: '1px solid var(--border)', background: 'rgba(37,99,235,0.04)' }}>
+                <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--accent)', marginBottom: '10px' }}>📌 Aufgabe erstellen</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <input className="input" value={aufgabeTitel} onChange={e => setAufgabeTitel(e.target.value)}
+                    placeholder="Aufgabe Titel…" style={{ fontSize: '12px', padding: '7px 10px', borderRadius: '8px', width: '100%', boxSizing: 'border-box' }} />
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                    <select className="input" value={aufgabePrio} onChange={e => setAufgabePrio(e.target.value)}
+                      style={{ fontSize: '12px', padding: '7px 8px', borderRadius: '8px' }}>
+                      <option value="hoch">Hoch</option>
+                      <option value="mittel">Mittel</option>
+                      <option value="niedrig">Niedrig</option>
+                    </select>
+                    <input type="date" className="input" value={aufgabeFaellig} onChange={e => setAufgabeFaellig(e.target.value)}
+                      style={{ fontSize: '12px', padding: '7px 8px', borderRadius: '8px' }} />
+                  </div>
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    <button className="btn btn-primary btn-sm" onClick={handleAufgabe} style={{ fontSize: '12px', flex: 1, borderRadius: '8px' }}>Speichern</button>
+                    <button className="btn btn-ghost btn-sm" onClick={() => setActionForm(null)} style={{ fontSize: '12px', borderRadius: '8px' }}>Abbrechen</button>
+                  </div>
+                </div>
               </div>
             )}
 
-            {/* Textarea – nur mein neuer Text */}
-            <textarea
-              className="input"
-              value={replyText}
-              onChange={e => setReplyText(e.target.value)}
-              placeholder="Antworttext… (oder 🎤 Diktieren klicken)"
-              autoFocus
-              style={{
-                width: '100%', minHeight: '110px', resize: 'vertical', fontSize: '13px',
-                fontFamily: 'inherit', lineHeight: '1.6', padding: '8px 10px', boxSizing: 'border-box',
-                ...(dictating ? { borderColor: '#dc2626', boxShadow: '0 0 0 2px rgba(220,38,38,0.15)' } : {}),
-              }}
-            />
+            {/* ── Erinnerung-Formular ── */}
+            {actionForm === 'erinnerung' && (
+              <div style={{ padding: '14px 16px', borderTop: '1px solid var(--border)', background: 'rgba(249,115,22,0.04)' }}>
+                <div style={{ fontSize: '11px', fontWeight: 700, color: '#f97316', marginBottom: '10px' }}>🔔 Erinnerung setzen</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <input type="date" className="input" value={erDatum} onChange={e => setErDatum(e.target.value)}
+                    style={{ fontSize: '12px', padding: '7px 10px', borderRadius: '8px', width: '100%', boxSizing: 'border-box' }} />
+                  <input className="input" value={erText} onChange={e => setErText(e.target.value)}
+                    placeholder="Erinnerungstext…" style={{ fontSize: '12px', padding: '7px 10px', borderRadius: '8px', width: '100%', boxSizing: 'border-box' }} />
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    <button className="btn btn-primary btn-sm" onClick={handleErinnerung} style={{ fontSize: '12px', flex: 1, borderRadius: '8px' }}>Speichern</button>
+                    <button className="btn btn-ghost btn-sm" onClick={() => setActionForm(null)} style={{ fontSize: '12px', borderRadius: '8px' }}>Abbrechen</button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* ── Anhänge ── */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-              <button
-                type="button"
-                className="btn btn-ghost btn-sm"
-                onClick={() => replyFileInputRef.current?.click()}
-                style={{ fontSize: '11px' }}
-              >
-                📎 Anlage hinzufügen
-              </button>
-              <input
-                ref={replyFileInputRef}
-                type="file"
-                multiple
-                style={{ display: 'none' }}
-                onChange={handleReplyFileSelect}
-              />
-              {replyAttachments.length > 0 && (
-                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                  {replyAttachments.length} Anhang{replyAttachments.length !== 1 ? 'hänge' : ''} · {fmtSz(replyAttachments.reduce((s, a) => s + a.size, 0))} gesamt
-                </span>
-              )}
-            </div>
-            {replyAttachments.length > 0 && (
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                {replyAttachments.map((a, i) => (
-                  <div key={i} style={{
-                    display: 'flex', alignItems: 'center', gap: '6px',
-                    padding: '4px 9px', borderRadius: '6px',
-                    background: 'var(--surface)', border: '1px solid var(--border)',
-                    fontSize: '11px',
-                  }}>
-                    <span>{fileIcon(a.type)}</span>
-                    <span style={{ fontWeight: 600 }}>{a.name}</span>
-                    <span style={{ color: 'var(--text-muted)' }}>({fmtSz(a.size)})</span>
-                    <button
-                      onClick={() => setReplyAttachments(prev => prev.filter((_, idx) => idx !== i))}
-                      title="Anhang entfernen"
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: '14px', padding: '0 1px', lineHeight: 1, flexShrink: 0 }}
-                    >✕</button>
-                  </div>
-                ))}
+            {entry.anlagen?.length > 0 && (
+              <div style={{ padding: '14px 16px', borderTop: '1px solid var(--border)', background: 'rgba(245,158,11,0.03)' }}>
+                <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#f59e0b', marginBottom: '10px' }}>
+                  📎 {entry.anlagen.length} Anhang{entry.anlagen.length !== 1 ? 'änge' : ''}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {entry.anlagen.map((a, i) => {
+                    const bin   = attachmentData[entry.id]?.[i]
+                    const canDl = bin?.data && !a.tooLarge
+                    return (
+                      <div key={i} style={{
+                        display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px',
+                        borderRadius: '10px', background: 'var(--surface)', border: '1px solid var(--border)', fontSize: '12px',
+                      }}>
+                        <span style={{ fontSize: '16px', flexShrink: 0 }}>{fileIcon(a.contentType)}</span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</div>
+                          {a.size > 0 && <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{fmtSz(a.size)}</div>}
+                        </div>
+                        {canDl ? (
+                          <button onClick={e => { e.stopPropagation(); onDownload(bin) }}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#f59e0b', fontSize: '14px', padding: '2px', flexShrink: 0 }}
+                            title="Herunterladen">⬇</button>
+                        ) : a.tooLarge ? (
+                          <a href={`/api/download-attachment?uid=${encodeURIComponent(entry.sourceUid)}&account=${encodeURIComponent(entry.sourceAccount)}&name=${encodeURIComponent(a.name)}`}
+                            download={a.name} onClick={e => e.stopPropagation()}
+                            style={{ color: '#f59e0b', fontSize: '14px', textDecoration: 'none', flexShrink: 0 }}
+                            title="Herunterladen">⬇</a>
+                        ) : (
+                          <span style={{ fontSize: '10px', color: 'var(--text-muted)', flexShrink: 0 }}>⏳</span>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
               </div>
             )}
 
-            {/* Zitat-Vorschau (read-only) */}
-            <div style={{
-              fontSize: '11px', color: 'var(--text-muted)',
-              background: 'rgba(100,116,139,0.06)', padding: '6px 10px',
-              borderRadius: '4px', borderLeft: '3px solid var(--border)',
-              maxHeight: '56px', overflow: 'hidden',
-            }}>
-              <strong>— Original-Nachricht —</strong> Von: {entry.absender ?? ''} · {entry.betreff ?? ''}
-              <div style={{ opacity: 0.7, marginTop: '2px' }}>
-                {(entry.text ?? '').slice(0, 140)}{(entry.text ?? '').length > 140 ? '…' : ''}
+            {/* ── KI-Tools ── */}
+            <div style={{ padding: '14px 16px', borderTop: '1px solid var(--border)', background: 'rgba(124,58,237,0.02)' }}>
+              <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#7c3aed', marginBottom: '10px' }}>
+                🧠 KI-Tools
               </div>
-            </div>
-
-            {/* Sende-Leiste */}
-            {replyError && <div style={{ fontSize: '11px', color: '#dc2626' }}>⚠️ {replyError}</div>}
-            <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-              <button className="btn btn-primary btn-sm" onClick={handleSendReply}
-                disabled={replySending || !replyText.trim()} style={{ fontSize: '12px' }}>
-                {replySending ? '⏳ Sende…' : '📤 Senden'}
-              </button>
-              <button className="btn btn-ghost btn-sm" onClick={() => setReplyMode('')} style={{ fontSize: '12px' }}>Abbrechen</button>
-              <button className="btn btn-ghost btn-sm" onClick={() => {
-                setActivTyp('frei')
-                setEmpfaenger(replyEmpfaenger)
-                setAbsenderVal(replyAbsenderVal)
-                setBetreff(replyBetreff)
-                const sig = emailSignaturen.find(s => s.id === replySigId)
-                const quoteHead = '\n\n--- Original-Nachricht ---\nVon: ' + (entry.absender ?? '') + '\n'
-                setText(replyText + (sig ? '\n\n--\n' + sig.text : '') + quoteHead + (entry.text ?? ''))
-                setCC(replyCC); setBCC('')
-                setEditorOpen(true); onClose()
-              }} style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-                Im Editor öffnen
-              </button>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <button onClick={() => handlePanelKI('zusammenfassen')} disabled={panelAiLoad}
+                  style={sideBtn({ color: '#7c3aed' })}>
+                  {panelAiLoad ? '⏳' : '📋'} Zusammenfassen
+                </button>
+                <button onClick={() => handlePanelKI('antwort')} disabled={panelAiLoad}
+                  style={sideBtn({ color: '#7c3aed' })}>
+                  ✍️ Antwort-Entwurf
+                </button>
+                <button onClick={() => setShowTranslate(v => !v)} disabled={panelAiLoad}
+                  style={sideBtn(showTranslate ? { background: 'rgba(124,58,237,0.1)', border: '1px solid rgba(124,58,237,0.3)', color: '#7c3aed' } : { color: '#7c3aed' })}>
+                  🌐 Übersetzen
+                </button>
+                {showTranslate && (
+                  <div style={{ display: 'flex', gap: '6px', padding: '4px 0' }}>
+                    <select className="input" value={translateLang} onChange={e => setTranslateLang(e.target.value)}
+                      style={{ flex: 1, fontSize: '11px', padding: '5px 8px', borderRadius: '8px' }}>
+                      {['Deutsch','Englisch','Französisch','Spanisch','Polnisch','Türkisch','Arabisch'].map(l => (
+                        <option key={l}>{l}</option>
+                      ))}
+                    </select>
+                    <button className="btn btn-primary btn-sm" onClick={() => { handlePanelKI('uebersetzen', translateLang); setShowTranslate(false) }}
+                      disabled={panelAiLoad} style={{ fontSize: '11px', borderRadius: '8px' }}>→ Los</button>
+                  </div>
+                )}
+              </div>
+              {panelAiError && (
+                <div style={{ fontSize: '11px', color: '#dc2626', marginTop: '8px', padding: '6px 10px', background: 'rgba(220,38,38,0.06)', borderRadius: '8px' }}>⚠️ {panelAiError}</div>
+              )}
             </div>
           </div>
-        )}
-
-        {/* Aktionsleiste */}
-        <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border)', display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center', flexShrink: 0 }}>
-          {toast && <span style={{ fontSize: '11px', color: 'var(--green)', fontWeight: 700 }}>{toast}</span>}
-          {entry.typ === 'eingehend' && (
-            <>
-              <button className="btn btn-primary btn-sm" onClick={handleReply} style={{ fontSize: '11px' }}>↩ Antworten</button>
-              <button className="btn btn-ghost btn-sm" onClick={handleReplyAll} style={{ fontSize: '11px' }}>↩↩ Allen</button>
-            </>
-          )}
-          <button className="btn btn-ghost btn-sm" onClick={handleForward} style={{ fontSize: '11px' }}>→ Weiterleiten</button>
-          {entry.status === 'entwurf' && (
-            <button className="btn btn-primary btn-sm" onClick={() => { sendFromHistory(entry); onClose() }} style={{ fontSize: '11px' }}>📤 Jetzt senden</button>
-          )}
-          <button className={`btn btn-sm ${actionForm === 'aufgabe' ? 'btn-primary' : 'btn-ghost'}`}
-            onClick={() => setActionForm(actionForm === 'aufgabe' ? null : 'aufgabe')} style={{ fontSize: '11px' }}>
-            📌 Aufgabe
-          </button>
-          <button className="btn btn-ghost btn-sm" onClick={handleNotiz} style={{ fontSize: '11px' }}>📝 Notiz</button>
-          <button className={`btn btn-sm ${actionForm === 'erinnerung' ? 'btn-primary' : 'btn-ghost'}`}
-            onClick={() => setActionForm(actionForm === 'erinnerung' ? null : 'erinnerung')} style={{ fontSize: '11px' }}>
-            🔔 Erinnerung
-          </button>
-          {!entry.erledigtAm && (
-            <button className="btn btn-ghost btn-sm" onClick={handleErledigt} style={{ fontSize: '11px', color: 'var(--green)' }}>✓ Erledigt</button>
-          )}
-          <button className="btn btn-ghost btn-sm" onClick={handleLoadEditor} style={{ fontSize: '11px' }}>✏️ Editor</button>
-          <button className="btn btn-ghost btn-sm" onClick={handleDelete} style={{ fontSize: '11px', color: 'var(--red)', marginLeft: 'auto' }}>🗑 Löschen</button>
         </div>
       </div>
     </>
