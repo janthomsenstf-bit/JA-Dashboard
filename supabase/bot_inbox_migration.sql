@@ -16,8 +16,10 @@ create table if not exists bot_inbox (
   telegram_message_id text
 );
 
--- Index für schnelles Polling (status = 'neu')
-create index if not exists idx_bot_inbox_status on bot_inbox (status) where status = 'neu';
+-- Index für schnelles Polling (status = 'neu' oder 'zugeordnet')
+create index if not exists idx_bot_inbox_status on bot_inbox (status);
+-- Alter Index (partial) kann optional entfernt werden:
+-- drop index if exists idx_bot_inbox_status;
 
 -- Row Level Security aktivieren
 alter table bot_inbox enable row level security;
