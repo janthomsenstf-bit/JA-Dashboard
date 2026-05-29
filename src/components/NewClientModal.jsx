@@ -24,37 +24,29 @@ const EMPTY_ZUSATZ = { bezeichnung: '', art: 'Sonstiges', betroffJahr: '', anzei
 
 export default function NewClientModal({ onClose, onSubmit, initialData = null, editMode = false }) {
   const [form, setForm] = useState(initialData ? {
-    mandantennummer:        initialData.mandantennummer        ?? '',
-    mandantennummer2:       initialData.mandantennummer2       ?? '',
-    mandantennummer3:       initialData.mandantennummer3       ?? '',
-    name:                   initialData.name                   ?? '',
-    veranlagungsjahr:       initialData.veranlagungsjahr       ?? CURRENT_YEAR - 1,
-    veranlagungsjahr2:      initialData.veranlagungsjahr2      ?? '',
-    veranlagungsjahr3:      initialData.veranlagungsjahr3      ?? '',
-    rechtsform:                    initialData.rechtsform                    ?? 'GmbH',
-    gewinnermittlung:              initialData.gewinnermittlung              ?? 'Bilanz',
-    unternehmensgegenstand:        initialData.unternehmensgegenstand        ?? '',
-    ustZahlerTyp:                  initialData.ustZahlerTyp                  ?? 'keine',
-    lohnAktiv:                     initialData.lohnAktiv                     ?? false,
-    jahresabschlussErforderlich:   initialData.jahresabschlussErforderlich   ?? false,
-    jaMonat:                       initialData.jaMonat                       ?? null,
-    zusatzaufgaben:                Array.isArray(initialData.zusatzaufgaben) ? initialData.zusatzaufgaben : [],
+    mandantennummer:    initialData.mandantennummer    ?? '',
+    mandantennummer2:   initialData.mandantennummer2   ?? '',
+    mandantennummer3:   initialData.mandantennummer3   ?? '',
+    name:               initialData.name               ?? '',
+    veranlagungsjahr:   initialData.veranlagungsjahr   ?? '',
+    veranlagungsjahr2:  initialData.veranlagungsjahr2  ?? '',
+    veranlagungsjahr3:  initialData.veranlagungsjahr3  ?? '',
+    rechtsform:         initialData.rechtsform         ?? 'GmbH',
+    gewinnermittlung:   initialData.gewinnermittlung   ?? 'Bilanz',
+    unternehmensgegenstand: initialData.unternehmensgegenstand ?? '',
+    zusatzaufgaben:     Array.isArray(initialData.zusatzaufgaben) ? initialData.zusatzaufgaben : [],
   } : {
     mandantennummer:   '',
     mandantennummer2:  '',
     mandantennummer3:  '',
     name:              '',
-    veranlagungsjahr:  CURRENT_YEAR - 1,
+    veranlagungsjahr:  '',
     veranlagungsjahr2: '',
-    veranlagungsjahr3:              '',
-    rechtsform:                     'GmbH',
-    gewinnermittlung:               'Bilanz',
-    unternehmensgegenstand:         '',
-    ustZahlerTyp:                   'keine',
-    lohnAktiv:                      false,
-    jahresabschlussErforderlich:    false,
-    jaMonat:                        null,
-    zusatzaufgaben:                 [],
+    veranlagungsjahr3: '',
+    rechtsform:        'GmbH',
+    gewinnermittlung:  'Bilanz',
+    unternehmensgegenstand: '',
+    zusatzaufgaben:    [],
   })
   const [errors, setErrors] = useState({})
   const [newZusatz, setNewZusatz] = useState({ ...EMPTY_ZUSATZ })
@@ -85,7 +77,6 @@ export default function NewClientModal({ onClose, onSubmit, initialData = null, 
     const e = {}
     if (!form.mandantennummer.trim()) e.mandantennummer = 'Pflichtfeld'
     if (!form.name.trim())            e.name = 'Pflichtfeld'
-    if (!form.veranlagungsjahr)       e.veranlagungsjahr = 'Pflichtfeld'
     return e
   }
 
@@ -95,7 +86,7 @@ export default function NewClientModal({ onClose, onSubmit, initialData = null, 
     if (Object.keys(e).length > 0) { setErrors(e); return }
     onSubmit({
       ...form,
-      veranlagungsjahr:  Number(form.veranlagungsjahr),
+      veranlagungsjahr:  form.veranlagungsjahr ? Number(form.veranlagungsjahr) : '',
       veranlagungsjahr2: form.veranlagungsjahr2 ? Number(form.veranlagungsjahr2) : '',
       veranlagungsjahr3: form.veranlagungsjahr3 ? Number(form.veranlagungsjahr3) : '',
     })
@@ -156,10 +147,10 @@ export default function NewClientModal({ onClose, onSubmit, initialData = null, 
             </div>
           </div>
 
-          {/* Veranlagungsjahre – bis zu 3 */}
+          {/* Veranlagungsjahre – bis zu 3 (optional) */}
           <div style={{ marginBottom: '12px' }}>
             <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block', marginBottom: '6px' }}>
-              Veranlagungsjahr(e) <span className="required">*</span>
+              Veranlagungsjahr(e)
             </label>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
               <div>
@@ -167,14 +158,10 @@ export default function NewClientModal({ onClose, onSubmit, initialData = null, 
                   type="number"
                   min="2010"
                   max={CURRENT_YEAR}
-                  placeholder={`${CURRENT_YEAR - 1} *`}
+                  placeholder={`${CURRENT_YEAR - 1} (optional)`}
                   value={form.veranlagungsjahr}
                   onChange={e => set('veranlagungsjahr', e.target.value)}
-                  style={errors.veranlagungsjahr ? { borderColor: 'var(--red)' } : {}}
                 />
-                {errors.veranlagungsjahr && (
-                  <span style={{ fontSize: '11px', color: 'var(--red)' }}>{errors.veranlagungsjahr}</span>
-                )}
               </div>
               <input
                 type="number"
@@ -222,67 +209,6 @@ export default function NewClientModal({ onClose, onSubmit, initialData = null, 
               value={form.unternehmensgegenstand}
               onChange={e => set('unternehmensgegenstand', e.target.value)}
             />
-          </div>
-
-          {/* ── Aufgaben-Konfiguration ── */}
-          <div style={{ margin: '8px 0 4px', padding: '10px 14px', background: 'var(--surface2)', borderRadius: '8px', border: '1px solid var(--border)' }}>
-            <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              ⚙️ Aufgaben-Konfiguration
-            </div>
-
-            {/* USt-Zahler-Typ */}
-            <div style={{ marginBottom: '10px' }}>
-              <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text)', display: 'block', marginBottom: '6px' }}>
-                📊 USt-Voranmeldung
-              </label>
-              <select value={form.ustZahlerTyp} onChange={e => set('ustZahlerTyp', e.target.value)}
-                style={{ width: '100%', padding: '7px 10px', border: '1px solid var(--border)', borderRadius: '6px', background: 'var(--surface)', color: 'var(--text)', fontSize: '13px' }}>
-                <option value="keine">Keine USt-Voranmeldung</option>
-                <option value="monatlich">Monatlich</option>
-                <option value="quartalsweise">Vierteljährlich (quartalsweise)</option>
-                <option value="jährlich">Jährlich</option>
-              </select>
-            </div>
-
-            {/* Lohn + JA als Checkboxen */}
-            <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: 500 }}>
-                <input type="checkbox" checked={!!form.lohnAktiv} onChange={e => set('lohnAktiv', e.target.checked)}
-                  style={{ width: '16px', height: '16px', accentColor: '#7c3aed', cursor: 'pointer' }} />
-                💼 Lohnabrechnung aktiv (monatlich)
-              </label>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: 500 }}>
-                  <input type="checkbox" checked={!!form.jahresabschlussErforderlich}
-                    onChange={e => {
-                      set('jahresabschlussErforderlich', e.target.checked)
-                      if (!e.target.checked) set('jaMonat', null)
-                    }}
-                    style={{ width: '16px', height: '16px', accentColor: '#0f766e', cursor: 'pointer' }} />
-                  📁 Jahresabschluss erforderlich
-                </label>
-                {form.jahresabschlussErforderlich && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: '24px' }}>
-                    <span style={{ fontSize: '12px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Bearbeitung geplant im:</span>
-                    <select
-                      value={form.jaMonat ?? ''}
-                      onChange={e => set('jaMonat', e.target.value ? parseInt(e.target.value, 10) : null)}
-                      style={{ padding: '4px 8px', border: '1px solid var(--border)', borderRadius: '6px', background: 'var(--surface)', color: 'var(--text)', fontSize: '12px', cursor: 'pointer' }}
-                    >
-                      <option value="">Kein Monat festgelegt</option>
-                      {MONAT_NAMEN.map((m, i) => (
-                        <option key={i + 1} value={i + 1}>{m}</option>
-                      ))}
-                    </select>
-                    {form.jaMonat && (
-                      <span style={{ fontSize: '11px', color: '#0f766e' }}>
-                        → Aufgabe erscheint im {MONAT_NAMEN[form.jaMonat - 1]}
-                      </span>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
           </div>
 
           {/* ── Zusatzaufgaben ── */}
