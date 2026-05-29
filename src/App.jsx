@@ -20,6 +20,7 @@ import { cloudLoadAll, cloudSave, cloudSaveNow, cloudSnapshot, migrateLocalStora
 import LoginPage from './components/LoginPage.jsx'
 import FormularPage from './components/formular/FormularPage.jsx'
 import BudgetView   from './components/BudgetView.jsx'
+import BotInbox, { BotInboxBadge } from './components/BotInbox.jsx'
 
 const BACKUP_INTERVAL_MS = 30 * 60 * 1000  // 30 Minuten
 
@@ -1178,6 +1179,10 @@ export default function App() {
               >
                 💰 Honorar-Übersicht
               </button>
+              <BotInboxBadge
+                active={selectedId === '__bot_inbox__'}
+                onClick={() => setSelectedId('__bot_inbox__')}
+              />
             </div>
           )}
           {sidebarOpen && (
@@ -1209,6 +1214,14 @@ export default function App() {
                 clients={clients}
                 onUpdateClient={updateClient}
                 onSelectClient={id => setSelectedId(id)}
+              />
+            </div>
+          ) : selectedId === '__bot_inbox__' ? (
+            <div style={{ flex: 1, overflowY: 'auto' }}>
+              <BotInbox
+                clients={clients}
+                onUpdateClient={updateClient}
+                onNavigateToClient={(id, tab) => { setDetailInitialTab(tab ?? 0); setSelectedId(id) }}
               />
             </div>
           ) : selectedId === '__budget__' ? (
