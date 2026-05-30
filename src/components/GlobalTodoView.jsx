@@ -117,6 +117,30 @@ function AuftragRow({ au, idx, onSelectClient, onCycleStatus, overdueDays }) {
           <span style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{bezeichnung ?? `${typCfg.label} ${zeitraum}`}</span>
         </div>
         {au.notiz && <div style={{ fontSize:'11px', color:'var(--text-muted)', marginTop:'1px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{au.notiz}</div>}
+        {au.typ === 'jahresabschluss' && au.jaCheckliste && (() => {
+          const items = [
+            { key: 'est', col1: true }, { key: 'gewst', col1: true }, { key: 'kst', col1: true },
+            { key: 'ust', col1: true }, { key: 'ebilanz', col1: true }, { key: 'offenlegung', col1: true },
+            { key: 'rechnung', col1: false },
+          ]
+          const total = items.reduce((n, it) => n + (it.col1 ? 1 : 0) + 1, 0)
+          const done = items.reduce((n, it) => {
+            const d = au.jaCheckliste[it.key] ?? {}
+            return n + (it.col1 && d.mandantDatum ? 1 : 0) + (d.faDatum ? 1 : 0)
+          }, 0)
+          if (done === 0) return null
+          const pct = Math.round((done / total) * 100)
+          return (
+            <div style={{ display:'flex', alignItems:'center', gap:'5px', marginTop:'3px' }}>
+              <div style={{ flex:1, maxWidth:'80px', height:'3px', borderRadius:'2px', background:'var(--surface2)', overflow:'hidden' }}>
+                <div style={{ height:'100%', width:`${pct}%`, borderRadius:'2px', background: pct === 100 ? '#16a34a' : '#2563eb' }} />
+              </div>
+              <span style={{ fontSize:'9px', fontWeight:700, color: pct === 100 ? '#16a34a' : '#2563eb' }}>
+                {pct === 100 ? '✓ Checkliste' : `${done}/${total}`}
+              </span>
+            </div>
+          )
+        })()}
       </td>
       <td style={{ padding:'8px 12px', whiteSpace:'nowrap', fontSize:'12px' }}>
         <span style={{ color:'var(--text-muted)', fontFamily:'monospace' }}>{zeitraum}</span>

@@ -19,6 +19,17 @@ export const AUFTRAGS_STATUS_CFG = {
 const MONATE = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez']
 const STATUS_ORDER = ['offen', 'in_bearbeitung', 'erledigt']
 
+// ── Jahresabschluss-Checkliste ──────────────────────────────────────────────────
+const JA_CHECKLISTE_ITEMS = [
+  { key: 'est',         label: 'Einkommensteuererklärung',    col1: 'an Mandant gesendet', col2: 'ans Finanzamt gesendet' },
+  { key: 'gewst',       label: 'Gewerbesteuererklärung',      col1: 'an Mandant gesendet', col2: 'ans Finanzamt gesendet' },
+  { key: 'kst',         label: 'Körperschaftsteuererklärung', col1: 'an Mandant gesendet', col2: 'ans Finanzamt gesendet' },
+  { key: 'ust',         label: 'Umsatzsteuererklärung',       col1: 'an Mandant gesendet', col2: 'ans Finanzamt gesendet' },
+  { key: 'ebilanz',     label: 'E-Bilanz',                    col1: 'an Mandant gesendet', col2: 'übermittelt' },
+  { key: 'offenlegung', label: 'Offenlegung',                 col1: 'an Mandant gesendet', col2: 'offengelegt' },
+  { key: 'rechnung',    label: 'Rechnung',                    col1: null,                   col2: 'an Mandant gesendet' },
+]
+
 // ── Batch-Serien (Feature 4): Mehrere Einzelaufträge auf einmal anlegen ───────
 const SERIE_RHYTHMUS = [
   { key: 'monatlich',     label: 'Monatlich (12×)',    monate: [1,2,3,4,5,6,7,8,9,10,11,12] },
@@ -208,6 +219,157 @@ function fmtDatumShort(d) {
 const labelStyle = { fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }
 const inputStyle  = { padding: '6px 10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text)', fontSize: '12px', width: '100%', boxSizing: 'border-box' }
 
+// ── Jahresabschluss-Checkliste-Komponente ─────────────────────────────────────
+function JAChecklisteSection({ jaCheckliste = {}, onUpdate }) {
+  const today = new Date().toISOString().slice(0, 10)
+
+  function setDatum(itemKey, field, value) {
+    const current = jaCheckliste[itemKey] ?? {}
+    onUpdate({
+      jaCheckliste: {
+        ...jaCheckliste,
+        [itemKey]: { ...current, [field]: value },
+      },
+    })
+  }
+
+  function toggleCheck(itemKey, field) {
+    const current = jaCheckliste[itemKey] ?? {}
+    const hasDatum = !!current[field]
+    setDatum(itemKey, field, hasDatum ? '' : today)
+  }
+
+  const totalFields = JA_CHECKLISTE_ITEMS.reduce((n, it) => n + (it.col1 ? 1 : 0) + 1, 0)
+  const doneFields = JA_CHECKLISTE_ITEMS.reduce((n, it) => {
+    const d = jaCheckliste[it.key] ?? {}
+    return n + (it.col1 && d.mandantDatum ? 1 : 0) + (d.faDatum ? 1 : 0)
+  }, 0)
+  const progress = totalFields > 0 ? Math.round((doneFields / totalFields) * 100) : 0
+
+  const cellBase = { padding: '7px 8px', fontSize: '12px', borderBottom: '1px solid var(--border)' }
+  const headerCell = { ...cellBase, fontWeight: 700, color: 'var(--text-muted)', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.04em', background: 'var(--surface2)' }
+
+  return (
+    <div style={{ borderTop: '1px solid var(--border)', paddingTop: '14px', marginTop: '14px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
+        <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+          📋 Abschluss-Checkliste
+        </div>
+        <div style={{ flex: 1 }} />
+        <span style={{
+          fontSize: '10px', fontWeight: 700, padding: '2px 10px', borderRadius: '10px',
+          background: progress === 100 ? 'rgba(22,163,74,0.12)' : progress > 0 ? 'rgba(37,99,235,0.08)' : 'var(--surface2)',
+          color: progress === 100 ? '#16a34a' : progress > 0 ? '#2563eb' : 'var(--text-muted)',
+          border: `1px solid ${progress === 100 ? 'rgba(22,163,74,0.3)' : progress > 0 ? 'rgba(37,99,235,0.25)' : 'var(--border)'}`,
+        }}>
+          {progress === 100 ? '✓ Vollständig' : `${doneFields}/${totalFields} erledigt`}
+        </span>
+      </div>
+
+      {/* Fortschrittsbalken */}
+      <div style={{ height: '4px', borderRadius: '2px', background: 'var(--surface2)', marginBottom: '12px', overflow: 'hidden' }}>
+        <div style={{
+          height: '100%', borderRadius: '2px', transition: 'width 0.3s',
+          width: `${progress}%`,
+          background: progress === 100 ? '#16a34a' : '#2563eb',
+        }} />
+      </div>
+
+      {/* Tabelle */}
+      <div style={{ borderRadius: '8px', border: '1px solid var(--border)', overflow: 'hidden' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr>
+              <th style={{ ...headerCell, textAlign: 'left', width: '35%' }}>Erklärung / Meldung</th>
+              <th style={{ ...headerCell, textAlign: 'center', width: '32.5%' }}>an Mandant gesendet</th>
+              <th style={{ ...headerCell, textAlign: 'center', width: '32.5%' }}>ans FA / erledigt</th>
+            </tr>
+          </thead>
+          <tbody>
+            {JA_CHECKLISTE_ITEMS.map((item, idx) => {
+              const data = jaCheckliste[item.key] ?? {}
+              const hasMandant = !!data.mandantDatum
+              const hasFa = !!data.faDatum
+              const isLast = idx === JA_CHECKLISTE_ITEMS.length - 1
+
+              return (
+                <tr key={item.key} style={{ background: (hasMandant || !item.col1) && hasFa ? 'rgba(22,163,74,0.03)' : 'transparent' }}>
+                  {/* Label */}
+                  <td style={{ ...cellBase, fontWeight: 500, color: 'var(--text)', borderBottom: isLast ? 'none' : cellBase.borderBottom }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                      {(hasMandant || !item.col1) && hasFa
+                        ? <span style={{ color: '#16a34a', fontSize: '13px' }}>✓</span>
+                        : <span style={{ color: 'var(--text-muted)', fontSize: '13px' }}>○</span>
+                      }
+                      {item.label}
+                    </div>
+                  </td>
+
+                  {/* Spalte 1: an Mandant */}
+                  <td style={{ ...cellBase, textAlign: 'center', borderBottom: isLast ? 'none' : cellBase.borderBottom }}>
+                    {item.col1 ? (
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                        <input
+                          type="checkbox"
+                          checked={hasMandant}
+                          onChange={() => toggleCheck(item.key, 'mandantDatum')}
+                          style={{ accentColor: '#2563eb', cursor: 'pointer', width: '14px', height: '14px' }}
+                          title={item.col1}
+                        />
+                        <input
+                          type="date"
+                          value={data.mandantDatum || ''}
+                          onChange={e => setDatum(item.key, 'mandantDatum', e.target.value)}
+                          style={{
+                            padding: '3px 6px', borderRadius: '5px', fontSize: '11px',
+                            border: '1px solid var(--border)', background: hasMandant ? 'rgba(22,163,74,0.06)' : 'var(--surface2)',
+                            color: hasMandant ? '#16a34a' : 'var(--text)', fontFamily: 'var(--font-mono)',
+                            width: '120px',
+                          }}
+                        />
+                      </div>
+                    ) : (
+                      <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>—</span>
+                    )}
+                  </td>
+
+                  {/* Spalte 2: ans FA / erledigt */}
+                  <td style={{ ...cellBase, textAlign: 'center', borderBottom: isLast ? 'none' : cellBase.borderBottom }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                      <input
+                        type="checkbox"
+                        checked={hasFa}
+                        onChange={() => toggleCheck(item.key, 'faDatum')}
+                        style={{ accentColor: '#16a34a', cursor: 'pointer', width: '14px', height: '14px' }}
+                        title={item.col2}
+                      />
+                      <input
+                        type="date"
+                        value={data.faDatum || ''}
+                        onChange={e => setDatum(item.key, 'faDatum', e.target.value)}
+                        style={{
+                          padding: '3px 6px', borderRadius: '5px', fontSize: '11px',
+                          border: '1px solid var(--border)', background: hasFa ? 'rgba(22,163,74,0.06)' : 'var(--surface2)',
+                          color: hasFa ? '#16a34a' : 'var(--text)', fontFamily: 'var(--font-mono)',
+                          width: '120px',
+                        }}
+                      />
+                    </div>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '6px', fontStyle: 'italic' }}>
+        Haken setzen → heutiges Datum wird automatisch eingetragen. Datum kann manuell angepasst werden.
+      </div>
+    </div>
+  )
+}
+
 // ── Einzelauftrag-Karte ───────────────────────────────────────────────────────
 function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete }) {
   const typCfg    = AUFTRAGS_TYP_CFG[au.typ]      ?? AUFTRAGS_TYP_CFG.freitext
@@ -336,6 +498,14 @@ function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete }) {
               }
             </div>
           </div>
+
+          {/* ── Jahresabschluss-Checkliste (nur für Typ jahresabschluss) ── */}
+          {au.typ === 'jahresabschluss' && (
+            <JAChecklisteSection
+              jaCheckliste={au.jaCheckliste}
+              onUpdate={patch => onUpdate(patch)}
+            />
+          )}
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '14px', paddingTop: '10px', borderTop: '1px solid var(--border)' }}>
             <button onClick={onDelete}
