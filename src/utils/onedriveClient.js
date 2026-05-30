@@ -108,9 +108,24 @@ export async function callApi(action, params = {}, tokens, onTokenRefresh) {
 
 /**
  * Erstellt den sicheren Ordnerpfad für einen Mandanten.
+ * Wenn client.onedrivePfad gesetzt ist, wird dieser verwendet.
  * Ungültige Zeichen für OneDrive-Dateinamen werden entfernt.
  */
 export function getMandantPath(client) {
+  // Wenn ein benutzerdefinierter Pfad hinterlegt ist → diesen verwenden
+  if (client.onedrivePfad && client.onedrivePfad.trim()) {
+    const customPath = client.onedrivePfad.trim().replace(/^\/+|\/+$/g, '') // führende/trailing Slashes entfernen
+    const parts = customPath.split('/').filter(Boolean)
+    const folderName = parts[parts.length - 1] || 'Mandant'
+    return {
+      pathParts:  parts,
+      folderPath: customPath,
+      folderName,
+      isCustom:   true,
+    }
+  }
+
+  // Standard: automatisch aus Name + Mandantennummer
   // OneDrive erlaubt keine: " * : < > ? / \ |
   const safeName = (client.name ?? 'Unbekannt').replace(/["/\\*:<>?|]/g, '').trim()
   const nr = client.mandantennummer ?? ''
@@ -120,6 +135,7 @@ export function getMandantPath(client) {
     pathParts:  ['Jahresabschluss-Dashboard', 'Mandanten', folderName],
     folderPath: `Jahresabschluss-Dashboard/Mandanten/${folderName}`,
     folderName,
+    isCustom:   false,
   }
 }
 

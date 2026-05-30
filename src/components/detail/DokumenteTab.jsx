@@ -250,7 +250,7 @@ function PreviewModal({ item, previewUrl, loading, error, onClose }) {
 }
 
 // ── OneDrive Section ──────────────────────────────────────────────────────────
-function OneDriveSection({ client, tokens, onUpdateTokens, onSendAsAttachment }) {
+function OneDriveSection({ client, tokens, onUpdateTokens, onSendAsAttachment, onUpdate }) {
   const [connecting, setConnecting]         = useState(false)
   const [loading, setLoading]               = useState(false)
   const [error, setError]                   = useState('')
@@ -260,10 +260,30 @@ function OneDriveSection({ client, tokens, onUpdateTokens, onSendAsAttachment })
   const [deleteConfirm, setDeleteConfirm]   = useState(null)
   const [successMsg, setSuccessMsg]         = useState('')
 
+  // Pfad-Einstellungen
+  const [showPathSettings, setShowPathSettings]   = useState(false)
+  const [editPath, setEditPath]                   = useState('')
+  const [browsing, setBrowsing]                   = useState(false)
+  const [browseItems, setBrowseItems]             = useState([])
+  const [browsePath, setBrowsePath]               = useState('')
+  const [browseBreadcrumb, setBrowseBreadcrumb]   = useState([])
+  const [browseLoading, setBrowseLoading]         = useState(false)
+
   // Ordner-Navigation
-  const { pathParts, folderPath, folderName } = getMandantPath(client)
+  const { pathParts, folderPath, folderName, isCustom } = getMandantPath(client)
   const [currentPath, setCurrentPath]       = useState(folderPath)
   const [breadcrumb, setBreadcrumb]         = useState([{ path: folderPath, name: folderName }])
+
+  // Wenn sich der Mandanten-Pfad ändert (z.B. durch Stammdaten-Änderung) → Navigation zurücksetzen
+  const prevFolderRef = useState({ path: folderPath })[0]
+  useEffect(() => {
+    if (prevFolderRef.path !== folderPath) {
+      prevFolderRef.path = folderPath
+      setCurrentPath(folderPath)
+      setBreadcrumb([{ path: folderPath, name: folderName }])
+      setItems(null)
+    }
+  }, [folderPath, folderName])
 
   // Neuer Ordner
   const [creatingFolder, setCreatingFolder]           = useState(false)
@@ -541,8 +561,9 @@ function OneDriveSection({ client, tokens, onUpdateTokens, onSendAsAttachment })
         <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '16px', maxWidth: '380px', margin: '0 auto 16px' }}>
           Speichere Dokumente dieses Mandanten direkt in deinem OneDrive unter
           <br/><code style={{ fontSize: '11px', background: 'var(--bg)', padding: '2px 6px', borderRadius: '4px', marginTop: '4px', display: 'inline-block' }}>
-            Jahresabschluss-Dashboard/Mandanten/{folderName}
+            {folderPath}
           </code>
+          {isCustom && <span style={{ fontSize: '10px', display: 'block', marginTop: '4px', color: '#0891b2' }}>☁️ Individueller Pfad</span>}
         </div>
         {error && <div style={{ color: '#ef4444', fontSize: '12px', marginBottom: '12px' }}>{error}</div>}
         <button className="btn btn-primary" onClick={handleConnect} disabled={connecting} style={{ fontSize: '13px', display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
@@ -614,6 +635,154 @@ function OneDriveSection({ client, tokens, onUpdateTokens, onSendAsAttachment })
           </span>
         ))}
       </div>
+
+      {/* ── Speicherort-Info ── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', marginBottom: '8px', padding: '5px 10px', background: isCustom ? 'rgba(8,145,178,0.06)' : 'var(--surface)', borderRadius: '6px', border: `1px solid ${isCustom ? 'rgba(8,145,178,0.25)' : 'var(--border)'}`, flexWrap: 'wrap' }}>
+        <span style={{ color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+          {isCustom ? '☁️ Individueller Pfad:' : '📁 Standard-Pfad:'}
+        </span>
+        <code style={{ fontSize: '10px', background: 'var(--bg)', padding: '2px 6px', borderRadius: '4px', fontFamily: 'var(--font-mono)', color: 'var(--text)' }}>
+          {folderPath}
+        </code>
+        <button
+          className="btn btn-ghost btn-sm"
+          onClick={() => { setShowPathSettings(v => !v); setEditPath(client.onedrivePfad ?? '') }}
+          style={{ fontSize: '10px', marginLeft: 'auto', color: 'var(--text-muted)' }}
+        >
+          ⚙️ {showPathSettings ? 'Schließen' : 'Ändern'}
+        </button>
+      </div>
+
+      {/* ── Pfad-Einstellungen ── */}
+      {showPathSettings && (
+        <div style={{ marginBottom: '10px', padding: '12px', background: 'var(--surface)', borderRadius: '8px', border: '1px solid var(--border)' }}>
+          <div style={{ fontSize: '12px', fontWeight: 700, marginBottom: '8px' }}>📂 OneDrive-Speicherpfad konfigurieren</div>
+          <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '10px' }}>
+            Gib den Ordnerpfad an, unter dem die Dokumente dieses Mandanten gespeichert werden sollen.
+            Ohne Angabe wird der Standard-Pfad verwendet.
+          </div>
+          <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '8px' }}>
+            <input
+              className="input"
+              value={editPath}
+              onChange={e => setEditPath(e.target.value)}
+              placeholder="z. B. Steuerberatung/Mandanten/Mustermann"
+              style={{ flex: 1, minWidth: '260px', fontSize: '12px', padding: '5px 8px', fontFamily: 'var(--font-mono)' }}
+              onKeyDown={e => { if (e.key === 'Enter') { onUpdate({ onedrivePfad: editPath.trim() }); setShowPathSettings(false) } }}
+            />
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={() => { onUpdate({ onedrivePfad: editPath.trim() }); setShowPathSettings(false) }}
+              style={{ fontSize: '11px' }}
+            >
+              ✓ Speichern
+            </button>
+            {editPath.trim() && (
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={() => { setEditPath(''); onUpdate({ onedrivePfad: '' }); setShowPathSettings(false) }}
+                style={{ fontSize: '11px', color: '#d97706' }}
+              >
+                ↩ Standard
+              </button>
+            )}
+          </div>
+          {/* Ordner-Browser */}
+          {tokens?.accessToken && (
+            <div>
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={async () => {
+                  if (browsing) { setBrowsing(false); return }
+                  setBrowsing(true)
+                  setBrowseLoading(true)
+                  setBrowsePath('')
+                  setBrowseBreadcrumb([{ path: '', name: 'OneDrive' }])
+                  try {
+                    const res = await callApi('listFolder', { folderPath: '' }, tokens, (t) => onUpdateTokens?.(t))
+                    const folders = (res.items ?? []).filter(i => i.folder).sort((a, b) => (a.name ?? '').localeCompare(b.name ?? '', 'de'))
+                    setBrowseItems(folders)
+                  } catch (err) {
+                    setError('Ordner konnten nicht geladen werden: ' + err.message)
+                    setBrowsing(false)
+                  } finally {
+                    setBrowseLoading(false)
+                  }
+                }}
+                style={{ fontSize: '11px', marginBottom: browsing ? '8px' : '0' }}
+              >
+                {browsing ? '✕ Browser schließen' : '📂 Ordner durchsuchen'}
+              </button>
+
+              {browsing && (
+                <div style={{ border: '1px solid var(--border)', borderRadius: '6px', maxHeight: '240px', overflow: 'auto', background: 'var(--bg)' }}>
+                  {/* Browser-Breadcrumb */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 10px', borderBottom: '1px solid var(--border)', fontSize: '11px', position: 'sticky', top: 0, background: 'var(--bg)', zIndex: 1 }}>
+                    {browseBreadcrumb.map((crumb, i) => (
+                      <span key={i} style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                        {i > 0 && <span style={{ color: 'var(--text-muted)' }}>/</span>}
+                        <button
+                          onClick={async () => {
+                            const newBc = browseBreadcrumb.slice(0, i + 1)
+                            setBrowseBreadcrumb(newBc)
+                            setBrowsePath(crumb.path)
+                            setBrowseLoading(true)
+                            try {
+                              const res = await callApi('listFolder', { folderPath: crumb.path }, tokens, (t) => onUpdateTokens?.(t))
+                              setBrowseItems((res.items ?? []).filter(it => it.folder).sort((a, b) => (a.name ?? '').localeCompare(b.name ?? '', 'de')))
+                            } catch {} finally { setBrowseLoading(false) }
+                          }}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '11px', color: i < browseBreadcrumb.length - 1 ? 'var(--accent)' : 'var(--text)', fontWeight: i === browseBreadcrumb.length - 1 ? 700 : 400, padding: '0 2px' }}
+                        >
+                          {crumb.name}
+                        </button>
+                      </span>
+                    ))}
+                    {browsePath && (
+                      <button
+                        className="btn btn-primary btn-sm"
+                        onClick={() => { setEditPath(browsePath); onUpdate({ onedrivePfad: browsePath }); setBrowsing(false); setShowPathSettings(false) }}
+                        style={{ fontSize: '10px', marginLeft: 'auto', padding: '2px 8px' }}
+                      >
+                        ✓ Diesen Ordner wählen
+                      </button>
+                    )}
+                  </div>
+                  {browseLoading && <div style={{ padding: '12px', textAlign: 'center', fontSize: '11px', color: 'var(--text-muted)' }}>⏳ Lade…</div>}
+                  {!browseLoading && browseItems.length === 0 && (
+                    <div style={{ padding: '12px', textAlign: 'center', fontSize: '11px', color: 'var(--text-muted)' }}>Keine Unterordner</div>
+                  )}
+                  {!browseLoading && browseItems.map(folder => (
+                    <div
+                      key={folder.id}
+                      onClick={async () => {
+                        const newPath = browsePath ? `${browsePath}/${folder.name}` : folder.name
+                        setBrowsePath(newPath)
+                        setBrowseBreadcrumb(prev => [...prev, { path: newPath, name: folder.name }])
+                        setBrowseLoading(true)
+                        try {
+                          const res = await callApi('listFolder', { folderPath: newPath }, tokens, (t) => onUpdateTokens?.(t))
+                          setBrowseItems((res.items ?? []).filter(it => it.folder).sort((a, b) => (a.name ?? '').localeCompare(b.name ?? '', 'de')))
+                        } catch {} finally { setBrowseLoading(false) }
+                      }}
+                      style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '5px 10px', cursor: 'pointer', fontSize: '12px', borderBottom: '1px solid var(--border)', transition: 'background 0.1s' }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'var(--surface)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                    >
+                      <span style={{ fontSize: '14px' }}>📁</span>
+                      <span style={{ fontWeight: 600 }}>{folder.name}</span>
+                      {folder.folder?.childCount != null && (
+                        <span style={{ fontSize: '10px', color: 'var(--text-muted)', marginLeft: 'auto' }}>{folder.folder.childCount} Elemente</span>
+                      )}
+                      <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>›</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── Neuer-Ordner-Form ── */}
       {creatingFolder && (
@@ -857,6 +1026,7 @@ export default function DokumenteTab({ client, onUpdate, onNavigateToKomm, onedr
           tokens={onedriveTokens}
           onUpdateTokens={onUpdateOnedriveTokens}
           onSendAsAttachment={onSendAsAttachment}
+          onUpdate={onUpdate}
         />
       )}
 

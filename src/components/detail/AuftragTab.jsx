@@ -383,6 +383,34 @@ function StammdatenErweitertSection({ client, onUpdate }) {
           </div>
         </div>
       </div>
+
+      {/* OneDrive-Pfad */}
+      <SetupRow label="OneDrive-Pfad">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <input
+              className="input"
+              value={client.onedrivePfad ?? ''}
+              onChange={e => onUpdate({ onedrivePfad: e.target.value })}
+              placeholder="z. B. Steuerberatung/Mandanten/Mustermann"
+              style={{ ...inputStyle, width: '360px', fontFamily: 'var(--font-mono)', fontSize: '11px' }}
+            />
+            {(client.onedrivePfad ?? '').trim() && (
+              <button
+                onClick={() => onUpdate({ onedrivePfad: '' })}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: '14px', padding: '0 2px', lineHeight: 1 }}
+                title="Pfad entfernen → Standard verwenden"
+              >✕</button>
+            )}
+          </div>
+          <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+            {(client.onedrivePfad ?? '').trim()
+              ? <>☁️ Individ. Pfad: <code style={{ background: 'var(--bg)', padding: '1px 4px', borderRadius: '3px' }}>{client.onedrivePfad.trim()}</code></>
+              : <>📁 Standard: <code style={{ background: 'var(--bg)', padding: '1px 4px', borderRadius: '3px' }}>Jahresabschluss-Dashboard/Mandanten/{(() => { const n = (client.name ?? 'Unbekannt').replace(/["/\\*:<>?|]/g, '').trim(); const nr = client.mandantennummer ?? ''; return nr ? `${n} (${nr})` : n })()}</code></>
+            }
+          </div>
+        </div>
+      </SetupRow>
     </div>
   )
 }

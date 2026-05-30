@@ -132,6 +132,7 @@ function migrateClient(c) {
     fibuSerie:                   c.fibuSerie ?? { aktiv: false, startDatum: '', frequenz: 'monatlich', faelligTag: 10, endDatum: '', intervallTyp: 'monate', intervallWert: 1 },
     fibuNotizen:                 Array.isArray(c.fibuNotizen) ? c.fibuNotizen : [],
     steuernummer:                c.steuernummer                  ?? '',
+    onedrivePfad:                c.onedrivePfad                  ?? '',
     gesellschafter:              Array.isArray(c.gesellschafter)  ? c.gesellschafter : [],
     geschaeftsfuehrer:           Array.isArray(c.geschaeftsfuehrer) ? c.geschaeftsfuehrer : [],
   }
