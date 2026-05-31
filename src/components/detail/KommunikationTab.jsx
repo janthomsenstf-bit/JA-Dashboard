@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import EmailVorlagenModal   from '../EmailVorlagenModal.jsx'
 import EmailSignaturenModal from '../EmailSignaturenModal.jsx'
 import { sendMailGraph, openAuthPopup, callApi, getMandantPath } from '../../utils/onedriveClient.js'
+import OneDriveFolderPickerModal from '../shared/OneDriveFolderPickerModal.jsx'
 
 // ── Signatur-Helfer ───────────────────────────────────────────────────────────
 const SIG_SEP = '\n\n--\n'
@@ -1842,15 +1843,11 @@ function EmailDetailPanel({
   const [translateLang,  setTranslateLang]  = useState('Deutsch')
 
   // ── Anhänge-Auswahl + OneDrive-Speicherung ──────────────────
-  const [selectedAnlagen, setSelectedAnlagen] = useState(new Set())
-  const [savingAnlagen,   setSavingAnlagen]   = useState(false)
-  const [showSaveTarget,  setShowSaveTarget]  = useState(false)
-  const [saveTargetPath,  setSaveTargetPath]  = useState('')
-  const [odBrowseOpen,    setOdBrowseOpen]    = useState(false)
-  const [odBrowseItems,   setOdBrowseItems]   = useState([])
-  const [odBrowsePath,    setOdBrowsePath]    = useState('')
-  const [odBrowseBc,      setOdBrowseBc]      = useState([])
-  const [odBrowseLoading, setOdBrowseLoading] = useState(false)
+  const [selectedAnlagen,   setSelectedAnlagen]   = useState(new Set())
+  const [savingAnlagen,     setSavingAnlagen]     = useState(false)
+  const [showSaveTarget,    setShowSaveTarget]    = useState(false)
+  const [saveTargetPath,    setSaveTargetPath]    = useState('')
+  const [showFolderPicker,  setShowFolderPicker]  = useState(false)
 
   // ── Notiz → Auftrag-Zuordnung ───────────────────────────────
   const [notizZiel,       setNotizZiel]       = useState('')  // auftrag-id oder '__neu__'
@@ -2246,49 +2243,6 @@ function EmailDetailPanel({
     } finally {
       setSavingAnlagen(false)
     }
-  }
-  // OneDrive-Ordner-Browser für Anhang-Speicherung
-  async function openOdBrowser() {
-    let tokens = onedriveTokens
-    if (!tokens?.accessToken) {
-      try {
-        tokens = await openAuthPopup()
-        onUpdateOnedriveTokens?.(tokens)
-      } catch { return }
-    }
-    setOdBrowseOpen(true)
-    setOdBrowseLoading(true)
-    const { folderPath } = getMandantPath(client)
-    setOdBrowsePath(folderPath)
-    setOdBrowseBc([{ path: folderPath, name: '📁 Mandant' }])
-    try {
-      const res = await callApi('listFolder', { folderPath }, tokens, (t) => onUpdateOnedriveTokens?.(t))
-      setOdBrowseItems((res.items ?? []).filter(i => i.folder).sort((a, b) => (a.name ?? '').localeCompare(b.name ?? '', 'de')))
-    } catch {
-      // Ordner existiert evtl. noch nicht → leer anzeigen
-      setOdBrowseItems([])
-    } finally {
-      setOdBrowseLoading(false)
-    }
-  }
-  async function navigateOdBrowser(path, name) {
-    setOdBrowsePath(path)
-    setOdBrowseBc(prev => [...prev, { path, name }])
-    setOdBrowseLoading(true)
-    try {
-      const res = await callApi('listFolder', { folderPath: path }, onedriveTokens, (t) => onUpdateOnedriveTokens?.(t))
-      setOdBrowseItems((res.items ?? []).filter(i => i.folder).sort((a, b) => (a.name ?? '').localeCompare(b.name ?? '', 'de')))
-    } catch { setOdBrowseItems([]) } finally { setOdBrowseLoading(false) }
-  }
-  function navigateOdBrowserTo(idx) {
-    const crumb = odBrowseBc[idx]
-    setOdBrowseBc(odBrowseBc.slice(0, idx + 1))
-    setOdBrowsePath(crumb.path)
-    setOdBrowseLoading(true)
-    callApi('listFolder', { folderPath: crumb.path }, onedriveTokens, (t) => onUpdateOnedriveTokens?.(t))
-      .then(res => setOdBrowseItems((res.items ?? []).filter(i => i.folder).sort((a, b) => (a.name ?? '').localeCompare(b.name ?? '', 'de'))))
-      .catch(() => setOdBrowseItems([]))
-      .finally(() => setOdBrowseLoading(false))
   }
   function handleErinnerung() {
     if (!erDatum || !erText.trim()) return
@@ -2909,38 +2863,20 @@ function EmailDetailPanel({
                         <div style={{ display: 'flex', gap: '4px', marginBottom: '6px' }}>
                           <input className="input" value={saveTargetPath} onChange={e => setSaveTargetPath(e.target.value)}
                             placeholder="OneDrive-Pfad…" style={{ flex: 1, fontSize: '11px', padding: '5px 8px', borderRadius: '6px', fontFamily: 'var(--font-mono)' }} />
-                          <button className="btn btn-ghost btn-sm" onClick={openOdBrowser}
-                            style={{ fontSize: '11px', whiteSpace: 'nowrap' }} title="Ordner durchsuchen">📂</button>
+                          <button className="btn btn-primary btn-sm" onClick={() => setShowFolderPicker(true)}
+                            style={{ fontSize: '11px', whiteSpace: 'nowrap', fontWeight: 600 }}>📁 Durchsuchen</button>
                         </div>
 
-                        {/* Ordner-Browser */}
-                        {odBrowseOpen && (
-                          <div style={{ border: '1px solid var(--border)', borderRadius: '6px', maxHeight: '160px', overflow: 'auto', background: 'var(--bg)', marginBottom: '6px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '3px', padding: '4px 8px', borderBottom: '1px solid var(--border)', fontSize: '10px', position: 'sticky', top: 0, background: 'var(--bg)', zIndex: 1 }}>
-                              {odBrowseBc.map((c, i) => (
-                                <span key={i} style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
-                                  {i > 0 && <span style={{ color: 'var(--text-muted)' }}>/</span>}
-                                  <button onClick={() => navigateOdBrowserTo(i)}
-                                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '10px', color: i < odBrowseBc.length - 1 ? 'var(--accent)' : 'var(--text)', fontWeight: i === odBrowseBc.length - 1 ? 700 : 400, padding: '0 2px' }}>
-                                    {c.name}
-                                  </button>
-                                </span>
-                              ))}
-                              <button className="btn btn-primary btn-sm" onClick={() => { setSaveTargetPath(odBrowsePath); setOdBrowseOpen(false) }}
-                                style={{ fontSize: '9px', marginLeft: 'auto', padding: '1px 6px' }}>✓ Wählen</button>
-                            </div>
-                            {odBrowseLoading && <div style={{ padding: '8px', textAlign: 'center', fontSize: '10px', color: 'var(--text-muted)' }}>⏳</div>}
-                            {!odBrowseLoading && odBrowseItems.length === 0 && <div style={{ padding: '8px', textAlign: 'center', fontSize: '10px', color: 'var(--text-muted)' }}>Keine Unterordner</div>}
-                            {!odBrowseLoading && odBrowseItems.map(f => (
-                              <div key={f.id} onClick={() => navigateOdBrowser(odBrowsePath ? `${odBrowsePath}/${f.name}` : f.name, f.name)}
-                                style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 8px', cursor: 'pointer', fontSize: '11px', borderBottom: '1px solid var(--border)' }}
-                                onMouseEnter={e => e.currentTarget.style.background = 'var(--surface)'}
-                                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                                <span>📁</span><span style={{ fontWeight: 600 }}>{f.name}</span>
-                                <span style={{ fontSize: '9px', color: 'var(--text-muted)', marginLeft: 'auto' }}>›</span>
-                              </div>
-                            ))}
-                          </div>
+                        {/* Folder-Picker Modal */}
+                        {showFolderPicker && (
+                          <OneDriveFolderPickerModal
+                            tokens={onedriveTokens}
+                            onUpdateTokens={onUpdateOnedriveTokens}
+                            title="Zielordner für Anhänge wählen"
+                            initialPath={saveTargetPath || getMandantPath(client).folderPath}
+                            onSelect={p => { setSaveTargetPath(p); setShowFolderPicker(false) }}
+                            onClose={() => setShowFolderPicker(false)}
+                          />
                         )}
 
                         <div style={{ display: 'flex', gap: '6px' }}>

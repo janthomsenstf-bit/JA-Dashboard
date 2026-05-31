@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import { openAuthPopup, callApi, getMandantPath, fmtFileSize } from '../../utils/onedriveClient.js'
+import OneDriveFolderPickerModal from '../shared/OneDriveFolderPickerModal.jsx'
 
 function fmtDatum(iso) {
   if (!iso) return '–'
@@ -263,11 +264,7 @@ function OneDriveSection({ client, tokens, onUpdateTokens, onSendAsAttachment, o
   // Pfad-Einstellungen
   const [showPathSettings, setShowPathSettings]   = useState(false)
   const [editPath, setEditPath]                   = useState('')
-  const [browsing, setBrowsing]                   = useState(false)
-  const [browseItems, setBrowseItems]             = useState([])
-  const [browsePath, setBrowsePath]               = useState('')
-  const [browseBreadcrumb, setBrowseBreadcrumb]   = useState([])
-  const [browseLoading, setBrowseLoading]         = useState(false)
+  const [showFolderPicker, setShowFolderPicker]   = useState(false)
 
   // Ordner-Navigation
   const { pathParts, folderPath, folderName, isCustom } = getMandantPath(client)
@@ -656,20 +653,27 @@ function OneDriveSection({ client, tokens, onUpdateTokens, onSendAsAttachment, o
       {/* ── Pfad-Einstellungen ── */}
       {showPathSettings && (
         <div style={{ marginBottom: '10px', padding: '12px', background: 'var(--surface)', borderRadius: '8px', border: '1px solid var(--border)' }}>
-          <div style={{ fontSize: '12px', fontWeight: 700, marginBottom: '8px' }}>📂 OneDrive-Speicherpfad konfigurieren</div>
+          <div style={{ fontSize: '12px', fontWeight: 700, marginBottom: '6px' }}>📂 Speicherpfad konfigurieren</div>
           <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '10px' }}>
-            Gib den Ordnerpfad an, unter dem die Dokumente dieses Mandanten gespeichert werden sollen.
+            Wähle den Ordner, in dem die Dokumente dieses Mandanten gespeichert werden sollen.
             Ohne Angabe wird der Standard-Pfad verwendet.
           </div>
-          <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '8px' }}>
+          <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
             <input
               className="input"
               value={editPath}
               onChange={e => setEditPath(e.target.value)}
-              placeholder="z. B. Steuerberatung/Mandanten/Mustermann"
-              style={{ flex: 1, minWidth: '260px', fontSize: '12px', padding: '5px 8px', fontFamily: 'var(--font-mono)' }}
+              placeholder="Pfad oder per Durchsuchen wählen…"
+              style={{ flex: 1, minWidth: '200px', fontSize: '12px', padding: '6px 8px', fontFamily: 'var(--font-mono)' }}
               onKeyDown={e => { if (e.key === 'Enter') { onUpdate({ onedrivePfad: editPath.trim() }); setShowPathSettings(false) } }}
             />
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={() => setShowFolderPicker(true)}
+              style={{ fontSize: '12px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '5px' }}
+            >
+              📁 Durchsuchen
+            </button>
             <button
               className="btn btn-primary btn-sm"
               onClick={() => { onUpdate({ onedrivePfad: editPath.trim() }); setShowPathSettings(false) }}
@@ -687,101 +691,23 @@ function OneDriveSection({ client, tokens, onUpdateTokens, onSendAsAttachment, o
               </button>
             )}
           </div>
-          {/* Ordner-Browser */}
-          {tokens?.accessToken && (
-            <div>
-              <button
-                className="btn btn-ghost btn-sm"
-                onClick={async () => {
-                  if (browsing) { setBrowsing(false); return }
-                  setBrowsing(true)
-                  setBrowseLoading(true)
-                  setBrowsePath('')
-                  setBrowseBreadcrumb([{ path: '', name: 'OneDrive' }])
-                  try {
-                    const res = await callApi('listFolder', { folderPath: '' }, tokens, (t) => onUpdateTokens?.(t))
-                    const folders = (res.items ?? []).filter(i => i.folder).sort((a, b) => (a.name ?? '').localeCompare(b.name ?? '', 'de'))
-                    setBrowseItems(folders)
-                  } catch (err) {
-                    setError('Ordner konnten nicht geladen werden: ' + err.message)
-                    setBrowsing(false)
-                  } finally {
-                    setBrowseLoading(false)
-                  }
-                }}
-                style={{ fontSize: '11px', marginBottom: browsing ? '8px' : '0' }}
-              >
-                {browsing ? '✕ Browser schließen' : '📂 Ordner durchsuchen'}
-              </button>
-
-              {browsing && (
-                <div style={{ border: '1px solid var(--border)', borderRadius: '6px', maxHeight: '240px', overflow: 'auto', background: 'var(--bg)' }}>
-                  {/* Browser-Breadcrumb */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 10px', borderBottom: '1px solid var(--border)', fontSize: '11px', position: 'sticky', top: 0, background: 'var(--bg)', zIndex: 1 }}>
-                    {browseBreadcrumb.map((crumb, i) => (
-                      <span key={i} style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
-                        {i > 0 && <span style={{ color: 'var(--text-muted)' }}>/</span>}
-                        <button
-                          onClick={async () => {
-                            const newBc = browseBreadcrumb.slice(0, i + 1)
-                            setBrowseBreadcrumb(newBc)
-                            setBrowsePath(crumb.path)
-                            setBrowseLoading(true)
-                            try {
-                              const res = await callApi('listFolder', { folderPath: crumb.path }, tokens, (t) => onUpdateTokens?.(t))
-                              setBrowseItems((res.items ?? []).filter(it => it.folder).sort((a, b) => (a.name ?? '').localeCompare(b.name ?? '', 'de')))
-                            } catch {} finally { setBrowseLoading(false) }
-                          }}
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '11px', color: i < browseBreadcrumb.length - 1 ? 'var(--accent)' : 'var(--text)', fontWeight: i === browseBreadcrumb.length - 1 ? 700 : 400, padding: '0 2px' }}
-                        >
-                          {crumb.name}
-                        </button>
-                      </span>
-                    ))}
-                    {browsePath && (
-                      <button
-                        className="btn btn-primary btn-sm"
-                        onClick={() => { setEditPath(browsePath); onUpdate({ onedrivePfad: browsePath }); setBrowsing(false); setShowPathSettings(false) }}
-                        style={{ fontSize: '10px', marginLeft: 'auto', padding: '2px 8px' }}
-                      >
-                        ✓ Diesen Ordner wählen
-                      </button>
-                    )}
-                  </div>
-                  {browseLoading && <div style={{ padding: '12px', textAlign: 'center', fontSize: '11px', color: 'var(--text-muted)' }}>⏳ Lade…</div>}
-                  {!browseLoading && browseItems.length === 0 && (
-                    <div style={{ padding: '12px', textAlign: 'center', fontSize: '11px', color: 'var(--text-muted)' }}>Keine Unterordner</div>
-                  )}
-                  {!browseLoading && browseItems.map(folder => (
-                    <div
-                      key={folder.id}
-                      onClick={async () => {
-                        const newPath = browsePath ? `${browsePath}/${folder.name}` : folder.name
-                        setBrowsePath(newPath)
-                        setBrowseBreadcrumb(prev => [...prev, { path: newPath, name: folder.name }])
-                        setBrowseLoading(true)
-                        try {
-                          const res = await callApi('listFolder', { folderPath: newPath }, tokens, (t) => onUpdateTokens?.(t))
-                          setBrowseItems((res.items ?? []).filter(it => it.folder).sort((a, b) => (a.name ?? '').localeCompare(b.name ?? '', 'de')))
-                        } catch {} finally { setBrowseLoading(false) }
-                      }}
-                      style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '5px 10px', cursor: 'pointer', fontSize: '12px', borderBottom: '1px solid var(--border)', transition: 'background 0.1s' }}
-                      onMouseEnter={e => e.currentTarget.style.background = 'var(--surface)'}
-                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                    >
-                      <span style={{ fontSize: '14px' }}>📁</span>
-                      <span style={{ fontWeight: 600 }}>{folder.name}</span>
-                      {folder.folder?.childCount != null && (
-                        <span style={{ fontSize: '10px', color: 'var(--text-muted)', marginLeft: 'auto' }}>{folder.folder.childCount} Elemente</span>
-                      )}
-                      <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>›</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
         </div>
+      )}
+
+      {/* ── OneDrive Ordner-Picker Modal ── */}
+      {showFolderPicker && (
+        <OneDriveFolderPickerModal
+          tokens={tokens}
+          onUpdateTokens={onUpdateTokens}
+          title={`Speicherordner wählen – ${client.name}`}
+          initialPath={editPath || client.onedrivePfad || ''}
+          onSelect={selectedPath => {
+            setEditPath(selectedPath)
+            onUpdate({ onedrivePfad: selectedPath })
+            setShowPathSettings(false)
+          }}
+          onClose={() => setShowFolderPicker(false)}
+        />
       )}
 
       {/* ── Neuer-Ordner-Form ── */}

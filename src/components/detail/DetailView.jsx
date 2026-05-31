@@ -222,7 +222,7 @@ export default function DetailView({
           <UebersichtTab key={client.id} client={client} onNavigateToTab={setActiveTab} onUpdate={onUpdate} />
         )}
         {activeTab === 1 && (
-          <AuftragTab key={client.id} client={client} onUpdate={onUpdate} claudeApiKey={claudeApiKey} onUpdateClaudeApiKey={onUpdateClaudeApiKey} emailSignaturen={emailSignaturen} />
+          <AuftragTab key={client.id} client={client} onUpdate={onUpdate} claudeApiKey={claudeApiKey} onUpdateClaudeApiKey={onUpdateClaudeApiKey} emailSignaturen={emailSignaturen} onedriveTokens={onedriveTokens} onUpdateOnedriveTokens={onUpdateOnedriveTokens} />
         )}
         {activeTab === 2 && (
           <StandDerArbeitTab key={client.id} client={client} onUpdate={onUpdate} />
