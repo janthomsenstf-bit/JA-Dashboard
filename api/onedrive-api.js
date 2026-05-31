@@ -171,8 +171,11 @@ export default async function handler(req, res) {
     // ── listFolder ───────────────────────────────────────────────────────────
     if (action === 'listFolder') {
       const { folderPath } = params  // z.B. "Jahresabschluss-Dashboard/Mandanten/Müller GmbH (1001)"
-      const encoded = encodeURIComponent(folderPath).replace(/%2F/g, '/')
-      const r = await graphFetch(`${GRAPH}/me/drive/root:/${encoded}:/children?$orderby=name&$select=id,name,size,file,folder,lastModifiedDateTime,@microsoft.graph.downloadUrl`, {}, tokens)
+      // Root-Ordner braucht eine andere URL als Unterordner
+      const folderUrl = folderPath
+        ? `${GRAPH}/me/drive/root:/${encodeURIComponent(folderPath).replace(/%2F/g, '/')}:/children`
+        : `${GRAPH}/me/drive/root/children`
+      const r = await graphFetch(`${folderUrl}?$orderby=name&$select=id,name,size,file,folder,lastModifiedDateTime,@microsoft.graph.downloadUrl`, {}, tokens)
       if (r.status === 404) return ok({ items: [] })
       const d = await r.json()
       if (!r.ok) return fail(r.status, d.error?.message ?? 'listFolder failed')
