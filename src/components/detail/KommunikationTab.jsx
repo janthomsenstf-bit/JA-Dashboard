@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import EmailVorlagenModal   from '../EmailVorlagenModal.jsx'
 import EmailSignaturenModal from '../EmailSignaturenModal.jsx'
-import { sendMailGraph, openAuthPopup } from '../../utils/onedriveClient.js'
+import { sendMailGraph, openAuthPopup, callApi, getMandantPath } from '../../utils/onedriveClient.js'
 
 // ── Signatur-Helfer ───────────────────────────────────────────────────────────
 const SIG_SEP = '\n\n--\n'
@@ -1796,6 +1796,8 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
           setActionForm={setActionForm}
           emailSignaturen={emailSignaturen}
           emailVorlagen={emailVorlagen}
+          onedriveTokens={onedriveTokens}
+          onUpdateOnedriveTokens={onUpdateOnedriveTokens}
         />
       )}
     </div>
@@ -1813,6 +1815,8 @@ function EmailDetailPanel({
   actionForm, setActionForm,
   emailSignaturen = [],
   emailVorlagen = [],
+  onedriveTokens = null,
+  onUpdateOnedriveTokens,
 }) {
   const [toast,          setToast]          = useState('')
   const [aufgabeTitel,   setAufgabeTitel]   = useState(entry.betreff ?? '')
@@ -1825,6 +1829,28 @@ function EmailDetailPanel({
   const [panelAiError,   setPanelAiError]   = useState('')
   const [showTranslate,  setShowTranslate]  = useState(false)
   const [translateLang,  setTranslateLang]  = useState('Deutsch')
+
+  // ── Anhänge-Auswahl + OneDrive-Speicherung ──────────────────
+  const [selectedAnlagen, setSelectedAnlagen] = useState(new Set())
+  const [savingAnlagen,   setSavingAnlagen]   = useState(false)
+  const [showSaveTarget,  setShowSaveTarget]  = useState(false)
+  const [saveTargetPath,  setSaveTargetPath]  = useState('')
+  const [odBrowseOpen,    setOdBrowseOpen]    = useState(false)
+  const [odBrowseItems,   setOdBrowseItems]   = useState([])
+  const [odBrowsePath,    setOdBrowsePath]    = useState('')
+  const [odBrowseBc,      setOdBrowseBc]      = useState([])
+  const [odBrowseLoading, setOdBrowseLoading] = useState(false)
+
+  // ── Notiz → Auftrag-Zuordnung ───────────────────────────────
+  const [notizZiel,       setNotizZiel]       = useState('')  // auftrag-id oder '__neu__'
+  const [notizNeuTyp,     setNotizNeuTyp]     = useState('jahresabschluss')
+  const [notizNeuBez,     setNotizNeuBez]     = useState(entry.betreff ?? '')
+  const [notizNeuJahr,    setNotizNeuJahr]    = useState(new Date().getFullYear())
+  const [notizText,       setNotizText]       = useState(() => {
+    const d  = entry.erstelltAm ? new Date(entry.erstelltAm) : new Date()
+    const ds = `${d.getDate().toString().padStart(2,'0')}.${(d.getMonth()+1).toString().padStart(2,'0')}.${d.getFullYear()}`
+    return `[${ds} — ${entry.absender ?? ''}] ${entry.betreff ?? ''}\n${(entry.text ?? '').slice(0, 400)}`
+  })
 
   // ── Inline-Antwort ────────────────────────────────────────────
   const [absenderList]    = useState(loadAbsender)
@@ -2079,6 +2105,13 @@ function EmailDetailPanel({
 
   function handleAufgabe() {
     if (!aufgabeTitel.trim()) return
+    const emailRef = {
+      eventId:  entry.id,
+      betreff:  entry.betreff ?? '',
+      absender: entry.absender ?? '',
+      datum:    entry.erstelltAm ?? entry.gesendetAm ?? new Date().toISOString(),
+    }
+    // Aufgabe in client.aufgaben (Eigene Aufgaben)
     const newTask = {
       id: 'a' + Date.now().toString(36),
       titel: aufgabeTitel.trim(),
@@ -2087,17 +2120,164 @@ function EmailDetailPanel({
       faelligAm: aufgabeFaellig || null,
       erledigt: false, erledigtAm: null,
       datum: new Date().toISOString(),
+      quelle: 'email',
+      emailRef,
     }
-    onUpdate({ aufgaben: [newTask, ...(client.aufgaben ?? [])] })
+    // Auch als Auftrag anlegen (typ freitext), damit es in der globalen Aufgabenübersicht erscheint
+    const newAuftrag = {
+      id: 'au' + Date.now().toString(36) + Math.random().toString(36).slice(2, 4),
+      typ: 'freitext',
+      bezeichnung: aufgabeTitel.trim(),
+      jahr: new Date().getFullYear(),
+      monat: null,
+      status: 'offen',
+      frist: aufgabeFaellig || null,
+      notiz: `E-Mail von ${entry.absender ?? ''}: ${entry.betreff ?? ''}`,
+      hinweise: [],
+      emailRef,
+      erstelltAm: new Date().toISOString(),
+    }
+    onUpdate({
+      aufgaben:  [newTask, ...(client.aufgaben ?? [])],
+      auftraege: [newAuftrag, ...(client.auftraege ?? [])],
+    })
     setActionForm(null)
     showToast('✓ Aufgabe gespeichert')
   }
-  function handleNotiz() {
-    const d  = entry.erstelltAm ? new Date(entry.erstelltAm) : new Date()
-    const ds = `${d.getDate().toString().padStart(2,'0')}.${(d.getMonth()+1).toString().padStart(2,'0')}.${d.getFullYear()}`
-    const addition = `\n\n[${ds} — ${entry.absender ?? ''}]\n${entry.betreff ?? ''}\n${(entry.text ?? '').slice(0, 400)}`
-    onUpdate({ notizen: (client.notizen ?? '') + addition })
-    showToast('✓ Notiz gespeichert')
+  function handleNotizSave() {
+    if (!notizZiel) return
+    const emailRef = {
+      eventId:  entry.id,
+      betreff:  entry.betreff ?? '',
+      absender: entry.absender ?? '',
+      datum:    entry.erstelltAm ?? entry.gesendetAm ?? new Date().toISOString(),
+    }
+    const auftraege = [...(client.auftraege ?? [])]
+    if (notizZiel === '__neu__') {
+      // Neuen Auftrag anlegen und Notiz darin speichern
+      const neuAuftrag = {
+        id: 'au' + Date.now().toString(36) + Math.random().toString(36).slice(2, 4),
+        typ: notizNeuTyp,
+        bezeichnung: notizNeuBez.trim() || entry.betreff || 'Neuer Auftrag',
+        jahr: notizNeuJahr,
+        monat: null,
+        status: 'offen',
+        frist: null,
+        notiz: notizText,
+        hinweise: [],
+        emailRef,
+        erstelltAm: new Date().toISOString(),
+      }
+      auftraege.unshift(neuAuftrag)
+      onUpdate({ auftraege })
+    } else {
+      // Notiz an bestehenden Auftrag anhängen
+      const idx = auftraege.findIndex(a => a.id === notizZiel)
+      if (idx >= 0) {
+        const existing = auftraege[idx].notiz ?? ''
+        auftraege[idx] = {
+          ...auftraege[idx],
+          notiz: existing ? existing + '\n\n' + notizText : notizText,
+          emailRef: auftraege[idx].emailRef ?? emailRef,
+        }
+        onUpdate({ auftraege })
+      }
+    }
+    setActionForm(null)
+    showToast('✓ Notiz zum Auftrag gespeichert')
+  }
+  // OneDrive Anhänge speichern
+  async function handleSaveAnlagenToOneDrive(targetPath) {
+    if (selectedAnlagen.size === 0) return
+    const anlagen = (entry.anlagen ?? [])
+    setSavingAnlagen(true)
+    try {
+      let tokens = onedriveTokens
+      if (!tokens?.accessToken) {
+        tokens = await openAuthPopup()
+        onUpdateOnedriveTokens?.(tokens)
+      }
+      const handleRefresh = (t) => onUpdateOnedriveTokens?.(t)
+      // Ordner sicherstellen
+      await callApi('ensurePath', { pathParts: targetPath.split('/') }, tokens, handleRefresh)
+      let saved = 0
+      for (const idx of selectedAnlagen) {
+        const a = anlagen[idx]
+        const bin = attachmentData[entry.id]?.[idx]
+        if (!bin?.data && !a.tooLarge) continue
+        let base64Data
+        if (bin?.data) {
+          base64Data = bin.data
+        } else if (a.tooLarge) {
+          // Große Anhänge über Download-API laden
+          const url = `/api/download-attachment?uid=${encodeURIComponent(entry.sourceUid)}&account=${encodeURIComponent(entry.sourceAccount)}&name=${encodeURIComponent(a.name)}`
+          const response = await fetch(url)
+          if (!response.ok) throw new Error(`Download fehlgeschlagen: ${a.name}`)
+          const buffer = await response.arrayBuffer()
+          const bytes = new Uint8Array(buffer)
+          let binary = ''
+          for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i])
+          base64Data = btoa(binary)
+        }
+        if (!base64Data) continue
+        await callApi('uploadSmall', {
+          filePath: `${targetPath}/${a.name}`,
+          base64: base64Data,
+          contentType: a.contentType ?? 'application/octet-stream',
+        }, tokens, handleRefresh)
+        saved++
+      }
+      setSelectedAnlagen(new Set())
+      setShowSaveTarget(false)
+      showToast(`✓ ${saved} Datei${saved !== 1 ? 'en' : ''} in OneDrive gespeichert`)
+    } catch (err) {
+      showToast('⚠ Fehler: ' + err.message)
+    } finally {
+      setSavingAnlagen(false)
+    }
+  }
+  // OneDrive-Ordner-Browser für Anhang-Speicherung
+  async function openOdBrowser() {
+    let tokens = onedriveTokens
+    if (!tokens?.accessToken) {
+      try {
+        tokens = await openAuthPopup()
+        onUpdateOnedriveTokens?.(tokens)
+      } catch { return }
+    }
+    setOdBrowseOpen(true)
+    setOdBrowseLoading(true)
+    const { folderPath } = getMandantPath(client)
+    setOdBrowsePath(folderPath)
+    setOdBrowseBc([{ path: folderPath, name: '📁 Mandant' }])
+    try {
+      const res = await callApi('listFolder', { folderPath }, tokens, (t) => onUpdateOnedriveTokens?.(t))
+      setOdBrowseItems((res.items ?? []).filter(i => i.folder).sort((a, b) => (a.name ?? '').localeCompare(b.name ?? '', 'de')))
+    } catch {
+      // Ordner existiert evtl. noch nicht → leer anzeigen
+      setOdBrowseItems([])
+    } finally {
+      setOdBrowseLoading(false)
+    }
+  }
+  async function navigateOdBrowser(path, name) {
+    setOdBrowsePath(path)
+    setOdBrowseBc(prev => [...prev, { path, name }])
+    setOdBrowseLoading(true)
+    try {
+      const res = await callApi('listFolder', { folderPath: path }, onedriveTokens, (t) => onUpdateOnedriveTokens?.(t))
+      setOdBrowseItems((res.items ?? []).filter(i => i.folder).sort((a, b) => (a.name ?? '').localeCompare(b.name ?? '', 'de')))
+    } catch { setOdBrowseItems([]) } finally { setOdBrowseLoading(false) }
+  }
+  function navigateOdBrowserTo(idx) {
+    const crumb = odBrowseBc[idx]
+    setOdBrowseBc(odBrowseBc.slice(0, idx + 1))
+    setOdBrowsePath(crumb.path)
+    setOdBrowseLoading(true)
+    callApi('listFolder', { folderPath: crumb.path }, onedriveTokens, (t) => onUpdateOnedriveTokens?.(t))
+      .then(res => setOdBrowseItems((res.items ?? []).filter(i => i.folder).sort((a, b) => (a.name ?? '').localeCompare(b.name ?? '', 'de'))))
+      .catch(() => setOdBrowseItems([]))
+      .finally(() => setOdBrowseLoading(false))
   }
   function handleErinnerung() {
     if (!erDatum || !erText.trim()) return
@@ -2505,7 +2685,10 @@ function EmailDetailPanel({
                   style={sideBtn(actionForm === 'aufgabe' ? { background: 'rgba(37,99,235,0.1)', border: '1px solid rgba(37,99,235,0.3)' } : {})}>
                   📌 Aufgabe erstellen
                 </button>
-                <button onClick={handleNotiz} style={sideBtn()}>📝 Notiz speichern</button>
+                <button onClick={() => setActionForm(actionForm === 'notiz' ? null : 'notiz')}
+                  style={sideBtn(actionForm === 'notiz' ? { background: 'rgba(249,115,22,0.1)', border: '1px solid rgba(249,115,22,0.3)' } : {})}>
+                  📝 Notiz speichern
+                </button>
                 <button onClick={() => setActionForm(actionForm === 'erinnerung' ? null : 'erinnerung')}
                   style={sideBtn(actionForm === 'erinnerung' ? { background: 'rgba(249,115,22,0.1)', border: '1px solid rgba(249,115,22,0.3)' } : {})}>
                   🔔 Erinnerung setzen
@@ -2541,8 +2724,62 @@ function EmailDetailPanel({
                     <input type="date" className="input" value={aufgabeFaellig} onChange={e => setAufgabeFaellig(e.target.value)}
                       style={{ fontSize: '12px', padding: '7px 8px', borderRadius: '8px' }} />
                   </div>
+                  {/* E-Mail-Quelle */}
+                  <div style={{ fontSize: '10px', color: 'var(--text-muted)', padding: '5px 8px', background: 'var(--surface)', borderRadius: '6px', border: '1px solid var(--border)' }}>
+                    📧 Quelle: E-Mail von {entry.absender ?? '–'}<br/>
+                    Betreff: {entry.betreff ?? '–'}
+                  </div>
                   <div style={{ display: 'flex', gap: '6px' }}>
                     <button className="btn btn-primary btn-sm" onClick={handleAufgabe} style={{ fontSize: '12px', flex: 1, borderRadius: '8px' }}>Speichern</button>
+                    <button className="btn btn-ghost btn-sm" onClick={() => setActionForm(null)} style={{ fontSize: '12px', borderRadius: '8px' }}>Abbrechen</button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ── Notiz-Formular (Auftragszuordnung) ── */}
+            {actionForm === 'notiz' && (
+              <div style={{ padding: '14px 16px', borderTop: '1px solid var(--border)', background: 'rgba(249,115,22,0.04)' }}>
+                <div style={{ fontSize: '11px', fontWeight: 700, color: '#f97316', marginBottom: '10px' }}>📝 Notiz speichern – Zuordnung</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '2px' }}>Wohin soll diese Notiz gespeichert werden?</div>
+                  <select className="input" value={notizZiel} onChange={e => setNotizZiel(e.target.value)}
+                    style={{ fontSize: '12px', padding: '7px 8px', borderRadius: '8px', width: '100%', boxSizing: 'border-box' }}>
+                    <option value="">– Bitte wählen –</option>
+                    <optgroup label="Bestehende Aufträge">
+                      {(client.auftraege ?? []).filter(a => a.status !== 'erledigt').map(a => (
+                        <option key={a.id} value={a.id}>
+                          {a.bezeichnung || a.typ} {a.jahr ? `(${a.jahr})` : ''}
+                        </option>
+                      ))}
+                    </optgroup>
+                    <option value="__neu__">➕ Neuen Auftrag anlegen</option>
+                  </select>
+                  {notizZiel === '__neu__' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', padding: '8px', background: 'var(--surface)', borderRadius: '6px', border: '1px solid var(--border)' }}>
+                      <select className="input" value={notizNeuTyp} onChange={e => setNotizNeuTyp(e.target.value)}
+                        style={{ fontSize: '12px', padding: '6px 8px', borderRadius: '6px' }}>
+                        <option value="jahresabschluss">📁 Jahresabschluss</option>
+                        <option value="fibu">📒 Buchhaltung/FIBU</option>
+                        <option value="lohn">💼 Lohn</option>
+                        <option value="beratung">🧠 Beratung</option>
+                        <option value="ust">🧾 Umsatzsteuer</option>
+                        <option value="freitext">📝 Eigener Auftrag</option>
+                      </select>
+                      <input className="input" value={notizNeuBez} onChange={e => setNotizNeuBez(e.target.value)}
+                        placeholder="Bezeichnung…" style={{ fontSize: '12px', padding: '6px 8px', borderRadius: '6px', width: '100%', boxSizing: 'border-box' }} />
+                      <input type="number" className="input" value={notizNeuJahr} onChange={e => setNotizNeuJahr(Number(e.target.value))}
+                        style={{ fontSize: '12px', padding: '6px 8px', borderRadius: '6px', width: '80px' }} />
+                    </div>
+                  )}
+                  <textarea className="input" value={notizText} onChange={e => setNotizText(e.target.value)} rows={3}
+                    style={{ fontSize: '11px', padding: '7px 10px', borderRadius: '8px', width: '100%', boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5 }} />
+                  {/* E-Mail-Quelle */}
+                  <div style={{ fontSize: '10px', color: 'var(--text-muted)', padding: '5px 8px', background: 'var(--surface)', borderRadius: '6px', border: '1px solid var(--border)' }}>
+                    📧 Quelle: E-Mail von {entry.absender ?? '–'} — {entry.betreff ?? '–'}
+                  </div>
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    <button className="btn btn-primary btn-sm" onClick={handleNotizSave} disabled={!notizZiel} style={{ fontSize: '12px', flex: 1, borderRadius: '8px' }}>Speichern</button>
                     <button className="btn btn-ghost btn-sm" onClick={() => setActionForm(null)} style={{ fontSize: '12px', borderRadius: '8px' }}>Abbrechen</button>
                   </div>
                 </div>
@@ -2569,18 +2806,33 @@ function EmailDetailPanel({
             {/* ── Anhänge ── */}
             {entry.anlagen?.length > 0 && (
               <div style={{ padding: '14px 16px', borderTop: '1px solid var(--border)', background: 'rgba(245,158,11,0.03)' }}>
-                <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#f59e0b', marginBottom: '10px' }}>
-                  📎 {entry.anlagen.length} Anhang{entry.anlagen.length !== 1 ? 'änge' : ''}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                  <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#f59e0b' }}>
+                    📎 {entry.anlagen.length} Anhang{entry.anlagen.length !== 1 ? 'änge' : ''}
+                  </div>
+                  {selectedAnlagen.size > 0 && (
+                    <span style={{ fontSize: '10px', color: '#0891b2', fontWeight: 600 }}>{selectedAnlagen.size} ausgewählt</span>
+                  )}
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                   {entry.anlagen.map((a, i) => {
                     const bin   = attachmentData[entry.id]?.[i]
                     const canDl = bin?.data && !a.tooLarge
+                    const isSelected = selectedAnlagen.has(i)
                     return (
                       <div key={i} style={{
                         display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px',
-                        borderRadius: '10px', background: 'var(--surface)', border: '1px solid var(--border)', fontSize: '12px',
+                        borderRadius: '10px', background: isSelected ? 'rgba(8,145,178,0.06)' : 'var(--surface)',
+                        border: `1px solid ${isSelected ? 'rgba(8,145,178,0.3)' : 'var(--border)'}`, fontSize: '12px',
+                        transition: 'all 0.15s',
                       }}>
+                        <input type="checkbox" checked={isSelected}
+                          onChange={() => setSelectedAnlagen(prev => {
+                            const next = new Set(prev)
+                            if (next.has(i)) next.delete(i); else next.add(i)
+                            return next
+                          })}
+                          style={{ cursor: 'pointer', flexShrink: 0, accentColor: '#0891b2' }} />
                         <span style={{ fontSize: '16px', flexShrink: 0 }}>{fileIcon(a.contentType)}</span>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</div>
@@ -2602,6 +2854,95 @@ function EmailDetailPanel({
                     )
                   })}
                 </div>
+
+                {/* ── Ausgewählte Anhänge → OneDrive speichern ── */}
+                {selectedAnlagen.size > 0 && (
+                  <div style={{ marginTop: '10px' }}>
+                    {!showSaveTarget ? (
+                      <button className="btn btn-primary btn-sm" onClick={() => {
+                        const { folderPath } = getMandantPath(client)
+                        setSaveTargetPath(folderPath)
+                        setShowSaveTarget(true)
+                      }} disabled={savingAnlagen} style={{ fontSize: '11px', width: '100%', borderRadius: '8px' }}>
+                        {savingAnlagen ? '⏳ Wird gespeichert…' : `☁️ ${selectedAnlagen.size} Anhang${selectedAnlagen.size !== 1 ? 'änge' : ''} in OneDrive speichern`}
+                      </button>
+                    ) : (
+                      <div style={{ padding: '10px', background: 'var(--surface)', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                        <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--accent)', marginBottom: '8px' }}>☁️ Speichern nach OneDrive</div>
+
+                        {/* Schnellbuttons */}
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '8px' }}>
+                          {(() => {
+                            const { folderPath } = getMandantPath(client)
+                            const quickTargets = [
+                              { label: '📁 Jahresabschluss', path: folderPath + '/Jahresabschluss ' + new Date().getFullYear() },
+                              { label: '📒 Buchhaltung',     path: folderPath + '/Buchhaltung' },
+                              { label: '💼 Lohn',            path: folderPath + '/Lohn' },
+                              { label: '📂 Sonstiges',       path: folderPath + '/Sonstiges' },
+                            ]
+                            return quickTargets.map(qt => (
+                              <button key={qt.label} className="btn btn-ghost btn-sm"
+                                onClick={() => setSaveTargetPath(qt.path)}
+                                style={{
+                                  fontSize: '10px', padding: '3px 8px', borderRadius: '6px',
+                                  background: saveTargetPath === qt.path ? 'rgba(8,145,178,0.12)' : undefined,
+                                  border: saveTargetPath === qt.path ? '1px solid rgba(8,145,178,0.3)' : undefined,
+                                }}>
+                                {qt.label}
+                              </button>
+                            ))
+                          })()}
+                        </div>
+
+                        {/* Pfad-Eingabe */}
+                        <div style={{ display: 'flex', gap: '4px', marginBottom: '6px' }}>
+                          <input className="input" value={saveTargetPath} onChange={e => setSaveTargetPath(e.target.value)}
+                            placeholder="OneDrive-Pfad…" style={{ flex: 1, fontSize: '11px', padding: '5px 8px', borderRadius: '6px', fontFamily: 'var(--font-mono)' }} />
+                          <button className="btn btn-ghost btn-sm" onClick={openOdBrowser}
+                            style={{ fontSize: '11px', whiteSpace: 'nowrap' }} title="Ordner durchsuchen">📂</button>
+                        </div>
+
+                        {/* Ordner-Browser */}
+                        {odBrowseOpen && (
+                          <div style={{ border: '1px solid var(--border)', borderRadius: '6px', maxHeight: '160px', overflow: 'auto', background: 'var(--bg)', marginBottom: '6px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '3px', padding: '4px 8px', borderBottom: '1px solid var(--border)', fontSize: '10px', position: 'sticky', top: 0, background: 'var(--bg)', zIndex: 1 }}>
+                              {odBrowseBc.map((c, i) => (
+                                <span key={i} style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+                                  {i > 0 && <span style={{ color: 'var(--text-muted)' }}>/</span>}
+                                  <button onClick={() => navigateOdBrowserTo(i)}
+                                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '10px', color: i < odBrowseBc.length - 1 ? 'var(--accent)' : 'var(--text)', fontWeight: i === odBrowseBc.length - 1 ? 700 : 400, padding: '0 2px' }}>
+                                    {c.name}
+                                  </button>
+                                </span>
+                              ))}
+                              <button className="btn btn-primary btn-sm" onClick={() => { setSaveTargetPath(odBrowsePath); setOdBrowseOpen(false) }}
+                                style={{ fontSize: '9px', marginLeft: 'auto', padding: '1px 6px' }}>✓ Wählen</button>
+                            </div>
+                            {odBrowseLoading && <div style={{ padding: '8px', textAlign: 'center', fontSize: '10px', color: 'var(--text-muted)' }}>⏳</div>}
+                            {!odBrowseLoading && odBrowseItems.length === 0 && <div style={{ padding: '8px', textAlign: 'center', fontSize: '10px', color: 'var(--text-muted)' }}>Keine Unterordner</div>}
+                            {!odBrowseLoading && odBrowseItems.map(f => (
+                              <div key={f.id} onClick={() => navigateOdBrowser(odBrowsePath ? `${odBrowsePath}/${f.name}` : f.name, f.name)}
+                                style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 8px', cursor: 'pointer', fontSize: '11px', borderBottom: '1px solid var(--border)' }}
+                                onMouseEnter={e => e.currentTarget.style.background = 'var(--surface)'}
+                                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                                <span>📁</span><span style={{ fontWeight: 600 }}>{f.name}</span>
+                                <span style={{ fontSize: '9px', color: 'var(--text-muted)', marginLeft: 'auto' }}>›</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        <div style={{ display: 'flex', gap: '6px' }}>
+                          <button className="btn btn-primary btn-sm" onClick={() => handleSaveAnlagenToOneDrive(saveTargetPath)}
+                            disabled={savingAnlagen || !saveTargetPath.trim()} style={{ fontSize: '11px', flex: 1, borderRadius: '6px' }}>
+                            {savingAnlagen ? '⏳ Wird gespeichert…' : '✓ Speichern'}
+                          </button>
+                          <button className="btn btn-ghost btn-sm" onClick={() => setShowSaveTarget(false)} style={{ fontSize: '11px', borderRadius: '6px' }}>Abbrechen</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 

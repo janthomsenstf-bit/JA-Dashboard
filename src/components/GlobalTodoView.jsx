@@ -116,7 +116,13 @@ function AuftragRow({ au, idx, onSelectClient, onCycleStatus, overdueDays }) {
           )}
           <span style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{bezeichnung ?? `${typCfg.label} ${zeitraum}`}</span>
         </div>
-        {au.notiz && <div style={{ fontSize:'11px', color:'var(--text-muted)', marginTop:'1px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{au.notiz}</div>}
+        {au.emailRef && (
+          <div style={{ fontSize:'10px', marginTop:'2px', display:'flex', alignItems:'center', gap:'4px' }}>
+            <span style={{ padding:'1px 6px', borderRadius:'8px', background:'rgba(22,163,74,0.08)', color:'#16a34a', fontWeight:600, border:'1px solid rgba(22,163,74,0.15)' }}>📧 E-Mail</span>
+            <span style={{ color:'var(--text-muted)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{au.emailRef.absender}</span>
+          </div>
+        )}
+        {au.notiz && !au.emailRef && <div style={{ fontSize:'11px', color:'var(--text-muted)', marginTop:'1px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{au.notiz}</div>}
         {au.typ === 'jahresabschluss' && au.jaCheckliste && (() => {
           const items = [
             { key: 'est', col1: true }, { key: 'gewst', col1: true }, { key: 'kst', col1: true },

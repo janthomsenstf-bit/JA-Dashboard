@@ -143,11 +143,12 @@ function VoiceInputBlock({ placeholder, onProcess }) {
 }
 
 // ── AufgabenKarte ────────────────────────────────────────────────────────────
-function AufgabenKarte({ aufgabe, onToggle, onDelete }) {
+function AufgabenKarte({ aufgabe, onToggle, onDelete, onOpenEmail }) {
   const [expanded, setExpanded] = useState(false)
   const prio   = PRIO_CONFIG[aufgabe.prioritaet] ?? PRIO_CONFIG.mittel
   const ueber  = !aufgabe.erledigt && isUeberfaellig(aufgabe.faelligAm)
   const heute  = !aufgabe.erledigt && isHeuteFaellig(aufgabe.faelligAm)
+  const hasEmailRef = aufgabe.quelle === 'email' && aufgabe.emailRef
 
   return (
     <div style={{
@@ -168,6 +169,11 @@ function AufgabenKarte({ aufgabe, onToggle, onDelete }) {
             <span style={{ fontSize: '10px', fontWeight: 600, padding: '1px 7px', borderRadius: '10px', background: prio.bg, color: prio.color }}>
               {prio.label}
             </span>
+            {hasEmailRef && (
+              <span style={{ fontSize: '10px', fontWeight: 600, padding: '1px 7px', borderRadius: '10px', background: 'rgba(22,163,74,0.08)', color: '#16a34a' }}>
+                📧 E-Mail
+              </span>
+            )}
             {aufgabe.faelligAm && (
               <span style={{ fontSize: '11px', color: ueber ? '#ef4444' : heute ? 'var(--accent)' : 'var(--text-muted)', fontWeight: ueber || heute ? 600 : 400 }}>
                 {ueber ? '⚠ Überfällig: ' : heute ? '📅 Heute: ' : '📅 '}
@@ -180,7 +186,7 @@ function AufgabenKarte({ aufgabe, onToggle, onDelete }) {
           </div>
         </div>
         <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
-          {aufgabe.inhalt && (
+          {(aufgabe.inhalt || hasEmailRef) && (
             <button className="btn btn-ghost btn-sm" style={{ fontSize: '11px', padding: '2px 6px' }}
               onClick={() => setExpanded(e => !e)}>{expanded ? '▲' : '▼'}</button>
           )}
@@ -188,9 +194,28 @@ function AufgabenKarte({ aufgabe, onToggle, onDelete }) {
             onClick={() => onDelete(aufgabe.id)}>🗑</button>
         </div>
       </div>
-      {expanded && aufgabe.inhalt && (
-        <div style={{ padding: '8px 12px 10px 38px', borderTop: '1px solid var(--border)', background: 'var(--surface2)', fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-          {aufgabe.inhalt}
+      {expanded && (
+        <div style={{ borderTop: '1px solid var(--border)', background: 'var(--surface2)' }}>
+          {aufgabe.inhalt && (
+            <div style={{ padding: '8px 12px 6px 38px', fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+              {aufgabe.inhalt}
+            </div>
+          )}
+          {hasEmailRef && (
+            <div style={{ padding: '6px 12px 8px 38px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <div style={{ fontSize: '10px', color: 'var(--text-muted)', flex: 1, minWidth: 0 }}>
+                📧 Quelle: E-Mail von <b>{aufgabe.emailRef.absender}</b>
+                {aufgabe.emailRef.betreff && <> — {aufgabe.emailRef.betreff}</>}
+                {aufgabe.emailRef.datum && <> ({fmtDatum(aufgabe.emailRef.datum?.split('T')[0])})</>}
+              </div>
+              {onOpenEmail && (
+                <button className="btn btn-ghost btn-sm" onClick={() => onOpenEmail(aufgabe.emailRef.eventId)}
+                  style={{ fontSize: '10px', padding: '2px 8px', color: 'var(--accent)', whiteSpace: 'nowrap' }}>
+                  📧 E-Mail öffnen
+                </button>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -397,7 +422,7 @@ function GenerierteAufgaben({ client, onUpdate }) {
 }
 
 // ── Haupt-Komponente ─────────────────────────────────────────────────────────
-export default function AufgabenTab({ client, onUpdate, onAddTermin }) {
+export default function AufgabenTab({ client, onUpdate, onAddTermin, onOpenEmail }) {
   const aufgaben = client.aufgaben ?? []
 
   const [filter, setFilter]   = useState('offen') // 'alle' | 'offen' | 'erledigt'
@@ -595,7 +620,7 @@ export default function AufgabenTab({ client, onUpdate, onAddTermin }) {
             </div>
           ) : (
             sortiert.map(a => (
-              <AufgabenKarte key={a.id} aufgabe={a} onToggle={toggleErledigt} onDelete={deleteAufgabe} />
+              <AufgabenKarte key={a.id} aufgabe={a} onToggle={toggleErledigt} onDelete={deleteAufgabe} onOpenEmail={onOpenEmail} />
             ))
           )}
         </div>

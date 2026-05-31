@@ -459,11 +459,21 @@ function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete }) {
             </label>
           </div>
 
-          <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '14px' }}>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: au.emailRef ? '8px' : '14px' }}>
             <span style={labelStyle}>Notiz / Kontext</span>
             <textarea value={au.notiz} rows={2} onChange={e => onUpdate({ notiz: e.target.value })}
               placeholder="Interne Anmerkungen zum Auftrag…" style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.5 }} />
           </label>
+
+          {/* E-Mail-Quelle (wenn aus E-Mail erstellt) */}
+          {au.emailRef && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 10px', borderRadius: '6px', background: 'rgba(22,163,74,0.04)', border: '1px solid rgba(22,163,74,0.15)', marginBottom: '14px', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '10px', color: 'var(--text-muted)', flex: 1, minWidth: 0 }}>
+                📧 Quelle: E-Mail von <b>{au.emailRef.absender}</b>
+                {au.emailRef.betreff && <> — {au.emailRef.betreff}</>}
+              </span>
+            </div>
+          )}
 
           <div style={{ borderTop: '1px solid var(--border)', paddingTop: '12px' }}>
             <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '8px' }}>
