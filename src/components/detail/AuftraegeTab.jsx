@@ -952,7 +952,7 @@ function SerieErstellenPanel({ onCreate, onClose }) {
 }
 
 // ── Hauptkomponente ───────────────────────────────────────────────────────────
-export default function AuftraegeTab({ client, onUpdate }) {
+export default function AuftraegeTab({ client, onUpdate, initialFilterTyp = 'alle' }) {
   const auftraege = client.auftraege ?? []
 
   // Aufteilen in Einzel- und Serienaufträge
@@ -960,7 +960,7 @@ export default function AuftraegeTab({ client, onUpdate }) {
   const serienauftraege = auftraege.filter(a => a.istSerie)
 
   const [filterStatus,       setFilterStatus]       = useState('aktiv')
-  const [filterTyp,          setFilterTyp]          = useState('alle')
+  const [filterTyp,          setFilterTyp]          = useState(initialFilterTyp)
   const [expandedId,         setExpandedId]         = useState(null)
   const [quickTyp,           setQuickTyp]           = useState('lohn')
   const [showBatch,          setShowBatch]          = useState(false)

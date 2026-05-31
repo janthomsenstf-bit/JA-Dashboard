@@ -166,5 +166,15 @@ Jeder Schritt wird einzeln committed:
 - [ ] P2D: StandDerArbeitTab vereinfachen (Name ist "Historie" – gut so, Inhalt gut, ggf. KI-Block auslagern)
 - [ ] P2E: LohnTab / FIBUTab / EStTab / UStTab als Filter-Ansichten auf AuftraegeTab umbauen
 
+- [x] P2E: initialFilterTyp-Prop in AuftraegeTab → Typ-gefilterter Sprung von außen möglich
+- [x] P2E: navigateToAuftraegeTyp() in DetailView → BotInbox und andere können Typ vorauswählen
+- [x] P2E: MandantSchnellansicht zeigt vorhandene Auftragstypen als farbige Direktsprung-Buttons
+
+**Entscheidung P2A-Rest:** AbsenderSection + SignaturSection bleiben im Mandant-Tab.
+  Sie sind Mandanten-spezifische Einstellungen (WELCHER Absender für diesen Mandanten?)
+  und keine globale Verwaltung (die ist bereits in Nachrichten). Logisch richtig platziert.
+
 ### Nächste Sitzung beginnt mit:
-P2A-Rest: Absender + Signatur aus AuftragTab raus, in KommunikationTab als eigene "Absender-Einstellungen"-Sektion rein
+P2C: FormularTab (Tab 10 alt, inzwischen unsichtbar) in Nachrichten integrieren oder entfernen.
+  Prüfen ob FormularTab noch referenziert wird, ggf. als Button in KommunikationTab einbauen.
+  Danach: P3 Design-Refresh beginnen.

@@ -68,13 +68,20 @@ export default function DetailView({
   pendingOpenEmailId = null,
   onClearPendingOpenEmailId,
 }) {
-  const [activeTab, setActiveTab]         = useState(initialTab)
-  const [showEdit, setShowEdit]           = useState(false)
+  const [activeTab, setActiveTab]             = useState(initialTab)
+  const [showEdit, setShowEdit]               = useState(false)
   const [pendingAttachments, setPendingAttachments] = useState(null)
+  const [auftraegeFilterTyp, setAuftraegeFilterTyp] = useState('alle')  // für Typ-gefilterten Sprung
 
   function handleSendAsAttachment(attachments) {
     setPendingAttachments(attachments)
     setActiveTab(TAB.nachrichten)
+  }
+
+  // Typ-gefilterter Sprung in Aufträge (z.B. aus Schnellnavigation oder BotInbox)
+  function navigateToAuftraegeTyp(typ) {
+    setAuftraegeFilterTyp(typ ?? 'alle')
+    setActiveTab(TAB.auftraege)
   }
 
   const allNrs = [client.mandantennummer, client.mandantennummer2, client.mandantennummer3]
@@ -219,11 +226,12 @@ export default function DetailView({
               onedriveTokens={onedriveTokens}
               onUpdateOnedriveTokens={onUpdateOnedriveTokens}
               onNavigateToTab={setActiveTab}
+              onNavigateToAuftraegeTyp={navigateToAuftraegeTyp}
             />
           )}
 
           {activeTab === TAB.auftraege && (
-            <AuftraegeTab key={client.id} client={client} onUpdate={onUpdate} />
+            <AuftraegeTab key={client.id} client={client} onUpdate={onUpdate} initialFilterTyp={auftraegeFilterTyp} />
           )}
 
           {activeTab === TAB.nachrichten && (

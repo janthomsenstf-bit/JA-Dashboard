@@ -933,7 +933,7 @@ function ApiKeySection({ claudeApiKey, onUpdateClaudeApiKey }) {
 
 
 // ── Mandant-Schnellansicht (Mini-Dashboard) ───────────────────────────────────
-function MandantSchnellansicht({ client, onNavigateToTab }) {
+function MandantSchnellansicht({ client, onNavigateToTab, onNavigateToAuftraegeTyp }) {
   const auftraege  = client.auftraege ?? []
   const events     = [...(client.kommunikation?.events ?? [])].sort((a, b) => new Date(b.erstelltAm ?? b.gesendetAm) - new Date(a.erstelltAm ?? a.gesendetAm))
   const offeneRQ   = (client.rueckfragen ?? []).filter(r => !r.beantwortet)
@@ -1073,16 +1073,15 @@ function MandantSchnellansicht({ client, onNavigateToTab }) {
       {/* ── Schnell-Navigation ── */}
       <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
         {[
-          { tab: TAB.auftraege,   label: 'Aufträge',    icon: '📋' },
-          { tab: TAB.nachrichten, label: 'Nachrichten', icon: '✉️' },
-          { tab: TAB.dokumente,   label: 'Dokumente',   icon: '📂' },
-          { tab: TAB.honorare,    label: 'Honorare',    icon: '💰' },
-          { tab: TAB.beratung,    label: 'Beratung',    icon: '🧠' },
-          { tab: TAB.historie,    label: 'Historie',    icon: '📊' },
-        ].map(({ tab, label, icon }) => (
+          { action: () => onNavigateToTab?.(TAB.nachrichten), label: 'Nachrichten', icon: '✉️' },
+          { action: () => onNavigateToTab?.(TAB.dokumente),   label: 'Dokumente',   icon: '📂' },
+          { action: () => onNavigateToTab?.(TAB.honorare),    label: 'Honorare',    icon: '💰' },
+          { action: () => onNavigateToTab?.(TAB.beratung),    label: 'Beratung',    icon: '🧠' },
+          { action: () => onNavigateToTab?.(TAB.historie),    label: 'Historie',    icon: '📊' },
+        ].map(({ action, label, icon }) => (
           <button
-            key={tab}
-            onClick={() => onNavigateToTab?.(tab)}
+            key={label}
+            onClick={action}
             style={{
               padding: '4px 10px', borderRadius: '20px', border: '1px solid var(--border)',
               background: 'var(--surface)', color: 'var(--text-muted)',
@@ -1095,12 +1094,35 @@ function MandantSchnellansicht({ client, onNavigateToTab }) {
             {icon} {label}
           </button>
         ))}
+        {/* Auftragstypen die vorhanden sind als Direktsprung */}
+        {onNavigateToAuftraegeTyp && (() => {
+          const vorhandeneTypen = [...new Set(auftraege.filter(a => a.status !== 'erledigt').map(a => a.typ))]
+          const ICONS = { jahresabschluss: '📁', fibu: '📒', lohn: '💼', beratung: '🧠', ust: '🧾', freitext: '📝' }
+          const LABELS = { jahresabschluss: 'Jahresabschluss', fibu: 'FIBU', lohn: 'Lohn', beratung: 'Beratung', ust: 'USt', freitext: 'Sonstiges' }
+          return vorhandeneTypen.map(typ => (
+            <button
+              key={`typ-${typ}`}
+              onClick={() => onNavigateToAuftraegeTyp(typ)}
+              style={{
+                padding: '4px 10px', borderRadius: '20px',
+                border: '1px solid rgba(8,145,178,0.3)', background: 'rgba(8,145,178,0.06)',
+                color: '#0891b2', fontSize: '11px', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: '4px', transition: 'all 0.15s',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = '#0891b2'; e.currentTarget.style.background = 'rgba(8,145,178,0.12)' }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(8,145,178,0.3)'; e.currentTarget.style.background = 'rgba(8,145,178,0.06)' }}
+              title={`Direkt zu ${LABELS[typ]}-Aufträgen`}
+            >
+              {ICONS[typ] ?? '📋'} {LABELS[typ]}
+            </button>
+          ))
+        })()}
       </div>
     </div>
   )
 }
 
-export default function AuftragTab({ client, onUpdate, claudeApiKey, onUpdateClaudeApiKey, emailSignaturen = [], onedriveTokens = null, onUpdateOnedriveTokens, onNavigateToTab }) {
+export default function AuftragTab({ client, onUpdate, claudeApiKey, onUpdateClaudeApiKey, emailSignaturen = [], onedriveTokens = null, onUpdateOnedriveTokens, onNavigateToTab, onNavigateToAuftraegeTyp }) {
   const auftrag = client.auftrag ?? {}
 
   // Setup-Felder (aus client-Ebene)
@@ -1151,7 +1173,7 @@ export default function AuftragTab({ client, onUpdate, claudeApiKey, onUpdateCla
     <div className="tab-content" style={{ display: 'flex', flexDirection: 'column', gap: '0', background: 'var(--bg)' }}>
 
       {/* ══════════════════ 0. SCHNELLANSICHT ══════════════════ */}
-      <MandantSchnellansicht client={client} onNavigateToTab={onNavigateToTab} />
+      <MandantSchnellansicht client={client} onNavigateToTab={onNavigateToTab} onNavigateToAuftraegeTyp={onNavigateToAuftraegeTyp} />
 
       {/* ══════════════════ 1. MANDATS-SETUP (Akkordeon) ══════════════════ */}
       <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', marginBottom: '14px', overflow: 'hidden' }}>
