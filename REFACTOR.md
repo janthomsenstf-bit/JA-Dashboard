@@ -151,6 +151,20 @@ Jeder Schritt wird einzeln committed:
 
 ## Status
 
-**Aktuell:** Priorität 1 in Arbeit
-**Zuletzt:** REFACTOR.md erstellt
-**Nächste Sitzung beginnt mit:** Weitermachen bei P1A (tote Dateien)
+**Aktuell:** Priorität 2 teilweise erledigt
+**Zuletzt:** P2A Mini-Dashboard + P2B Typ-Filter-Verbesserung committed
+
+### Was in P2 erledigt ist:
+- [x] P2A: MandantSchnellansicht (Mini-Dashboard) in AuftragTab → zeigt Aufträge/E-Mail/Rückfragen + Schnellnavigation
+- [x] P2A: onNavigateToTab-Prop durch DetailView → AuftragTab durchgereicht
+- [x] P2B: Typ-Filter in AuftraegeTab visuell aufgewertet (Icons größer, aktive Auswahl deutlicher)
+- [x] P2B: Typ-Filter-Buttons: konsistentes Design mit Icon + Label + Zähler
+
+### Was in P2 noch offen ist:
+- [ ] P2A: Absender + Signaturen aus AuftragTab → in KommunikationTab verschieben
+- [ ] P2C: FormularTab-Funktion in Nachrichten integrieren (Tab komplett entfernen)
+- [ ] P2D: StandDerArbeitTab vereinfachen (Name ist "Historie" – gut so, Inhalt gut, ggf. KI-Block auslagern)
+- [ ] P2E: LohnTab / FIBUTab / EStTab / UStTab als Filter-Ansichten auf AuftraegeTab umbauen
+
+### Nächste Sitzung beginnt mit:
+P2A-Rest: Absender + Signatur aus AuftragTab raus, in KommunikationTab als eigene "Absender-Einstellungen"-Sektion rein

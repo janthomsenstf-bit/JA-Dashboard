@@ -1085,16 +1085,28 @@ export default function AuftraegeTab({ client, onUpdate }) {
       {/* ── Typ-Filter ── */}
       <div style={{ display: 'flex', gap: '5px', marginBottom: '16px', flexWrap: 'wrap' }}>
         <button onClick={() => setFilterTyp('alle')}
-          style={{ padding: '3px 10px', borderRadius: '20px', border: '1px solid var(--border)', background: filterTyp === 'alle' ? 'var(--surface2)' : 'transparent', color: filterTyp === 'alle' ? 'var(--text)' : 'var(--text-muted)', fontSize: '10px', cursor: 'pointer' }}>
-          Alle Typen
+          style={{
+            padding: '4px 12px', borderRadius: '20px', fontSize: '11px', fontWeight: filterTyp === 'alle' ? 700 : 400, cursor: 'pointer',
+            border: `1px solid ${filterTyp === 'alle' ? 'var(--accent)' : 'var(--border)'}`,
+            background: filterTyp === 'alle' ? 'rgba(8,145,178,0.1)' : 'transparent',
+            color: filterTyp === 'alle' ? 'var(--accent)' : 'var(--text-muted)',
+          }}>
+          Alle
         </button>
         {Object.entries(AUFTRAGS_TYP_CFG).map(([k, v]) => {
           const cnt = auftraege.filter(a => a.typ === k).length
           if (cnt === 0) return null
           return (
             <button key={k} onClick={() => setFilterTyp(k === filterTyp ? 'alle' : k)}
-              style={{ padding: '3px 10px', borderRadius: '20px', border: `1px solid ${k === filterTyp ? v.color + '66' : 'var(--border)'}`, background: k === filterTyp ? v.bg : 'transparent', color: k === filterTyp ? v.color : 'var(--text-muted)', fontSize: '10px', cursor: 'pointer', fontWeight: k === filterTyp ? 700 : 400 }}>
-              {v.icon} {v.label} ({cnt})
+              style={{
+                padding: '4px 12px', borderRadius: '20px', cursor: 'pointer', fontSize: '11px',
+                border: `1px solid ${k === filterTyp ? v.color : 'var(--border)'}`,
+                background: k === filterTyp ? v.bg : 'transparent',
+                color: k === filterTyp ? v.color : 'var(--text-muted)',
+                fontWeight: k === filterTyp ? 700 : 400,
+                display: 'inline-flex', alignItems: 'center', gap: '4px',
+              }}>
+              {v.icon} {v.label} <span style={{ opacity: 0.75 }}>({cnt})</span>
             </button>
           )
         })}

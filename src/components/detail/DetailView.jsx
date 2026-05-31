@@ -218,6 +218,7 @@ export default function DetailView({
               emailSignaturen={emailSignaturen}
               onedriveTokens={onedriveTokens}
               onUpdateOnedriveTokens={onUpdateOnedriveTokens}
+              onNavigateToTab={setActiveTab}
             />
           )}
 

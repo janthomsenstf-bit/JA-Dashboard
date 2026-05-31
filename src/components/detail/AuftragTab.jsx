@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { MONAT_NAMEN } from '../../utils/aufgaben.js'
 import OneDriveFolderPickerModal from '../shared/OneDriveFolderPickerModal.jsx'
+import { TAB } from './DetailView.jsx'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Setup-Konfiguration (Chips oben)
@@ -931,7 +932,175 @@ function ApiKeySection({ claudeApiKey, onUpdateClaudeApiKey }) {
 }
 
 
-export default function AuftragTab({ client, onUpdate, claudeApiKey, onUpdateClaudeApiKey, emailSignaturen = [], onedriveTokens = null, onUpdateOnedriveTokens }) {
+// ── Mandant-Schnellansicht (Mini-Dashboard) ───────────────────────────────────
+function MandantSchnellansicht({ client, onNavigateToTab }) {
+  const auftraege  = client.auftraege ?? []
+  const events     = [...(client.kommunikation?.events ?? [])].sort((a, b) => new Date(b.erstelltAm ?? b.gesendetAm) - new Date(a.erstelltAm ?? a.gesendetAm))
+  const offeneRQ   = (client.rueckfragen ?? []).filter(r => !r.beantwortet)
+  const aktiveAU   = auftraege.filter(a => !a.istSerie && a.status !== 'erledigt')
+  const letzteEmail = events[0] ?? null
+  const naechsteFrist = aktiveAU
+    .filter(a => a.frist)
+    .sort((a, b) => new Date(a.frist) - new Date(b.frist))[0]
+
+  function fmtD(iso) {
+    if (!iso) return ''
+    const d = new Date(iso.length === 10 ? iso + 'T12:00:00' : iso)
+    return `${d.getDate().toString().padStart(2,'0')}.${(d.getMonth()+1).toString().padStart(2,'0')}.${d.getFullYear()}`
+  }
+
+  function daysUntil(iso) {
+    if (!iso) return null
+    const diff = new Date(iso + 'T12:00:00').getTime() - Date.now()
+    return Math.ceil(diff / 86400000)
+  }
+
+  const AUFTRAGS_TYPEN = {
+    jahresabschluss: '📁', fibu: '📒', lohn: '💼', beratung: '🧠', ust: '🧾', freitext: '📝',
+  }
+
+  return (
+    <div style={{ marginBottom: '14px' }}>
+
+      {/* ── Stat-Karten ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '8px' }}>
+
+        {/* Aufträge */}
+        <div
+          onClick={() => onNavigateToTab?.(TAB.auftraege)}
+          style={{
+            padding: '10px 14px', borderRadius: '10px', cursor: 'pointer',
+            background: 'var(--surface)', border: '1px solid var(--border)',
+            transition: 'border-color 0.15s, background 0.15s',
+          }}
+          onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.background = 'var(--surface2)' }}
+          onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'var(--surface)' }}
+        >
+          <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '4px' }}>
+            📋 Aufträge
+          </div>
+          {aktiveAU.length === 0 ? (
+            <div style={{ fontSize: '12px', color: 'var(--text-muted)', fontStyle: 'italic' }}>Keine aktiven</div>
+          ) : (
+            <>
+              <div style={{ fontWeight: 700, fontSize: '18px', color: 'var(--accent)', lineHeight: 1 }}>{aktiveAU.length}</div>
+              <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '3px' }}>aktiv</div>
+              {aktiveAU.slice(0, 2).map(a => (
+                <div key={a.id} style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {AUFTRAGS_TYPEN[a.typ] ?? '📝'} {a.bezeichnung || a.typ}{a.jahr ? ` ${a.jahr}` : ''}
+                </div>
+              ))}
+            </>
+          )}
+          {naechsteFrist && (() => {
+            const d = daysUntil(naechsteFrist.frist)
+            const color = d < 0 ? '#ef4444' : d <= 7 ? '#f97316' : d <= 30 ? '#eab308' : 'var(--text-muted)'
+            return (
+              <div style={{ fontSize: '10px', color, fontWeight: d <= 7 ? 700 : 400, marginTop: '4px' }}>
+                {d < 0 ? `⚠ ${Math.abs(d)}d überfällig` : `📅 Frist in ${d}d`}
+              </div>
+            )
+          })()}
+        </div>
+
+        {/* Nachrichten */}
+        <div
+          onClick={() => onNavigateToTab?.(TAB.nachrichten)}
+          style={{
+            padding: '10px 14px', borderRadius: '10px', cursor: 'pointer',
+            background: 'var(--surface)', border: '1px solid var(--border)',
+            transition: 'border-color 0.15s, background 0.15s',
+          }}
+          onMouseEnter={e => { e.currentTarget.style.borderColor = '#16a34a'; e.currentTarget.style.background = 'var(--surface2)' }}
+          onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'var(--surface)' }}
+        >
+          <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '4px' }}>
+            ✉️ Nachrichten
+          </div>
+          {!letzteEmail ? (
+            <div style={{ fontSize: '12px', color: 'var(--text-muted)', fontStyle: 'italic' }}>Keine E-Mails</div>
+          ) : (
+            <>
+              <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginBottom: '2px' }}>
+                {letzteEmail.typ === 'eingehend' ? '📨 Empfangen' : '📤 Gesendet'} – {fmtD(letzteEmail.erstelltAm ?? letzteEmail.gesendetAm)}
+              </div>
+              <div style={{ fontSize: '11px', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {letzteEmail.betreff || '(kein Betreff)'}
+              </div>
+              <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {letzteEmail.absender || letzteEmail.empfaenger}
+              </div>
+              <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '3px' }}>{events.length} Einträge</div>
+            </>
+          )}
+        </div>
+
+        {/* Rückfragen */}
+        <div
+          onClick={() => onNavigateToTab?.(TAB.historie)}
+          style={{
+            padding: '10px 14px', borderRadius: '10px', cursor: 'pointer',
+            background: offeneRQ.length > 0 ? 'rgba(239,68,68,0.04)' : 'var(--surface)',
+            border: `1px solid ${offeneRQ.length > 0 ? 'rgba(239,68,68,0.25)' : 'var(--border)'}`,
+            transition: 'border-color 0.15s, background 0.15s',
+          }}
+          onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface2)' }}
+          onMouseLeave={e => { e.currentTarget.style.background = offeneRQ.length > 0 ? 'rgba(239,68,68,0.04)' : 'var(--surface)' }}
+        >
+          <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '4px' }}>
+            ❓ Rückfragen
+          </div>
+          {offeneRQ.length === 0 ? (
+            <>
+              <div style={{ fontSize: '14px', marginBottom: '2px' }}>✓</div>
+              <div style={{ fontSize: '11px', color: '#16a34a', fontWeight: 600 }}>Alle beantwortet</div>
+              <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>{(client.rueckfragen ?? []).length} gesamt</div>
+            </>
+          ) : (
+            <>
+              <div style={{ fontWeight: 700, fontSize: '18px', color: '#ef4444', lineHeight: 1 }}>{offeneRQ.length}</div>
+              <div style={{ fontSize: '11px', color: '#ef4444', fontWeight: 600, marginTop: '3px' }}>offen</div>
+              {offeneRQ.slice(0, 2).map((rq, i) => (
+                <div key={i} style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {rq.text}
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* ── Schnell-Navigation ── */}
+      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+        {[
+          { tab: TAB.auftraege,   label: 'Aufträge',    icon: '📋' },
+          { tab: TAB.nachrichten, label: 'Nachrichten', icon: '✉️' },
+          { tab: TAB.dokumente,   label: 'Dokumente',   icon: '📂' },
+          { tab: TAB.honorare,    label: 'Honorare',    icon: '💰' },
+          { tab: TAB.beratung,    label: 'Beratung',    icon: '🧠' },
+          { tab: TAB.historie,    label: 'Historie',    icon: '📊' },
+        ].map(({ tab, label, icon }) => (
+          <button
+            key={tab}
+            onClick={() => onNavigateToTab?.(tab)}
+            style={{
+              padding: '4px 10px', borderRadius: '20px', border: '1px solid var(--border)',
+              background: 'var(--surface)', color: 'var(--text-muted)',
+              fontSize: '11px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px',
+              transition: 'all 0.15s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.color = 'var(--accent)' }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-muted)' }}
+          >
+            {icon} {label}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+export default function AuftragTab({ client, onUpdate, claudeApiKey, onUpdateClaudeApiKey, emailSignaturen = [], onedriveTokens = null, onUpdateOnedriveTokens, onNavigateToTab }) {
   const auftrag = client.auftrag ?? {}
 
   // Setup-Felder (aus client-Ebene)
@@ -980,6 +1149,9 @@ export default function AuftragTab({ client, onUpdate, claudeApiKey, onUpdateCla
 
   return (
     <div className="tab-content" style={{ display: 'flex', flexDirection: 'column', gap: '0', background: 'var(--bg)' }}>
+
+      {/* ══════════════════ 0. SCHNELLANSICHT ══════════════════ */}
+      <MandantSchnellansicht client={client} onNavigateToTab={onNavigateToTab} />
 
       {/* ══════════════════ 1. MANDATS-SETUP (Akkordeon) ══════════════════ */}
       <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', marginBottom: '14px', overflow: 'hidden' }}>
