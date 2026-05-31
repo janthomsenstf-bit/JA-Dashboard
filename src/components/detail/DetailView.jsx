@@ -71,6 +71,8 @@ export default function DetailView({
   onUpdateOnedriveTokens,
   claudeApiKey = '',
   onUpdateClaudeApiKey,
+  pendingOpenEmailId = null,
+  onClearPendingOpenEmailId,
 }) {
   const [activeTab, setActiveTab]         = useState(initialTab)
   const [showEdit, setShowEdit]           = useState(false)
@@ -235,7 +237,7 @@ export default function DetailView({
           <BeratungTab key={client.id} client={client} onUpdate={onUpdate} />
         )}
         {activeTab === 6 && (
-          <KommunikationTab key={client.id} client={client} onUpdate={onUpdate} emailVorlagen={emailVorlagen} onUpdateEmailVorlagen={onUpdateEmailVorlagen} emailSignaturen={emailSignaturen} onUpdateEmailSignaturen={onUpdateEmailSignaturen} onedriveTokens={onedriveTokens} onUpdateOnedriveTokens={onUpdateOnedriveTokens} pendingAttachments={pendingAttachments} onClearPendingAttachments={() => setPendingAttachments(null)} />
+          <KommunikationTab key={client.id} client={client} onUpdate={onUpdate} emailVorlagen={emailVorlagen} onUpdateEmailVorlagen={onUpdateEmailVorlagen} emailSignaturen={emailSignaturen} onUpdateEmailSignaturen={onUpdateEmailSignaturen} onedriveTokens={onedriveTokens} onUpdateOnedriveTokens={onUpdateOnedriveTokens} pendingAttachments={pendingAttachments} onClearPendingAttachments={() => setPendingAttachments(null)} pendingOpenEmailId={pendingOpenEmailId} onClearPendingOpenEmailId={onClearPendingOpenEmailId} />
         )}
         {activeTab === 7 && (
           <DokumenteTab

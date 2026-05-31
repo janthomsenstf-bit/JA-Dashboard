@@ -357,7 +357,7 @@ function AbsenderModal({ onClose }) {
 }
 
 // ── Haupt-Komponente ──────────────────────────────────────────────────────────
-export default function KommunikationTab({ client, onUpdate, emailVorlagen = [], onUpdateEmailVorlagen, emailSignaturen = [], onUpdateEmailSignaturen, onedriveTokens = null, onUpdateOnedriveTokens, pendingAttachments = null, onClearPendingAttachments }) {
+export default function KommunikationTab({ client, onUpdate, emailVorlagen = [], onUpdateEmailVorlagen, emailSignaturen = [], onUpdateEmailSignaturen, onedriveTokens = null, onUpdateOnedriveTokens, pendingAttachments = null, onClearPendingAttachments, pendingOpenEmailId = null, onClearPendingOpenEmailId }) {
   const komm    = client.kommunikation ?? { events: [], standardAbsender: '' }
   const events  = Array.isArray(komm.events) ? komm.events : []
   const absender = loadAbsender()
@@ -439,6 +439,17 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
     setEditorOpen(true)
     onClearPendingAttachments?.()
   }, [pendingAttachments])
+
+  // E-Mail direkt aus globaler Suche öffnen
+  useEffect(() => {
+    if (!pendingOpenEmailId) return
+    const found = events.find(e => e.id === pendingOpenEmailId)
+    if (found) {
+      setDetailEntry(found)
+      setActionForm(null)
+    }
+    onClearPendingOpenEmailId?.()
+  }, [pendingOpenEmailId])
 
   // ── Auto-Save: Editor-Entwurf in localStorage ────────────────────────────────
   useEffect(() => {

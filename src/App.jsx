@@ -232,6 +232,7 @@ export default function App() {
   const [calendarOpen,      setCalendarOpen]      = useState(() => localStorage.getItem('calendar-open') !== 'false')
   const [cmdPaletteOpen,    setCmdPaletteOpen]    = useState(false)
   const [detailInitialTab,  setDetailInitialTab]  = useState(0)
+  const [pendingOpenEmailId, setPendingOpenEmailId] = useState(null)  // E-Mail direkt aus Suche öffnen
 
   // clientsRef immer aktuell halten (für den Interval-Callback)
   useEffect(() => { clientsRef.current = clients }, [clients])
@@ -930,8 +931,13 @@ export default function App() {
         {/* ── Intelligente Suche ── */}
         <GlobalSearch
           clients={clients}
-          onSelect={id => setSelectedId(id)}
-          onEmailQuickAction={id => setSelectedId(id)}
+          onSelect={id => { setDetailInitialTab(0); setSelectedId(id) }}
+          onSelectWithTab={(id, tab) => { setDetailInitialTab(tab ?? 0); setSelectedId(id) }}
+          onOpenEmail={(id, emailId) => {
+            setPendingOpenEmailId(emailId)
+            setDetailInitialTab(6)
+            setSelectedId(id)
+          }}
         />
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -1272,6 +1278,8 @@ export default function App() {
               onUpdateClaudeApiKey={setClaudeApiKey}
               formVorlagen={formVorlagen}
               onUpdateFormVorlagen={setFormVorlagen}
+              pendingOpenEmailId={pendingOpenEmailId}
+              onClearPendingOpenEmailId={() => setPendingOpenEmailId(null)}
             />
           ) : (
             <div style={{ flex: 1, overflowY: 'auto' }}>
