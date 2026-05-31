@@ -90,7 +90,7 @@ export function searchAll(clients, query) {
           person: { name: k.name, rolle: k.rolle, email: k.email, telefon: k.telefon },
           matches: personMatches,
           weight: Math.max(...personMatches.map(m => m.weight)),
-          action: { type: 'openClient', clientId: client.id, tab: 1 },
+          action: { type: 'openClient', clientId: client.id, tab: 0 },  // TAB.mandant
         })
       }
     }
@@ -104,7 +104,7 @@ export function searchAll(clients, query) {
           person: { name: gf.name, rolle: 'Geschäftsführer' },
           matches: [{ field: 'geschaeftsfuehrer', label: 'Geschäftsführer', value: gf.name, weight: WEIGHT.geschaeftsfuehrer }],
           weight: WEIGHT.geschaeftsfuehrer,
-          action: { type: 'openClient', clientId: client.id, tab: 1 },
+          action: { type: 'openClient', clientId: client.id, tab: 0 },  // TAB.mandant
         })
       }
     }
@@ -118,7 +118,7 @@ export function searchAll(clients, query) {
           person: { name: gs.name, rolle: `Gesellschafter${gs.anteil ? ' (' + gs.anteil + ' %)' : ''}` },
           matches: [{ field: 'gesellschafter', label: 'Gesellschafter', value: gs.name, weight: WEIGHT.gesellschafter }],
           weight: WEIGHT.gesellschafter,
-          action: { type: 'openClient', clientId: client.id, tab: 1 },
+          action: { type: 'openClient', clientId: client.id, tab: 0 },  // TAB.mandant
         })
       }
     }
@@ -184,7 +184,7 @@ export function searchAll(clients, query) {
           auftrag: { id: au.id, typ: au.typ, bezeichnung: au.bezeichnung, jahr: au.jahr, status: au.status },
           matches: auMatches,
           weight: Math.max(...auMatches.map(m => m.weight)),
-          action: { type: 'openClient', clientId: client.id, tab: 13 },
+          action: { type: 'openClient', clientId: client.id, tab: 1 },  // TAB.auftraege
         })
       }
     }
@@ -225,7 +225,7 @@ export function searchAll(clients, query) {
           client,
           matches: [{ field: 'rueckfrage', label: 'Rückfrage', value: truncate(rq.text, 60), weight: WEIGHT.rueckfrage }],
           weight: WEIGHT.rueckfrage,
-          action: { type: 'openClient', clientId: client.id, tab: 2 },
+          action: { type: 'openClient', clientId: client.id, tab: 6 },  // TAB.historie
         })
         break
       }
@@ -242,7 +242,7 @@ export function searchAll(clients, query) {
             client,
             matches: [{ field: 'hinweis', label: 'Hinweis', value: truncate(text, 60), weight: WEIGHT.hinweis }],
             weight: WEIGHT.hinweis,
-            action: { type: 'openClient', clientId: client.id, tab: 2 },
+            action: { type: 'openClient', clientId: client.id, tab: 6 },  // TAB.historie
           })
           break
         }

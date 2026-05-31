@@ -1,41 +1,35 @@
 import { useState } from 'react'
 import { getMandantStatus, MANDANT_STATUS_CONFIG } from '../../utils/progress.js'
-import UebersichtTab        from './UebersichtTab.jsx'
 import StandDerArbeitTab    from './StandDerArbeitTab.jsx'
 import AuftragTab           from './AuftragTab.jsx'
-import AbschlussTab         from './AbschlussTab.jsx'
-import LohnTab              from './LohnTab.jsx'
-import FIBUTab             from './FIBUTab.jsx'
 import BeratungTab          from './BeratungTab.jsx'
 import KommunikationTab     from './KommunikationTab.jsx'
-import AuftraegeTab        from './AuftraegeTab.jsx'
-import HonorareTab         from './HonorareTab.jsx'
+import AuftraegeTab         from './AuftraegeTab.jsx'
+import HonorareTab          from './HonorareTab.jsx'
 import DokumenteTab         from './DokumenteTab.jsx'
-import EStTab               from './EStTab.jsx'
-import UStTab               from './UStTab.jsx'
-import FormularTab          from '../formular/FormularTab.jsx'
 import NewClientModal       from '../NewClientModal.jsx'
-import SusaTab              from './SUSATab.jsx'
 import MobileBottomNav      from '../MobileBottomNav.jsx'
 
-const TAB_NAV = [
-  { icon: '🏠', short: 'Dashboard'  },  // 0
-  { icon: '🗂', short: 'Stammdaten' },  // 1
-  { icon: '📊', short: 'Historie'   },  // 2
-  { icon: '📁', short: 'Abschluss'  },  // 3
-  { icon: '💼', short: 'Lohn'       },  // 4
-  { icon: '🧠', short: 'Beratung'   },  // 5
-  { icon: '✉️', short: 'Nachrichten' },  // 6
-  { icon: '📂', short: 'Dokumente'  },  // 7
-  { icon: '📊', short: 'ESt'        },  // 8
-  { icon: '🧾', short: 'USt'        },  // 9
-  { icon: '📋', short: 'Formulare'  },  // 10
-  { icon: '📊', short: 'SuSa'       },  // 11
-  { icon: '📒', short: 'FIBU'       },  // 12
-  { icon: '📋', short: 'Aufträge'   },  // 13
-  { icon: '💰', short: 'Honorare'  },  // 14
-]
+// ── Zentrale Tab-Index-Konstanten (NIE hartcoden – immer diese nutzen) ─────────
+export const TAB = {
+  mandant:     0,
+  auftraege:   1,
+  nachrichten: 2,
+  dokumente:   3,
+  honorare:    4,
+  beratung:    5,
+  historie:    6,
+}
 
+const TAB_NAV = [
+  { icon: '👤', short: 'Mandant'     },  // 0
+  { icon: '📋', short: 'Aufträge'    },  // 1
+  { icon: '✉️', short: 'Nachrichten' },  // 2
+  { icon: '📂', short: 'Dokumente'   },  // 3
+  { icon: '💰', short: 'Honorare'    },  // 4
+  { icon: '🧠', short: 'Beratung'    },  // 5
+  { icon: '📊', short: 'Historie'    },  // 6
+]
 
 export default function DetailView({
   client,
@@ -76,14 +70,13 @@ export default function DetailView({
 }) {
   const [activeTab, setActiveTab]         = useState(initialTab)
   const [showEdit, setShowEdit]           = useState(false)
-  const [pendingAttachments, setPendingAttachments] = useState(null)  // OneDrive → E-Mail
+  const [pendingAttachments, setPendingAttachments] = useState(null)
 
   function handleSendAsAttachment(attachments) {
     setPendingAttachments(attachments)
-    setActiveTab(6)  // Kommunikation-Tab öffnen
+    setActiveTab(TAB.nachrichten)
   }
 
-  // Mandantennummern als Array (ohne leere)
   const allNrs = [client.mandantennummer, client.mandantennummer2, client.mandantennummer3]
     .filter(Boolean)
 
@@ -94,7 +87,8 @@ export default function DetailView({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      {/* Detail Header */}
+
+      {/* ── Detail Header ── */}
       <div className="detail-header">
         <div className="detail-header-top">
           <div className="detail-header-info">
@@ -174,10 +168,8 @@ export default function DetailView({
           return (
             <div style={{
               display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap',
-              padding: '5px 16px',
-              borderTop: '1px solid var(--border)',
-              background: 'rgba(0,0,0,0.15)',
-              fontSize: '11px',
+              padding: '5px 16px', borderTop: '1px solid var(--border)',
+              background: 'rgba(0,0,0,0.15)', fontSize: '11px',
             }}>
               <span style={{
                 display: 'inline-flex', alignItems: 'center', gap: '4px',
@@ -187,18 +179,15 @@ export default function DetailView({
               }}>
                 {cfg.icon} {cfg.label}
               </span>
-
               {openQ > 0 && (
                 <span style={{ color: '#ef4444', fontWeight: 600 }}>● {openQ} RQ offen</span>
               )}
               {openQ === 0 && (client.rueckfragen ?? []).length > 0 && (
                 <span style={{ color: '#16a34a', fontWeight: 600 }}>✓ Alle RQ beantwortet</span>
               )}
-
               {datumItems.map((item, i) => (
                 <span key={i} style={{ color: 'var(--text-muted)' }}>· {item}</span>
               ))}
-
               {client.mandatstyp === 'intern' && (
                 <span style={{
                   marginLeft: 'auto', fontSize: '10px', fontWeight: 700,
@@ -213,98 +202,91 @@ export default function DetailView({
         })()}
       </div>
 
-      {/* Body: Inhalt + vertikale Tab-Navigation rechts */}
+      {/* ── Body: Inhalt + Tab-Navigation ── */}
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
 
-      {/* Tab content */}
-      <div style={{ flex: 1, overflowY: 'auto', minWidth: 0 }}>
-        {activeTab === 0 && (
-          <UebersichtTab key={client.id} client={client} onNavigateToTab={setActiveTab} onUpdate={onUpdate} />
-        )}
-        {activeTab === 1 && (
-          <AuftragTab key={client.id} client={client} onUpdate={onUpdate} claudeApiKey={claudeApiKey} onUpdateClaudeApiKey={onUpdateClaudeApiKey} emailSignaturen={emailSignaturen} onedriveTokens={onedriveTokens} onUpdateOnedriveTokens={onUpdateOnedriveTokens} />
-        )}
-        {activeTab === 2 && (
-          <StandDerArbeitTab key={client.id} client={client} onUpdate={onUpdate} />
-        )}
-        {activeTab === 3 && (
-          <AbschlussTab key={client.id} client={client} onUpdate={onUpdate} />
-        )}
-        {activeTab === 4 && (
-          <LohnTab key={client.id} client={client} onUpdate={onUpdate} />
-        )}
-        {activeTab === 5 && (
-          <BeratungTab key={client.id} client={client} onUpdate={onUpdate} />
-        )}
-        {activeTab === 6 && (
-          <KommunikationTab key={client.id} client={client} onUpdate={onUpdate} emailVorlagen={emailVorlagen} onUpdateEmailVorlagen={onUpdateEmailVorlagen} emailSignaturen={emailSignaturen} onUpdateEmailSignaturen={onUpdateEmailSignaturen} onedriveTokens={onedriveTokens} onUpdateOnedriveTokens={onUpdateOnedriveTokens} pendingAttachments={pendingAttachments} onClearPendingAttachments={() => setPendingAttachments(null)} pendingOpenEmailId={pendingOpenEmailId} onClearPendingOpenEmailId={onClearPendingOpenEmailId} />
-        )}
-        {activeTab === 7 && (
-          <DokumenteTab
-            key={client.id}
-            client={client}
-            onUpdate={onUpdate}
-            onNavigateToKomm={() => setActiveTab(6)}
-            onedriveTokens={onedriveTokens}
-            onUpdateOnedriveTokens={onUpdateOnedriveTokens}
-            onSendAsAttachment={handleSendAsAttachment}
-          />
-        )}
-        {activeTab === 8 && (
-          <EStTab key={client.id} client={client} onUpdate={onUpdate} onAddRueckfrage={onAddRueckfrage} />
-        )}
-        {activeTab === 9 && (
-          <UStTab
-            key={client.id}
-            client={client}
-            onUpdate={onUpdate}
-            emailVorlagen={emailVorlagen}
-            emailSignaturen={emailSignaturen}
-          />
-        )}
-        {activeTab === 10 && (
-          <FormularTab
-            key={client.id}
-            client={client}
-            onUpdate={onUpdate}
-            formVorlagen={formVorlagen}
-            onUpdateFormVorlagen={onUpdateFormVorlagen}
-            emailVorlagen={emailVorlagen}
-            emailSignaturen={emailSignaturen}
-          />
-        )}
-        {activeTab === 11 && (
-          <SusaTab key={client.id} client={client} onUpdate={onUpdate} />
-        )}
-        {activeTab === 12 && (
-          <FIBUTab key={client.id} client={client} onUpdate={onUpdate} />
-        )}
-        {activeTab === 13 && (
-          <AuftraegeTab key={client.id} client={client} onUpdate={(patch) => onUpdate(patch)} />
-        )}
-        {activeTab === 14 && (
-          <HonorareTab key={client.id} client={client} onUpdate={onUpdate} />
-        )}
-      </div>{/* end tab content */}
+        {/* Tab-Inhalt */}
+        <div style={{ flex: 1, overflowY: 'auto', minWidth: 0 }}>
 
-      {/* ── Vertikale Tab-Navigation rechts ── */}
-      <nav className="tab-nav-right" aria-label="Reiter">
-        {TAB_NAV.map((tab, i) => (
-          <button
-            key={i}
-            className={`tab-nav-btn${activeTab === i ? ' active' : ''}`}
-            onClick={() => setActiveTab(i)}
-            title={tab.short}
-          >
-            <span className="tab-nav-icon">{tab.icon}</span>
-            <span className="tab-nav-label">{tab.short}</span>
-          </button>
-        ))}
-      </nav>
+          {activeTab === TAB.mandant && (
+            <AuftragTab
+              key={client.id}
+              client={client}
+              onUpdate={onUpdate}
+              claudeApiKey={claudeApiKey}
+              onUpdateClaudeApiKey={onUpdateClaudeApiKey}
+              emailSignaturen={emailSignaturen}
+              onedriveTokens={onedriveTokens}
+              onUpdateOnedriveTokens={onUpdateOnedriveTokens}
+            />
+          )}
 
-      </div>{/* end body flex row */}
+          {activeTab === TAB.auftraege && (
+            <AuftraegeTab key={client.id} client={client} onUpdate={onUpdate} />
+          )}
 
-      {/* Mobile Bottom Navigation (nur auf ≤768px sichtbar via CSS) */}
+          {activeTab === TAB.nachrichten && (
+            <KommunikationTab
+              key={client.id}
+              client={client}
+              onUpdate={onUpdate}
+              emailVorlagen={emailVorlagen}
+              onUpdateEmailVorlagen={onUpdateEmailVorlagen}
+              emailSignaturen={emailSignaturen}
+              onUpdateEmailSignaturen={onUpdateEmailSignaturen}
+              onedriveTokens={onedriveTokens}
+              onUpdateOnedriveTokens={onUpdateOnedriveTokens}
+              pendingAttachments={pendingAttachments}
+              onClearPendingAttachments={() => setPendingAttachments(null)}
+              pendingOpenEmailId={pendingOpenEmailId}
+              onClearPendingOpenEmailId={onClearPendingOpenEmailId}
+            />
+          )}
+
+          {activeTab === TAB.dokumente && (
+            <DokumenteTab
+              key={client.id}
+              client={client}
+              onUpdate={onUpdate}
+              onNavigateToKomm={() => setActiveTab(TAB.nachrichten)}
+              onedriveTokens={onedriveTokens}
+              onUpdateOnedriveTokens={onUpdateOnedriveTokens}
+              onSendAsAttachment={handleSendAsAttachment}
+            />
+          )}
+
+          {activeTab === TAB.honorare && (
+            <HonorareTab key={client.id} client={client} onUpdate={onUpdate} />
+          )}
+
+          {activeTab === TAB.beratung && (
+            <BeratungTab key={client.id} client={client} onUpdate={onUpdate} />
+          )}
+
+          {activeTab === TAB.historie && (
+            <StandDerArbeitTab key={client.id} client={client} onUpdate={onUpdate} />
+          )}
+
+        </div>
+
+        {/* ── Vertikale Tab-Navigation rechts ── */}
+        <nav className="tab-nav-right" aria-label="Reiter">
+          {TAB_NAV.map((tab, i) => (
+            <button
+              key={i}
+              className={`tab-nav-btn${activeTab === i ? ' active' : ''}`}
+              onClick={() => setActiveTab(i)}
+              title={tab.short}
+            >
+              <span className="tab-nav-icon">{tab.icon}</span>
+              <span className="tab-nav-label">{tab.short}</span>
+            </button>
+          ))}
+        </nav>
+
+      </div>
+
+      {/* Mobile Bottom Navigation */}
       <MobileBottomNav activeTab={activeTab} setActiveTab={setActiveTab} />
 
       {/* Bearbeitungs-Modal */}

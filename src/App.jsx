@@ -590,7 +590,7 @@ export default function App() {
   }
 
   function openClientAtKomm(clientId) {
-    setDetailInitialTab(6)
+    setDetailInitialTab(2)  // TAB.nachrichten
     setSelectedId(clientId)
   }
 
@@ -935,7 +935,7 @@ export default function App() {
           onSelectWithTab={(id, tab) => { setDetailInitialTab(tab ?? 0); setSelectedId(id) }}
           onOpenEmail={(id, emailId) => {
             setPendingOpenEmailId(emailId)
-            setDetailInitialTab(6)
+            setDetailInitialTab(2)  // TAB.nachrichten
             setSelectedId(id)
           }}
         />
@@ -1235,7 +1235,7 @@ export default function App() {
             <div style={{ flex: 1, overflowY: 'auto' }}>
               <BudgetView
                 clients={clients}
-                onSelectClient={(id) => { setDetailInitialTab(14); setSelectedId(id) }}
+                onSelectClient={(id) => { setDetailInitialTab(4); setSelectedId(id) }}  // TAB.honorare
               />
             </div>
           ) : selectedClient ? (
