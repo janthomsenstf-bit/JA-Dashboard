@@ -966,6 +966,7 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
     setGraphFolderNames({})
     try {
       let tokens = onedriveTokens
+      // Noch kein Token → normaler OneDrive-Login
       if (!tokens?.accessToken) {
         try {
           tokens = await openAuthPopup()
@@ -976,10 +977,23 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
         }
       }
       const refreshTokens = (t) => onUpdateOnedriveTokens?.(t)
-      const res = await callApi('searchMails', { email, maxResults: 100 }, tokens, refreshTokens)
-      setGraphSearchResults(res.messages ?? [])
 
-      // Ordnernamen asynchron nachladen (nur einzigartige Ordner)
+      // Erst versuchen zu suchen
+      let res
+      try {
+        res = await callApi('searchMails', { email, maxResults: 100 }, tokens, refreshTokens)
+      } catch (searchErr) {
+        // 403 / Authorization_RequestDenied → Mail.Read fehlt → separates Auth-Popup
+        if (searchErr.message?.includes('403') || searchErr.message?.includes('Authorization') || searchErr.message?.includes('Mail')) {
+          setGraphSearchLoading(false)
+          setGraphSearchError('mail_read_missing')
+          return
+        }
+        throw searchErr
+      }
+
+      setGraphSearchResults(res.messages ?? [])
+      // Ordnernamen asynchron nachladen
       const folderIds = [...new Set((res.messages ?? []).map(m => m.parentFolderId).filter(Boolean))]
       for (const folderId of folderIds.slice(0, 20)) {
         callApi('getMailFolderName', { folderId }, tokens, refreshTokens)
@@ -987,12 +1001,24 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
           .catch(() => {})
       }
     } catch (err) {
-      if (err.message?.includes('Mail.Read') || err.message?.includes('MailboxNotEnabledForRESTAPI') || err.message?.includes('403')) {
-        setGraphSearchError('Fehlende Berechtigung Mail.Read – bitte OneDrive trennen und erneut verbinden.')
-      } else {
-        setGraphSearchError(err.message)
-      }
+      setGraphSearchError(err.message)
     } finally {
+      setGraphSearchLoading(false)
+    }
+  }
+
+  // Separates Auth-Popup für Mail.Read (nur wenn fehlende Berechtigung erkannt)
+  async function handleRequestMailRead() {
+    setGraphSearchError('')
+    setGraphSearchLoading(true)
+    try {
+      const tokens = await openAuthPopup('/api/mail-auth')
+      onUpdateOnedriveTokens?.(tokens)
+      setGraphSearchLoading(false)
+      // Direkt nochmal suchen mit neuen Tokens
+      await handleGraphSearch()
+    } catch (err) {
+      setGraphSearchError('Anmeldung fehlgeschlagen: ' + err.message)
       setGraphSearchLoading(false)
     }
   }
@@ -1785,12 +1811,20 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
             </div>
 
             {graphSearchError && (
-              <div style={{ fontSize: '11px', color: '#dc2626', padding: '8px 10px', background: 'rgba(220,38,38,0.06)', borderRadius: '6px', border: '1px solid rgba(220,38,38,0.2)', marginTop: '8px' }}>
-                ⚠ {graphSearchError}
-                {graphSearchError.includes('Mail.Read') && (
-                  <div style={{ marginTop: '6px' }}>
-                    <strong>Lösung:</strong> OneDrive trennen (Reiter Dokumente → ✕ Trennen) und erneut verbinden. Die neue Berechtigung Mail.Read wird dann angefragt.
-                  </div>
+              <div style={{ fontSize: '11px', padding: '10px 12px', background: graphSearchError === 'mail_read_missing' ? 'rgba(37,99,235,0.06)' : 'rgba(220,38,38,0.06)', borderRadius: '8px', border: `1px solid ${graphSearchError === 'mail_read_missing' ? 'rgba(37,99,235,0.25)' : 'rgba(220,38,38,0.2)'}`, marginTop: '8px' }}>
+                {graphSearchError === 'mail_read_missing' ? (
+                  <>
+                    <div style={{ fontWeight: 700, color: '#2563eb', marginBottom: '6px' }}>🔑 Zusätzliche Berechtigung erforderlich</div>
+                    <div style={{ color: 'var(--text)', marginBottom: '10px' }}>
+                      Um alle Outlook-Ordner zu durchsuchen, benötigt das Dashboard die Berechtigung <strong>Mail.Read</strong>.<br />
+                      Ein kurzes Anmelde-Fenster öffnet sich – einmalig bestätigen, danach funktioniert die Suche.
+                    </div>
+                    <button className="btn btn-primary btn-sm" onClick={handleRequestMailRead} style={{ fontSize: '12px' }}>
+                      🔑 Berechtigung erteilen und Suche starten
+                    </button>
+                  </>
+                ) : (
+                  <span style={{ color: '#dc2626' }}>⚠ {graphSearchError}</span>
                 )}
               </div>
             )}
