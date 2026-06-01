@@ -1988,7 +1988,7 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
                 >
                   <div style={{
                     display: 'grid',
-                    gridTemplateColumns: '130px 90px 1fr 130px 80px',
+                    gridTemplateColumns: '130px 90px 1fr 130px 80px 36px',
                     alignItems: 'center', gap: '12px',
                     padding: '10px 14px',
                   }}>
@@ -2029,6 +2029,42 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
                     }}>
                       {sbCfg.label}
                     </span>
+
+                    {/* ── Schnell-Erledigt-Button ── */}
+                    <div onClick={e => e.stopPropagation()} style={{ display: 'flex', justifyContent: 'center' }}>
+                      {entry.erledigtAm ? (
+                        <span title={`Erledigt am ${fmtDatum(entry.erledigtAm)}`}
+                          style={{ fontSize: '14px', color: '#16a34a', cursor: 'default' }}>✓</span>
+                      ) : (
+                        <button
+                          title="Als erledigt markieren"
+                          onClick={() => {
+                            const updated = events.map(e =>
+                              e.id === entry.id ? { ...e, erledigtAm: new Date().toISOString() } : e
+                            )
+                            saveKomm({ events: updated })
+                          }}
+                          style={{
+                            width: '26px', height: '26px', borderRadius: '50%', border: '1px solid var(--border)',
+                            background: 'var(--surface2)', cursor: 'pointer', display: 'flex',
+                            alignItems: 'center', justifyContent: 'center', fontSize: '13px',
+                            color: 'var(--text-muted)', transition: 'all 0.15s', flexShrink: 0,
+                          }}
+                          onMouseEnter={e => {
+                            e.currentTarget.style.background = 'rgba(22,163,74,0.12)'
+                            e.currentTarget.style.borderColor = '#16a34a'
+                            e.currentTarget.style.color = '#16a34a'
+                          }}
+                          onMouseLeave={e => {
+                            e.currentTarget.style.background = 'var(--surface2)'
+                            e.currentTarget.style.borderColor = 'var(--border)'
+                            e.currentTarget.style.color = 'var(--text-muted)'
+                          }}
+                        >
+                          ✓
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               )
