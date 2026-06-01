@@ -15,7 +15,7 @@ export default function handler(req, res) {
     client_id:     clientId,
     response_type: 'code',
     redirect_uri:  redirectUri,
-    scope:         'Files.ReadWrite offline_access User.Read Mail.Send',
+    scope:         'Files.ReadWrite offline_access User.Read Mail.Read Mail.Send',
     response_mode: 'query',
     prompt:        'select_account',
   })

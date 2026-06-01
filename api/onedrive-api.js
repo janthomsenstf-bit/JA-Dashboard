@@ -47,7 +47,7 @@ async function refreshAccessToken(refreshToken) {
       client_secret: clientSecret,
       refresh_token: refreshToken,
       grant_type:    'refresh_token',
-      scope:         'Files.ReadWrite offline_access User.Read Mail.Send',
+      scope:         'Files.ReadWrite offline_access User.Read Mail.Read Mail.Send',
     }).toString(),
   })
   const data = await res.json()
@@ -166,6 +166,72 @@ export default async function handler(req, res) {
       const d = await r.json()
       if (!r.ok) return fail(r.status, d.error?.message ?? 'getUser failed')
       return ok({ user: d })
+    }
+
+    // ── searchMails ──────────────────────────────────────────────────────────
+    // Durchsucht ALLE Outlook-Ordner nach Mails von/an einer bestimmten Adresse.
+    // Nutzt KQL-Suche der Graph API – findet auch Mails in Unterordnern.
+    if (action === 'searchMails') {
+      const { email, maxResults = 100 } = params
+      if (!email) return fail(400, 'email parameter required')
+
+      // KQL-Suche: from: ODER to: (damit auch gesendete Mails gefunden werden)
+      const select = 'id,subject,from,toRecipients,receivedDateTime,sentDateTime,bodyPreview,hasAttachments,parentFolderId,isDraft,isRead'
+      const topN   = Math.min(maxResults, 200)
+
+      // Beide Richtungen: empfangen (FROM) und gesendet (TO)
+      const [rFrom, rTo] = await Promise.all([
+        graphFetch(`${GRAPH}/me/messages?$search="${encodeURIComponent('from:' + email)}"&$top=${topN}&$select=${select}`, {}, tokens),
+        graphFetch(`${GRAPH}/me/messages?$search="${encodeURIComponent('to:' + email)}"&$top=${topN}&$select=${select}`, {}, tokens),
+      ])
+
+      const [dFrom, dTo] = await Promise.all([rFrom.json(), rTo.json()])
+
+      if (!rFrom.ok && !rTo.ok) {
+        const errMsg = dFrom.error?.message ?? dTo.error?.message ?? 'searchMails failed'
+        return fail(rFrom.status, errMsg)
+      }
+
+      // Zusammenführen und Duplikate entfernen (gleiche id)
+      const fromMsgs = rFrom.ok ? (dFrom.value ?? []) : []
+      const toMsgs   = rTo.ok   ? (dTo.value   ?? []) : []
+      const seenIds  = new Set()
+      const allMsgs  = []
+      for (const m of [...fromMsgs, ...toMsgs]) {
+        if (!seenIds.has(m.id)) { seenIds.add(m.id); allMsgs.push(m) }
+      }
+
+      // Chronologisch absteigend sortieren
+      allMsgs.sort((a, b) => {
+        const da = new Date(a.receivedDateTime ?? a.sentDateTime ?? 0)
+        const db = new Date(b.receivedDateTime ?? b.sentDateTime ?? 0)
+        return db - da
+      })
+
+      return ok({ messages: allMsgs, total: allMsgs.length })
+    }
+
+    // ── getMailMessage ───────────────────────────────────────────────────────
+    // Lädt vollständigen E-Mail-Inhalt (Body + Anhang-Metadaten) per Graph-ID.
+    if (action === 'getMailMessage') {
+      const { messageId } = params
+      if (!messageId) return fail(400, 'messageId required')
+      const select = 'id,subject,from,toRecipients,ccRecipients,receivedDateTime,sentDateTime,body,hasAttachments,attachments,parentFolderId'
+      const r = await graphFetch(`${GRAPH}/me/messages/${encodeURIComponent(messageId)}?$select=${select}&$expand=attachments($select=id,name,contentType,size)`, {}, tokens)
+      const d = await r.json()
+      if (!r.ok) return fail(r.status, d.error?.message ?? 'getMailMessage failed')
+      return ok({ message: d })
+    }
+
+    // ── getMailFolderName ────────────────────────────────────────────────────
+    // Gibt den Anzeigenamen eines Mail-Ordners zurück (für Ergebnis-Anzeige).
+    if (action === 'getMailFolderName') {
+      const { folderId } = params
+      if (!folderId) return fail(400, 'folderId required')
+      const r = await graphFetch(`${GRAPH}/me/mailFolders/${encodeURIComponent(folderId)}?$select=id,displayName,parentFolderId`, {}, tokens)
+      const d = await r.json()
+      if (!r.ok) return ok({ name: 'Unbekannter Ordner' })  // Fehler still ignorieren
+      return ok({ name: d.displayName ?? 'Unbekannter Ordner', parentFolderId: d.parentFolderId })
     }
 
     // ── listFolder ───────────────────────────────────────────────────────────

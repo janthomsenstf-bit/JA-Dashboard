@@ -425,6 +425,14 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
   const [availFolders,      setAvailFolders]      = useState([])
   const [foldersLoading,    setFoldersLoading]    = useState(false)
 
+  // Microsoft Graph Mailsuche (alle Ordner)
+  const [graphSearchOpen,    setGraphSearchOpen]    = useState(false)
+  const [graphSearchEmail,   setGraphSearchEmail]   = useState('')
+  const [graphSearchLoading, setGraphSearchLoading] = useState(false)
+  const [graphSearchResults, setGraphSearchResults] = useState(null)  // null = noch nicht gesucht
+  const [graphSearchError,   setGraphSearchError]   = useState('')
+  const [graphFolderNames,   setGraphFolderNames]   = useState({})   // folderId → displayName
+
   // OneDrive-Anhänge empfangen (von DokumenteTab via DetailView)
   useEffect(() => {
     if (!pendingAttachments?.length) return
@@ -946,6 +954,92 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
     } finally {
       setPosteingangLoad(false)
     }
+  }
+
+  // ── Microsoft Graph: Alle Ordner nach E-Mail-Adresse durchsuchen ────────────
+  async function handleGraphSearch() {
+    const email = graphSearchEmail.trim()
+    if (!email) return
+    setGraphSearchLoading(true)
+    setGraphSearchError('')
+    setGraphSearchResults(null)
+    setGraphFolderNames({})
+    try {
+      let tokens = onedriveTokens
+      if (!tokens?.accessToken) {
+        try {
+          tokens = await openAuthPopup()
+          onUpdateOnedriveTokens?.(tokens)
+        } catch (authErr) {
+          setGraphSearchError('Bitte zuerst mit Microsoft verbinden.')
+          return
+        }
+      }
+      const refreshTokens = (t) => onUpdateOnedriveTokens?.(t)
+      const res = await callApi('searchMails', { email, maxResults: 100 }, tokens, refreshTokens)
+      setGraphSearchResults(res.messages ?? [])
+
+      // Ordnernamen asynchron nachladen (nur einzigartige Ordner)
+      const folderIds = [...new Set((res.messages ?? []).map(m => m.parentFolderId).filter(Boolean))]
+      for (const folderId of folderIds.slice(0, 20)) {
+        callApi('getMailFolderName', { folderId }, tokens, refreshTokens)
+          .then(r => setGraphFolderNames(prev => ({ ...prev, [folderId]: r.name })))
+          .catch(() => {})
+      }
+    } catch (err) {
+      if (err.message?.includes('Mail.Read') || err.message?.includes('MailboxNotEnabledForRESTAPI') || err.message?.includes('403')) {
+        setGraphSearchError('Fehlende Berechtigung Mail.Read – bitte OneDrive trennen und erneut verbinden.')
+      } else {
+        setGraphSearchError(err.message)
+      }
+    } finally {
+      setGraphSearchLoading(false)
+    }
+  }
+
+  function graphMessageToEvent(msg) {
+    // Graph-Mail in das Dashboard-interne Format umwandeln
+    const fromAddr  = msg.from?.emailAddress?.address ?? ''
+    const fromName  = msg.from?.emailAddress?.name ?? ''
+    const toAddr    = (msg.toRecipients ?? []).map(r => r.emailAddress?.address).filter(Boolean).join(', ')
+    const myEmails  = new Set((client.kontakte ?? []).map(k => k.email?.toLowerCase()).filter(Boolean))
+    const isIncoming = myEmails.has(fromAddr.toLowerCase())
+    return {
+      id:          'graph_' + msg.id.slice(-16),
+      graphId:     msg.id,
+      typ:         isIncoming ? 'eingehend' : 'eingehend', // beide als eingehend – Graph liefert alles
+      betreff:     msg.subject ?? '(kein Betreff)',
+      absender:    fromName ? `${fromName} <${fromAddr}>` : fromAddr,
+      empfaenger:  toAddr,
+      erstelltAm:  msg.receivedDateTime ?? msg.sentDateTime ?? new Date().toISOString(),
+      gesendetAm:  msg.sentDateTime ?? null,
+      text:        msg.bodyPreview ?? '',
+      anlagen:     (msg.attachments ?? []).map(a => ({ name: a.name, size: a.size, contentType: a.contentType })),
+      status:      'gesendet',
+      quelle:      'graph',
+    }
+  }
+
+  function importGraphMessage(msg) {
+    const ev = graphMessageToEvent(msg)
+    // Nicht importieren wenn bereits vorhanden (gleicher betreff + datum)
+    const exists = events.some(e => e.graphId === ev.graphId || (e.betreff === ev.betreff && e.erstelltAm?.slice(0, 10) === ev.erstelltAm?.slice(0, 10)))
+    if (exists) return false
+    saveKomm({ events: [ev, ...events] })
+    return true
+  }
+
+  function importAllGraphResults() {
+    if (!graphSearchResults?.length) return
+    let imported = 0
+    const newEvents = [...events]
+    for (const msg of graphSearchResults) {
+      const ev = graphMessageToEvent(msg)
+      const exists = newEvents.some(e => e.graphId === ev.graphId || (e.betreff === ev.betreff && e.erstelltAm?.slice(0, 10) === ev.erstelltAm?.slice(0, 10)))
+      if (!exists) { newEvents.unshift(ev); imported++ }
+    }
+    if (imported > 0) saveKomm({ events: newEvents })
+    return imported
   }
 
   // ── Auto-Aktualisieren: neue E-Mails dieses Mandanten automatisch zuordnen ──
@@ -1631,6 +1725,139 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
 
         {posteingangOpen && posteingangEmails.length === 0 && !posteingangLoad && (
           <div style={{ marginTop: '8px', fontSize: '12px', color: 'var(--text-muted)' }}>Keine neuen E-Mails gefunden.</div>
+        )}
+      </div>
+
+      {/* ── Graph-Suche: Alle Outlook-Ordner durchsuchen ── */}
+      <div style={{ marginBottom: '20px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          <button
+            className={`btn btn-sm ${graphSearchOpen ? 'btn-primary' : 'btn-ghost'}`}
+            onClick={() => {
+              if (!graphSearchOpen) {
+                // E-Mail aus Kontakten vorausfüllen
+                const firstEmail = (client.kontakte ?? []).find(k => k.email)?.email ?? ''
+                setGraphSearchEmail(firstEmail)
+                setGraphSearchResults(null)
+                setGraphSearchError('')
+              }
+              setGraphSearchOpen(v => !v)
+            }}
+            style={{ fontSize: '12px' }}
+            title="Alle Outlook-Ordner nach E-Mails dieser Adresse durchsuchen"
+          >
+            🔍 Outlook-Suche (alle Ordner)
+          </button>
+          {graphSearchOpen && (
+            <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+              Durchsucht alle Ordner inkl. Unterordner über Microsoft Graph
+            </span>
+          )}
+        </div>
+
+        {graphSearchOpen && (
+          <div style={{ marginTop: '10px', padding: '12px 14px', background: 'rgba(37,99,235,0.04)', borderRadius: '10px', border: '1px solid rgba(37,99,235,0.2)' }}>
+            <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--accent)', marginBottom: '10px' }}>
+              🔍 Outlook-Suche – alle Ordner und Unterordner
+            </div>
+
+            {/* E-Mail-Adresse auswählen */}
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '8px' }}>
+              {/* Vorschläge aus Kontakten */}
+              {(client.kontakte ?? []).filter(k => k.email).map(k => (
+                <button key={k.id} className="btn btn-ghost btn-sm"
+                  onClick={() => setGraphSearchEmail(k.email)}
+                  style={{ fontSize: '11px', background: graphSearchEmail === k.email ? 'rgba(37,99,235,0.1)' : undefined, borderColor: graphSearchEmail === k.email ? 'var(--accent)' : undefined }}>
+                  {k.name ? `${k.name} – ${k.email}` : k.email}
+                </button>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: graphSearchError ? '8px' : '0' }}>
+              <input className="input" value={graphSearchEmail} onChange={e => setGraphSearchEmail(e.target.value)}
+                placeholder="E-Mail-Adresse eingeben…"
+                style={{ flex: 1, fontSize: '12px', padding: '6px 10px' }}
+                onKeyDown={e => e.key === 'Enter' && handleGraphSearch()} />
+              <button className="btn btn-primary btn-sm" onClick={handleGraphSearch}
+                disabled={graphSearchLoading || !graphSearchEmail.trim()}
+                style={{ fontSize: '12px', whiteSpace: 'nowrap' }}>
+                {graphSearchLoading ? '⏳ Suche…' : '🔍 Suchen'}
+              </button>
+            </div>
+
+            {graphSearchError && (
+              <div style={{ fontSize: '11px', color: '#dc2626', padding: '8px 10px', background: 'rgba(220,38,38,0.06)', borderRadius: '6px', border: '1px solid rgba(220,38,38,0.2)', marginTop: '8px' }}>
+                ⚠ {graphSearchError}
+                {graphSearchError.includes('Mail.Read') && (
+                  <div style={{ marginTop: '6px' }}>
+                    <strong>Lösung:</strong> OneDrive trennen (Reiter Dokumente → ✕ Trennen) und erneut verbinden. Die neue Berechtigung Mail.Read wird dann angefragt.
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Ergebnisse */}
+            {graphSearchResults !== null && (
+              <div style={{ marginTop: '10px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 700, color: graphSearchResults.length > 0 ? 'var(--accent)' : 'var(--text-muted)' }}>
+                    {graphSearchResults.length === 0 ? 'Keine Mails gefunden' : `${graphSearchResults.length} Mails gefunden`}
+                  </span>
+                  {graphSearchResults.length > 0 && (
+                    <button className="btn btn-primary btn-sm" onClick={() => {
+                      const n = importAllGraphResults()
+                      if (n > 0) setGraphSearchResults([])
+                    }} style={{ fontSize: '11px' }}>
+                      ⬇ Alle {graphSearchResults.length} importieren
+                    </button>
+                  )}
+                </div>
+
+                {graphSearchResults.length > 0 && (
+                  <div style={{ border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden', maxHeight: '360px', overflowY: 'auto' }}>
+                    {graphSearchResults.map((msg, i) => {
+                      const fromAddr = msg.from?.emailAddress?.address ?? ''
+                      const fromName = msg.from?.emailAddress?.name ?? ''
+                      const date     = msg.receivedDateTime ?? msg.sentDateTime
+                      const folder   = graphFolderNames[msg.parentFolderId] ?? (msg.parentFolderId ? '…' : '')
+                      const alreadyImported = events.some(e => e.graphId === ('graph_' + msg.id.slice(-16)))
+                      return (
+                        <div key={msg.id} style={{
+                          display: 'flex', alignItems: 'flex-start', gap: '10px',
+                          padding: '9px 12px', borderTop: i > 0 ? '1px solid var(--border)' : 'none',
+                          background: alreadyImported ? 'rgba(22,163,74,0.04)' : 'var(--surface)',
+                          opacity: alreadyImported ? 0.7 : 1,
+                        }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontWeight: 600, fontSize: '12px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {msg.subject ?? '(kein Betreff)'}
+                            </div>
+                            <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                              {fromName ? `${fromName} <${fromAddr}>` : fromAddr}
+                              {date && ` · ${new Date(date).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}`}
+                              {folder && <span style={{ marginLeft: '6px', background: 'var(--surface2)', padding: '0 5px', borderRadius: '4px', border: '1px solid var(--border)' }}>📁 {folder}</span>}
+                            </div>
+                            {msg.bodyPreview && (
+                              <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {msg.bodyPreview}
+                              </div>
+                            )}
+                          </div>
+                          {alreadyImported ? (
+                            <span style={{ fontSize: '10px', color: '#16a34a', fontWeight: 600, flexShrink: 0 }}>✓ Importiert</span>
+                          ) : (
+                            <button className="btn btn-ghost btn-sm" onClick={() => { importGraphMessage(msg); setGraphSearchResults(prev => prev.filter(m => m.id !== msg.id)) }}
+                              style={{ fontSize: '10px', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                              ⬇ Importieren
+                            </button>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         )}
       </div>
 
