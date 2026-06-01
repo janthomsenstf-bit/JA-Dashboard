@@ -71,7 +71,8 @@ export default function DetailView({
   const [activeTab, setActiveTab]             = useState(initialTab)
   const [showEdit, setShowEdit]               = useState(false)
   const [pendingAttachments, setPendingAttachments] = useState(null)
-  const [auftraegeFilterTyp, setAuftraegeFilterTyp] = useState('alle')  // für Typ-gefilterten Sprung
+  const [auftraegeFilterTyp, setAuftraegeFilterTyp] = useState('alle')
+  const [localPendingEmailId, setLocalPendingEmailId] = useState(null)  // für E-Mail-Öffnung aus Aufträge-Tab
 
   function handleSendAsAttachment(attachments) {
     setPendingAttachments(attachments)
@@ -231,7 +232,16 @@ export default function DetailView({
           )}
 
           {activeTab === TAB.auftraege && (
-            <AuftraegeTab key={client.id} client={client} onUpdate={onUpdate} initialFilterTyp={auftraegeFilterTyp} />
+            <AuftraegeTab
+              key={client.id}
+              client={client}
+              onUpdate={onUpdate}
+              initialFilterTyp={auftraegeFilterTyp}
+              onOpenEmail={(emailId) => {
+                setLocalPendingEmailId(emailId)
+                setActiveTab(TAB.nachrichten)
+              }}
+            />
           )}
 
           {activeTab === TAB.nachrichten && (
@@ -247,8 +257,11 @@ export default function DetailView({
               onUpdateOnedriveTokens={onUpdateOnedriveTokens}
               pendingAttachments={pendingAttachments}
               onClearPendingAttachments={() => setPendingAttachments(null)}
-              pendingOpenEmailId={pendingOpenEmailId}
-              onClearPendingOpenEmailId={onClearPendingOpenEmailId}
+              pendingOpenEmailId={pendingOpenEmailId ?? localPendingEmailId}
+              onClearPendingOpenEmailId={() => {
+                onClearPendingOpenEmailId?.()
+                setLocalPendingEmailId(null)
+              }}
             />
           )}
 

@@ -122,7 +122,20 @@ function migrateClient(c) {
     mandatstyp:                  c.mandatstyp                   ?? 'extern',
     manuellerStatus:             c.manuellerStatus              ?? null,
     est:                         c.est                          ?? {},
-    auftraege:                   Array.isArray(c.auftraege)      ? c.auftraege : [],
+    auftraege:                   Array.isArray(c.auftraege) ? c.auftraege.map(au => {
+      // Migration: JA-Aufträge bekommen neue Felder wenn noch nicht vorhanden
+      if (au.typ === 'jahresabschluss') {
+        return {
+          verlauf:          au.verlauf          ?? [],
+          abschlussJahr:    au.abschlussJahr    ?? (au.jahr ?? new Date().getFullYear() - 1),
+          jaWorkflowStatus: au.jaWorkflowStatus ?? 'neu',
+          jaWorkflowStatusDatum: au.jaWorkflowStatusDatum ?? null,
+          honorar:          au.honorar          ?? { typ: 'pauschale', betrag: '', notiz: '' },
+          ...au,
+        }
+      }
+      return { verlauf: au.verlauf ?? [], ...au }
+    }) : [],
     honorare:                    Array.isArray(c.honorare)       ? c.honorare  : [],
     ust:                         c.ust                           ?? {},
     struktur:                    c.struktur                      ?? null,

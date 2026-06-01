@@ -2661,6 +2661,47 @@ function EmailDetailPanel({
 
                 <div style={{ borderTop: '1px solid var(--border)', margin: '6px 0' }} />
 
+                {/* ── Auftrag zuordnen ── */}
+                {(() => {
+                  const auftraege = (client.auftraege ?? []).filter(a => a.status !== 'erledigt')
+                  if (auftraege.length === 0) return null
+                  const currentId = entry.auftragId ?? ''
+                  function assignAuftrag(auftragId) {
+                    const updatedEvents = events.map(e =>
+                      e.id === entry.id ? { ...e, auftragId: auftragId || undefined } : e
+                    )
+                    saveKomm({ events: updatedEvents })
+                    showToast(auftragId ? '✓ Auftrag zugeordnet' : '✓ Zuordnung entfernt')
+                  }
+                  return (
+                    <div style={{ padding: '0 0 4px' }}>
+                      <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '4px' }}>
+                        📋 Auftrag zuordnen
+                      </div>
+                      <select
+                        className="input"
+                        value={currentId}
+                        onChange={e => assignAuftrag(e.target.value)}
+                        style={{ width: '100%', fontSize: '11px', padding: '5px 8px', borderRadius: '7px' }}
+                      >
+                        <option value="">— Kein Auftrag —</option>
+                        {auftraege.map(a => (
+                          <option key={a.id} value={a.id}>
+                            {a.typ === 'jahresabschluss' ? (a.bezeichnung || `JA ${a.abschlussJahr ?? a.jahr}`) : (a.bezeichnung || a.typ)}{a.jahr ? ` (${a.jahr})` : ''}
+                          </option>
+                        ))}
+                      </select>
+                      {currentId && (
+                        <div style={{ fontSize: '10px', color: '#16a34a', marginTop: '3px', fontWeight: 600 }}>
+                          ✓ E-Mail ist diesem Auftrag zugeordnet
+                        </div>
+                      )}
+                    </div>
+                  )
+                })()}
+
+                <div style={{ borderTop: '1px solid var(--border)', margin: '6px 0' }} />
+
                 {!entry.erledigtAm && (
                   <button onClick={handleErledigt} style={sideBtn({ color: 'var(--green)' })}>✓ Als erledigt markieren</button>
                 )}

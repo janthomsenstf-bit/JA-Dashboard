@@ -174,7 +174,26 @@ Jeder Schritt wird einzeln committed:
   Sie sind Mandanten-spezifische Einstellungen (WELCHER Absender für diesen Mandanten?)
   und keine globale Verwaltung (die ist bereits in Nachrichten). Logisch richtig platziert.
 
+- [x] Großes Feature: JA-Auftrag zur Arbeitsakte ausgebaut
+
 ### Nächste Sitzung beginnt mit:
 P2C: FormularTab (Tab 10 alt, inzwischen unsichtbar) in Nachrichten integrieren oder entfernen.
-  Prüfen ob FormularTab noch referenziert wird, ggf. als Button in KommunikationTab einbauen.
+  Prüfen ob FormularTab noch referenziert wird.
   Danach: P3 Design-Refresh beginnen.
+
+## JA-AUFTRAG ERWEITERUNG (erledigt)
+
+### Was implementiert wurde:
+- `abschlussJahr` Feld: Prominente Eingabe welches Jahr der JA ist (z.B. 2024 in 2026 bearbeitet)
+- `jaWorkflowStatus` (11 Stufen): neu → in_bearbeitung → rückfragen_erstellt → rückfragen_versendet
+  → warte_rückmeldung → unterlagen_erhalten → entwurf_erstellt → an_mandant_gesendet
+  → warte_unterschrift → an_fa_gesendet → abgeschlossen
+- `jaWorkflowStatusDatum`: Datum wann Status zuletzt geändert wurde
+- `honorar`: { typ: pauschale/festpreis/stunden/individuell, betrag, notiz }
+- `verlauf`: Interne Ereignisliste (Notizen, Telefonate, Erinnerungen, Meilensteine)
+- Verknüpfte E-Mails im Verlauf: zeigt automatisch alle E-Mails die dem Auftrag zugeordnet wurden
+- "Diesem Auftrag zuordnen" Dropdown in E-Mail-Detail-Panel
+- E-Mail → Auftrag Sprung: "öffnen →" Button im Auftragsverlauf
+- Migration: bestehende JA-Aufträge bekommen neue Felder automatisch
+- Karten-Header: zeigt jaWorkflowStatus statt simplem offen/in_bearbeitung
+- `onOpenEmail` Callback durch DetailView → AuftraegeTab → JAVerlaufSection

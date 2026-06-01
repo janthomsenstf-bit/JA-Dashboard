@@ -19,6 +19,45 @@ export const AUFTRAGS_STATUS_CFG = {
 const MONATE = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez']
 const STATUS_ORDER = ['offen', 'in_bearbeitung', 'erledigt']
 
+// ── JA-spezifischer Workflow-Status (11 Stufen) ────────────────────────────────
+export const JA_WORKFLOW_STATUS = {
+  neu:                   { label: 'Neu',                     icon: '🆕', color: '#64748b', bg: 'rgba(100,116,139,0.1)',  border: 'rgba(100,116,139,0.3)'  },
+  in_bearbeitung:        { label: 'In Bearbeitung',          icon: '🔧', color: '#2563eb', bg: 'rgba(37,99,235,0.08)',   border: 'rgba(37,99,235,0.3)'   },
+  rueckfragen_erstellt:  { label: 'Rückfragen erstellt',     icon: '📋', color: '#7c3aed', bg: 'rgba(124,58,237,0.08)', border: 'rgba(124,58,237,0.3)'  },
+  rueckfragen_versendet: { label: 'Rückfragen versendet',    icon: '📤', color: '#0891b2', bg: 'rgba(8,145,178,0.08)',  border: 'rgba(8,145,178,0.3)'   },
+  warte_rueckmeldung:    { label: 'Warte auf Rückmeldung',   icon: '⏳', color: '#f97316', bg: 'rgba(249,115,22,0.08)', border: 'rgba(249,115,22,0.3)'  },
+  unterlagen_erhalten:   { label: 'Unterlagen erhalten',     icon: '📬', color: '#16a34a', bg: 'rgba(22,163,74,0.08)',  border: 'rgba(22,163,74,0.3)'   },
+  entwurf_erstellt:      { label: 'Entwurf erstellt',        icon: '📝', color: '#0891b2', bg: 'rgba(8,145,178,0.08)',  border: 'rgba(8,145,178,0.3)'   },
+  an_mandant_gesendet:   { label: 'An Mandanten gesendet',   icon: '📨', color: '#0f766e', bg: 'rgba(15,118,110,0.08)', border: 'rgba(15,118,110,0.3)'  },
+  warte_unterschrift:    { label: 'Warte auf Unterschrift',  icon: '✍️', color: '#d97706', bg: 'rgba(217,119,6,0.08)',  border: 'rgba(217,119,6,0.3)'   },
+  an_fa_gesendet:        { label: 'An Finanzamt gesendet',   icon: '🏛',  color: '#2563eb', bg: 'rgba(37,99,235,0.08)',  border: 'rgba(37,99,235,0.3)'   },
+  abgeschlossen:         { label: 'Abgeschlossen',           icon: '✅', color: '#16a34a', bg: 'rgba(22,163,74,0.1)',   border: 'rgba(22,163,74,0.3)'   },
+}
+
+// ── Honorar-Typen ─────────────────────────────────────────────────────────────
+const HONORAR_TYPEN = [
+  { key: 'pauschale',   label: 'Pauschale'              },
+  { key: 'festpreis',   label: 'Festpreis'              },
+  { key: 'stunden',     label: 'Stundenhonorar'         },
+  { key: 'individuell', label: 'Individuelle Vereinbarung' },
+]
+
+// ── Verlauf-Typen (interne Ereignisse am Auftrag) ─────────────────────────────
+const VERLAUF_TYPEN = {
+  notiz:       { label: 'Notiz',       icon: '📝', color: '#64748b' },
+  telefon:     { label: 'Telefonat',   icon: '📞', color: '#7c3aed' },
+  erinnerung:  { label: 'Erinnerung',  icon: '🔔', color: '#f97316' },
+  meilenstein: { label: 'Meilenstein', icon: '🏁', color: '#2563eb' },
+}
+
+function genVerlaufId() { return 'vl_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5) }
+function todayISO() { return new Date().toISOString().slice(0, 10) }
+function fmtShortDate(iso) {
+  if (!iso) return '–'
+  const d = new Date(iso.length === 10 ? iso + 'T12:00:00' : iso)
+  return `${d.getDate().toString().padStart(2,'0')}.${(d.getMonth()+1).toString().padStart(2,'0')}.${d.getFullYear()}`
+}
+
 // ── Jahresabschluss-Checkliste ──────────────────────────────────────────────────
 const JA_CHECKLISTE_ITEMS = [
   { key: 'est',         label: 'Einkommensteuererklärung',    col1: 'an Mandant gesendet', col2: 'ans Finanzamt gesendet' },
@@ -149,7 +188,7 @@ export function intervallLabel(serie) {
 
 // ── Factories ─────────────────────────────────────────────────────────────────
 function mkAuftrag(typ = 'freitext') {
-  return {
+  const base = {
     id:          'au_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
     typ,
     bezeichnung: '',
@@ -159,9 +198,20 @@ function mkAuftrag(typ = 'freitext') {
     status:      'offen',
     notiz:       '',
     hinweise:    [],
+    verlauf:     [],
     erstelltAm:  new Date().toISOString(),
     erledigtAm:  null,
   }
+  if (typ === 'jahresabschluss') {
+    return {
+      ...base,
+      abschlussJahr:         new Date().getFullYear() - 1,  // Standard: Vorjahr
+      jaWorkflowStatus:      'neu',
+      jaWorkflowStatusDatum: todayISO(),
+      honorar:               { typ: 'pauschale', betrag: '', notiz: '' },
+    }
+  }
+  return base
 }
 
 function mkSerienauftrag(typ = 'fibu') {
@@ -370,8 +420,219 @@ function JAChecklisteSection({ jaCheckliste = {}, onUpdate }) {
   )
 }
 
+// ── JA: Workflow-Status-Sektion ───────────────────────────────────────────────
+function JAStatusSection({ au, onUpdate }) {
+  const current   = au.jaWorkflowStatus ?? 'neu'
+  const currentCfg = JA_WORKFLOW_STATUS[current] ?? JA_WORKFLOW_STATUS.neu
+  const statusDatum = au.jaWorkflowStatusDatum ?? ''
+
+  function setStatus(key) {
+    onUpdate({ jaWorkflowStatus: key, jaWorkflowStatusDatum: todayISO() })
+  }
+
+  return (
+    <div style={{ marginBottom: '16px', padding: '12px 14px', background: currentCfg.bg, borderRadius: '8px', border: `1px solid ${currentCfg.border}` }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px', flexWrap: 'wrap' }}>
+        <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>Status</span>
+        <span style={{ fontSize: '12px', fontWeight: 700, color: currentCfg.color, display: 'flex', alignItems: 'center', gap: '4px' }}>
+          {currentCfg.icon} {currentCfg.label}
+        </span>
+        {statusDatum && (
+          <span style={{ fontSize: '10px', color: 'var(--text-muted)', marginLeft: 'auto' }}>seit {fmtShortDate(statusDatum)}</span>
+        )}
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+        {Object.entries(JA_WORKFLOW_STATUS).map(([key, cfg]) => (
+          <button
+            key={key}
+            onClick={() => setStatus(key)}
+            title={cfg.label}
+            style={{
+              padding: '3px 9px', borderRadius: '20px', fontSize: '10px', fontWeight: key === current ? 700 : 400, cursor: 'pointer',
+              border: `1px solid ${key === current ? cfg.color : 'var(--border)'}`,
+              background: key === current ? cfg.bg : 'transparent',
+              color: key === current ? cfg.color : 'var(--text-muted)',
+            }}
+          >
+            {cfg.icon} {cfg.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ── JA: Honorar-Sektion ───────────────────────────────────────────────────────
+function JAHonorarSection({ au, onUpdate }) {
+  const honorar = au.honorar ?? { typ: 'pauschale', betrag: '', notiz: '' }
+
+  function updateHonorar(patch) {
+    onUpdate({ honorar: { ...honorar, ...patch } })
+  }
+
+  const inputS = {
+    padding: '5px 8px', borderRadius: '6px', border: '1px solid var(--border)',
+    background: 'var(--surface2)', color: 'var(--text)', fontSize: '12px', outline: 'none',
+  }
+
+  return (
+    <div style={{ marginBottom: '14px', padding: '12px 14px', background: 'rgba(22,163,74,0.03)', borderRadius: '8px', border: '1px solid rgba(22,163,74,0.15)' }}>
+      <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#16a34a', marginBottom: '10px' }}>
+        💰 Vereinbartes Honorar
+      </div>
+      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '8px' }}>
+        <select value={honorar.typ} onChange={e => updateHonorar({ typ: e.target.value })} style={{ ...inputS, minWidth: '180px' }}>
+          {HONORAR_TYPEN.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
+        </select>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flex: 1, minWidth: '120px' }}>
+          <input
+            type="text"
+            value={honorar.betrag}
+            onChange={e => updateHonorar({ betrag: e.target.value })}
+            placeholder={honorar.typ === 'stunden' ? 'Stundensatz z. B. 150' : 'Betrag z. B. 1.500'}
+            style={{ ...inputS, flex: 1 }}
+          />
+          <span style={{ fontSize: '12px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+            {honorar.typ === 'stunden' ? '€/Std.' : '€'}
+          </span>
+        </div>
+      </div>
+      <input
+        type="text"
+        value={honorar.notiz}
+        onChange={e => updateHonorar({ notiz: e.target.value })}
+        placeholder="Notiz zur Honorarvereinbarung (optional)…"
+        style={{ ...inputS, width: '100%', boxSizing: 'border-box' }}
+      />
+    </div>
+  )
+}
+
+// ── JA: Verlauf-Sektion (interne Ereignisse + verknüpfte E-Mails) ─────────────
+function JAVerlaufSection({ au, client, onUpdate, onOpenEmail }) {
+  const verlauf    = au.verlauf ?? []
+  const [newTyp,   setNewTyp]  = useState('notiz')
+  const [newText,  setNewText] = useState('')
+  const [newDatum, setNewDatum] = useState(todayISO)
+  const [showForm, setShowForm] = useState(false)
+
+  // Verknüpfte E-Mails: Events aus globalem Kommunikation mit auftragId === au.id
+  const linkedEmails = (client?.kommunikation?.events ?? [])
+    .filter(ev => ev.auftragId === au.id)
+    .sort((a, b) => new Date(b.erstelltAm ?? b.gesendetAm ?? 0) - new Date(a.erstelltAm ?? a.gesendetAm ?? 0))
+
+  // Zusammenführen und chronologisch sortieren
+  const allItems = [
+    ...verlauf.map(v => ({ ...v, _source: 'intern' })),
+    ...linkedEmails.map(ev => ({
+      id: ev.id, _source: 'email',
+      datum: ev.erstelltAm ?? ev.gesendetAm ?? '',
+      text: `${ev.typ === 'eingehend' ? '📨 Empfangen' : '📤 Gesendet'}: ${ev.betreff ?? '(kein Betreff)'}`,
+      absender: ev.absender ?? ev.empfaenger,
+      eventId: ev.id,
+    })),
+  ].sort((a, b) => new Date(b.datum) - new Date(a.datum))
+
+  function addVerlauf() {
+    if (!newText.trim()) return
+    const item = {
+      id: genVerlaufId(),
+      typ: newTyp,
+      datum: newDatum,
+      text: newText.trim(),
+      erstelltAm: new Date().toISOString(),
+    }
+    onUpdate({ verlauf: [item, ...verlauf] })
+    setNewText(''); setNewDatum(todayISO()); setShowForm(false)
+  }
+
+  function deleteVerlauf(id) {
+    onUpdate({ verlauf: verlauf.filter(v => v.id !== id) })
+  }
+
+  const inputS = { padding: '5px 8px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text)', fontSize: '12px', outline: 'none' }
+
+  return (
+    <div style={{ marginTop: '14px', borderTop: '1px solid var(--border)', paddingTop: '14px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+        <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>
+          📊 Verlauf & Nachrichten
+        </span>
+        <span style={{ fontSize: '10px', color: 'var(--text-muted)', background: 'var(--surface2)', padding: '1px 7px', borderRadius: '10px', border: '1px solid var(--border)' }}>
+          {allItems.length}
+        </span>
+        <button
+          onClick={() => setShowForm(v => !v)}
+          style={{ marginLeft: 'auto', padding: '3px 10px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer', border: '1px solid var(--border)', background: showForm ? 'var(--surface2)' : 'transparent', color: 'var(--text-muted)' }}
+        >
+          {showForm ? '✕' : '+ Eintrag'}
+        </button>
+      </div>
+
+      {/* Neuer Eintrag */}
+      {showForm && (
+        <div style={{ display: 'flex', gap: '6px', marginBottom: '10px', padding: '10px', background: 'var(--surface2)', borderRadius: '8px', border: '1px solid var(--border)', flexWrap: 'wrap' }}>
+          <select value={newTyp} onChange={e => setNewTyp(e.target.value)} style={{ ...inputS, minWidth: '130px' }}>
+            {Object.entries(VERLAUF_TYPEN).map(([k, v]) => <option key={k} value={k}>{v.icon} {v.label}</option>)}
+          </select>
+          <input type="date" value={newDatum} onChange={e => setNewDatum(e.target.value)} style={{ ...inputS, width: '130px' }} />
+          <input value={newText} onChange={e => setNewText(e.target.value)}
+            placeholder="Eintrag beschreiben…"
+            style={{ ...inputS, flex: 1, minWidth: '200px' }}
+            onKeyDown={e => e.key === 'Enter' && addVerlauf()} />
+          <button onClick={addVerlauf} disabled={!newText.trim()}
+            style={{ padding: '5px 14px', borderRadius: '6px', border: 'none', background: 'var(--accent)', color: '#fff', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
+            ✓
+          </button>
+        </div>
+      )}
+
+      {/* Verlaufsliste */}
+      {allItems.length === 0 ? (
+        <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontStyle: 'italic', padding: '8px 0' }}>
+          Noch keine Einträge. Erste Aktivitäten werden hier dokumentiert.
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          {allItems.map(item => {
+            const isEmail = item._source === 'email'
+            const cfg = isEmail ? { icon: '✉️', color: '#16a34a' } : (VERLAUF_TYPEN[item.typ] ?? VERLAUF_TYPEN.notiz)
+            return (
+              <div key={item.id} style={{
+                display: 'flex', alignItems: 'flex-start', gap: '8px', padding: '7px 10px',
+                borderRadius: '6px', background: isEmail ? 'rgba(22,163,74,0.04)' : 'var(--surface2)',
+                border: `1px solid ${isEmail ? 'rgba(22,163,74,0.2)' : 'var(--border)'}`, fontSize: '12px',
+              }}>
+                <span style={{ fontSize: '14px', flexShrink: 0, marginTop: '1px' }}>{cfg.icon}</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.text}</div>
+                  {isEmail && item.absender && (
+                    <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '1px' }}>{item.absender}</div>
+                  )}
+                  <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>{fmtShortDate(item.datum)}</div>
+                </div>
+                {isEmail && onOpenEmail ? (
+                  <button onClick={() => onOpenEmail(item.eventId)}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '10px', color: '#16a34a', padding: '2px 6px', borderRadius: '4px', border: '1px solid rgba(22,163,74,0.3)', flexShrink: 0, whiteSpace: 'nowrap' }}>
+                    öffnen →
+                  </button>
+                ) : !isEmail ? (
+                  <button onClick={() => deleteVerlauf(item.id)}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '12px', padding: '0 2px', flexShrink: 0 }}
+                    onMouseEnter={e => e.currentTarget.style.color = '#ef4444'}
+                    onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}>✕</button>
+                ) : null}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Einzelauftrag-Karte ───────────────────────────────────────────────────────
-function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete }) {
+function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete, client, onOpenEmail }) {
   const typCfg    = AUFTRAGS_TYP_CFG[au.typ]      ?? AUFTRAGS_TYP_CFG.freitext
   const statusCfg = AUFTRAGS_STATUS_CFG[au.status] ?? AUFTRAGS_STATUS_CFG.offen
   const frist     = fmtFrist(au.frist)
@@ -392,7 +653,11 @@ function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete }) {
     setNewH('')
   }
 
-  const titel = au.bezeichnung || `${typCfg.label}${au.monat ? ' ' + MONATE[au.monat - 1] : ''} ${au.jahr}`
+  const isJA     = au.typ === 'jahresabschluss'
+  const jaWfsCfg = isJA ? (JA_WORKFLOW_STATUS[au.jaWorkflowStatus ?? 'neu'] ?? JA_WORKFLOW_STATUS.neu) : null
+  // Für JA: Abschluss-Jahr prominent im Titel zeigen
+  const titel = au.bezeichnung
+    || (isJA && au.abschlussJahr ? `Jahresabschluss ${au.abschlussJahr}` : `${typCfg.label}${au.monat ? ' ' + MONATE[au.monat - 1] : ''} ${au.jahr}`)
 
   return (
     <div style={{
@@ -413,27 +678,60 @@ function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete }) {
             <span style={{ fontSize: '10px', color: typCfg.color, fontWeight: 600, background: typCfg.bg, padding: '1px 6px', borderRadius: '8px', border: `1px solid ${typCfg.border}` }}>
               {typCfg.label}
             </span>
-            {au.monat
+            {/* JA: Workflow-Status statt einfachem "Jahr" */}
+            {isJA && jaWfsCfg && (
+              <span style={{ fontSize: '10px', fontWeight: 600, color: jaWfsCfg.color, background: jaWfsCfg.bg, padding: '1px 6px', borderRadius: '8px', border: `1px solid ${jaWfsCfg.border}` }}>
+                {jaWfsCfg.icon} {jaWfsCfg.label}
+              </span>
+            )}
+            {!isJA && (au.monat
               ? <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{MONATE[au.monat - 1]} {au.jahr}</span>
               : au.jahr && <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{au.jahr}</span>
-            }
+            )}
             {frist && <span style={{ fontSize: '10px', fontWeight: 600, color: frist.color }}>⏰ {frist.text}</span>}
-            {offeneH > 0 && <span style={{ fontSize: '10px', color: '#f97316', fontWeight: 600 }}>· {offeneH} Hinweis{offeneH !== 1 ? 'e' : ''} offen</span>}
+            {offeneH > 0 && <span style={{ fontSize: '10px', color: '#f97316', fontWeight: 600 }}>· {offeneH} offen</span>}
           </div>
         </div>
-        <button onClick={cycleStatus} title="Status wechseln"
-          style={{ fontSize: '10px', fontWeight: 700, padding: '3px 10px', borderRadius: '20px', border: `1px solid ${statusCfg.border}`, background: statusCfg.bg, color: statusCfg.color, cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap' }}>
-          {statusCfg.icon} {statusCfg.label}
-        </button>
+        {/* JA: kein cycle-Button (Workflow-Status hat eigene 11-Stufen-Auswahl unten) */}
+        {!isJA && (
+          <button onClick={cycleStatus} title="Status wechseln"
+            style={{ fontSize: '10px', fontWeight: 700, padding: '3px 10px', borderRadius: '20px', border: `1px solid ${statusCfg.border}`, background: statusCfg.bg, color: statusCfg.color, cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap' }}>
+            {statusCfg.icon} {statusCfg.label}
+          </button>
+        )}
         <span style={{ color: 'var(--text-muted)', fontSize: '10px', flexShrink: 0 }}>{expanded ? '▲' : '▼'}</span>
       </div>
 
       {expanded && (
         <div style={{ borderTop: `1px solid ${typCfg.color}33`, padding: '14px 16px' }}>
+
+          {/* ── JA: Abschluss-Jahr + Workflow-Status prominent oben ── */}
+          {isJA && (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px', padding: '10px 14px', background: 'rgba(37,99,235,0.04)', borderRadius: '8px', border: '1px solid rgba(37,99,235,0.15)', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <span style={{ ...labelStyle, color: '#2563eb' }}>📅 Jahresabschluss für Jahr</span>
+                  <input
+                    type="number"
+                    value={au.abschlussJahr ?? new Date().getFullYear() - 1}
+                    min="2010" max="2035"
+                    onChange={e => onUpdate({ abschlussJahr: parseInt(e.target.value) || au.abschlussJahr })}
+                    style={{ ...inputStyle, width: '80px', fontWeight: 700, fontSize: '18px', textAlign: 'center', color: '#2563eb', borderColor: 'rgba(37,99,235,0.3)', background: 'rgba(37,99,235,0.06)' }}
+                  />
+                </div>
+                <div style={{ flex: 1, minWidth: '180px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <span style={{ ...labelStyle }}>Geplante Fertigstellung</span>
+                  <input type="date" value={au.frist ?? ''} onChange={e => onUpdate({ frist: e.target.value })} style={inputStyle} />
+                </div>
+              </div>
+              <JAStatusSection au={au} onUpdate={onUpdate} />
+            </>
+          )}
+
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: '10px', marginBottom: '12px' }}>
             <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
               <span style={labelStyle}>Bezeichnung</span>
-              <input value={au.bezeichnung} onChange={e => onUpdate({ bezeichnung: e.target.value })} placeholder="z. B. Lohn Juni 2026" style={inputStyle} />
+              <input value={au.bezeichnung} onChange={e => onUpdate({ bezeichnung: e.target.value })} placeholder={isJA ? `Jahresabschluss ${au.abschlussJahr ?? ''}` : 'z. B. Lohn Juni 2026'} style={inputStyle} />
             </label>
             <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
               <span style={labelStyle}>Typ</span>
@@ -442,21 +740,25 @@ function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete }) {
               </select>
             </label>
             <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              <span style={labelStyle}>Jahr</span>
+              <span style={labelStyle}>{isJA ? 'Bearbeitungsjahr' : 'Jahr'}</span>
               <input type="number" value={au.jahr} min="2020" max="2035"
                 onChange={e => onUpdate({ jahr: parseInt(e.target.value) || au.jahr })} style={inputStyle} />
             </label>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              <span style={labelStyle}>Monat</span>
-              <select value={au.monat ?? ''} onChange={e => onUpdate({ monat: e.target.value ? parseInt(e.target.value) : null })} style={inputStyle}>
-                <option value="">— keiner —</option>
-                {MONATE.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
-              </select>
-            </label>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              <span style={labelStyle}>Interne Frist</span>
-              <input type="date" value={au.frist} onChange={e => onUpdate({ frist: e.target.value })} style={inputStyle} />
-            </label>
+            {!isJA && (
+              <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <span style={labelStyle}>Monat</span>
+                <select value={au.monat ?? ''} onChange={e => onUpdate({ monat: e.target.value ? parseInt(e.target.value) : null })} style={inputStyle}>
+                  <option value="">— keiner —</option>
+                  {MONATE.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+                </select>
+              </label>
+            )}
+            {!isJA && (
+              <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <span style={labelStyle}>Interne Frist</span>
+                <input type="date" value={au.frist} onChange={e => onUpdate({ frist: e.target.value })} style={inputStyle} />
+              </label>
+            )}
           </div>
 
           <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: au.emailRef ? '8px' : '14px' }}>
@@ -509,12 +811,16 @@ function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete }) {
             </div>
           </div>
 
-          {/* ── Jahresabschluss-Checkliste (nur für Typ jahresabschluss) ── */}
-          {au.typ === 'jahresabschluss' && (
-            <JAChecklisteSection
-              jaCheckliste={au.jaCheckliste}
-              onUpdate={patch => onUpdate(patch)}
-            />
+          {/* ── Jahresabschluss-spezifische Sektionen ── */}
+          {isJA && (
+            <>
+              <JAHonorarSection au={au} onUpdate={onUpdate} />
+              <JAChecklisteSection
+                jaCheckliste={au.jaCheckliste}
+                onUpdate={patch => onUpdate(patch)}
+              />
+              <JAVerlaufSection au={au} client={client} onUpdate={onUpdate} onOpenEmail={onOpenEmail} />
+            </>
           )}
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '14px', paddingTop: '10px', borderTop: '1px solid var(--border)' }}>
@@ -952,7 +1258,7 @@ function SerieErstellenPanel({ onCreate, onClose }) {
 }
 
 // ── Hauptkomponente ───────────────────────────────────────────────────────────
-export default function AuftraegeTab({ client, onUpdate, initialFilterTyp = 'alle' }) {
+export default function AuftraegeTab({ client, onUpdate, initialFilterTyp = 'alle', onOpenEmail }) {
   const auftraege = client.auftraege ?? []
 
   // Aufteilen in Einzel- und Serienaufträge
@@ -1162,6 +1468,8 @@ export default function AuftraegeTab({ client, onUpdate, initialFilterTyp = 'all
               onExpand={setExpandedId}
               onUpdate={patch => updateAuftrag(au.id, patch)}
               onDelete={() => deleteAuftrag(au.id)}
+              client={client}
+              onOpenEmail={onOpenEmail}
             />
           ))}
         </div>
