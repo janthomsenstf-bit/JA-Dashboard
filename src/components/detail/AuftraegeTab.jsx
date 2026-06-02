@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import JAComposePanel from './JAComposePanel.jsx'
 
 // ── Konfiguration (auch von AuftragKontextPanel genutzt) ──────────────────────
 export const AUFTRAGS_TYP_CFG = {
@@ -509,12 +510,13 @@ function JAHonorarSection({ au, onUpdate }) {
 }
 
 // ── JA: Verlauf-Sektion (interne Ereignisse + verknüpfte E-Mails) ─────────────
-function JAVerlaufSection({ au, client, onUpdate, onOpenEmail }) {
+function JAVerlaufSection({ au, client, onUpdate, onOpenEmail, onUpdateClient, emailVorlagen, emailSignaturen, onedriveTokens, onUpdateOnedriveTokens }) {
   const verlauf    = au.verlauf ?? []
   const [newTyp,   setNewTyp]  = useState('notiz')
   const [newText,  setNewText] = useState('')
   const [newDatum, setNewDatum] = useState(todayISO)
   const [showForm, setShowForm] = useState(false)
+  const [showCompose, setShowCompose] = useState(false)
 
   // Verknüpfte E-Mails: Events aus globalem Kommunikation mit auftragId === au.id
   const linkedEmails = (client?.kommunikation?.events ?? [])
@@ -554,20 +556,51 @@ function JAVerlaufSection({ au, client, onUpdate, onOpenEmail }) {
 
   return (
     <div style={{ marginTop: '14px', borderTop: '1px solid var(--border)', paddingTop: '14px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px', flexWrap: 'wrap' }}>
         <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>
           📊 Verlauf & Nachrichten
         </span>
         <span style={{ fontSize: '10px', color: 'var(--text-muted)', background: 'var(--surface2)', padding: '1px 7px', borderRadius: '10px', border: '1px solid var(--border)' }}>
           {allItems.length}
         </span>
-        <button
-          onClick={() => setShowForm(v => !v)}
-          style={{ marginLeft: 'auto', padding: '3px 10px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer', border: '1px solid var(--border)', background: showForm ? 'var(--surface2)' : 'transparent', color: 'var(--text-muted)' }}
-        >
-          {showForm ? '✕' : '+ Eintrag'}
-        </button>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: '6px' }}>
+          {/* Neue E-Mail Button */}
+          <button
+            onClick={() => { setShowCompose(v => !v); if (!showCompose) setShowForm(false) }}
+            style={{
+              padding: '3px 10px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer', fontWeight: 600,
+              border: `1px solid ${showCompose ? 'var(--accent)' : 'rgba(8,145,178,0.3)'}`,
+              background: showCompose ? 'rgba(8,145,178,0.1)' : 'rgba(8,145,178,0.05)',
+              color: showCompose ? 'var(--accent)' : '#0891b2',
+            }}
+          >
+            {showCompose ? '✕' : '✉️ Neue E-Mail'}
+          </button>
+          {/* Interner Eintrag Button */}
+          <button
+            onClick={() => { setShowForm(v => !v); if (!showForm) setShowCompose(false) }}
+            style={{ padding: '3px 10px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer', border: '1px solid var(--border)', background: showForm ? 'var(--surface2)' : 'transparent', color: 'var(--text-muted)' }}
+          >
+            {showForm ? '✕' : '+ Eintrag'}
+          </button>
+        </div>
       </div>
+
+      {/* Compose-Panel */}
+      {showCompose && (
+        <div style={{ marginBottom: '12px' }}>
+          <JAComposePanel
+            au={au}
+            client={client}
+            emailVorlagen={emailVorlagen}
+            emailSignaturen={emailSignaturen}
+            onedriveTokens={onedriveTokens}
+            onUpdateOnedriveTokens={onUpdateOnedriveTokens}
+            onUpdateClient={onUpdateClient}
+            onClose={() => setShowCompose(false)}
+          />
+        </div>
+      )}
 
       {/* Neuer Eintrag */}
       {showForm && (
@@ -632,7 +665,7 @@ function JAVerlaufSection({ au, client, onUpdate, onOpenEmail }) {
 }
 
 // ── Einzelauftrag-Karte ───────────────────────────────────────────────────────
-function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete, client, onOpenEmail }) {
+function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete, client, onOpenEmail, onUpdateClient, emailVorlagen, emailSignaturen, onedriveTokens, onUpdateOnedriveTokens }) {
   const typCfg    = AUFTRAGS_TYP_CFG[au.typ]      ?? AUFTRAGS_TYP_CFG.freitext
   const statusCfg = AUFTRAGS_STATUS_CFG[au.status] ?? AUFTRAGS_STATUS_CFG.offen
   const frist     = fmtFrist(au.frist)
@@ -819,7 +852,14 @@ function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete, client, onOpe
                 jaCheckliste={au.jaCheckliste}
                 onUpdate={patch => onUpdate(patch)}
               />
-              <JAVerlaufSection au={au} client={client} onUpdate={onUpdate} onOpenEmail={onOpenEmail} />
+              <JAVerlaufSection
+                au={au} client={client} onUpdate={onUpdate} onOpenEmail={onOpenEmail}
+                onUpdateClient={onUpdateClient}
+                emailVorlagen={emailVorlagen}
+                emailSignaturen={emailSignaturen}
+                onedriveTokens={onedriveTokens}
+                onUpdateOnedriveTokens={onUpdateOnedriveTokens}
+              />
             </>
           )}
 
@@ -1258,7 +1298,7 @@ function SerieErstellenPanel({ onCreate, onClose }) {
 }
 
 // ── Hauptkomponente ───────────────────────────────────────────────────────────
-export default function AuftraegeTab({ client, onUpdate, initialFilterTyp = 'alle', onOpenEmail }) {
+export default function AuftraegeTab({ client, onUpdate, initialFilterTyp = 'alle', onOpenEmail, emailVorlagen = [], emailSignaturen = [], onedriveTokens = null, onUpdateOnedriveTokens }) {
   const auftraege = client.auftraege ?? []
 
   // Aufteilen in Einzel- und Serienaufträge
@@ -1470,6 +1510,11 @@ export default function AuftraegeTab({ client, onUpdate, initialFilterTyp = 'all
               onDelete={() => deleteAuftrag(au.id)}
               client={client}
               onOpenEmail={onOpenEmail}
+              onUpdateClient={onUpdate}
+              emailVorlagen={emailVorlagen}
+              emailSignaturen={emailSignaturen}
+              onedriveTokens={onedriveTokens}
+              onUpdateOnedriveTokens={onUpdateOnedriveTokens}
             />
           ))}
         </div>

@@ -2308,6 +2308,8 @@ function EmailDetailPanel({
       cc: replyCC, bcc: '',
       erstelltAm: now, gesendetAm: now,
       anlagen: replyAttachments.map(a => ({ name: a.name, size: a.size })),
+      // auftragId vom Original übernehmen → Antwort erscheint automatisch im Auftrag
+      ...(entry.auftragId ? { auftragId: entry.auftragId } : {}),
     }
     const smtpAtts = replyAttachments.map(a => ({ filename: a.name, content: a.data, contentType: a.type }))
     try {

@@ -241,6 +241,10 @@ export default function DetailView({
                 setLocalPendingEmailId(emailId)
                 setActiveTab(TAB.nachrichten)
               }}
+              emailVorlagen={emailVorlagen}
+              emailSignaturen={emailSignaturen}
+              onedriveTokens={onedriveTokens}
+              onUpdateOnedriveTokens={onUpdateOnedriveTokens}
             />
           )}
 
