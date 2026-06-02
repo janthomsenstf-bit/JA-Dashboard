@@ -110,6 +110,21 @@ Zu erledigen:
 
 ---
 
+## CHATGPT-INTEGRATION (Backlog)
+
+Analyse abgeschlossen (2026-06). Empfehlung: SINNVOLL.
+
+Implementierungsplan wenn gewünscht:
+- Neue utils/aiClient.js mit provider-Abstraktion (claude | openai)
+- Einstellung in Stammdaten/API-Key-Bereich: Anbieter + Key + Modell
+- Beide Anbieter nutzen gleiche Prompts, nur API-Endpoint + Auth unterschiedlich
+- Aufwand: ~2-3 Stunden
+- Priorität: mittelhoch – nach Design-Refresh
+
+Anwendungsfälle: Diktat → Notiz/E-Mail, Rückfragen, Übersetzungen, Zusammenfassungen
+
+---
+
 ## PRIORITÄT 3 – Größere Umbauten (nach P1+P2 erledigt)
 
 ### 3A – Design-Refresh

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import JAComposePanel from './JAComposePanel.jsx'
 
 // ── Konfiguration (auch von AuftragKontextPanel genutzt) ──────────────────────
@@ -57,6 +57,207 @@ function fmtShortDate(iso) {
   if (!iso) return '–'
   const d = new Date(iso.length === 10 ? iso + 'T12:00:00' : iso)
   return `${d.getDate().toString().padStart(2,'0')}.${(d.getMonth()+1).toString().padStart(2,'0')}.${d.getFullYear()}`
+}
+
+const NOTIZ_API_KEY = 'sda-claude-api-key'
+function loadNotizApiKey() { return (localStorage.getItem(NOTIZ_API_KEY) ?? '').replace(/\s/g, '') }
+
+async function callClaudeNotiz(apiKey, systemPrompt, userText) {
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+    body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 800, system: systemPrompt, messages: [{ role: 'user', content: userText }] }),
+  })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  const data = await res.json()
+  let raw = data.content?.[0]?.text ?? ''
+  const m = raw.match(/\{[\s\S]*\}/)
+  if (m) return JSON.parse(m[0])
+  return { text: raw.trim() }
+}
+
+// ── Diktat-Widget für Notizfelder ─────────────────────────────────────────────
+function NotizDiktatWidget({ value, onChange, placeholder = 'Interne Anmerkungen…', rows = 2, inputStyle }) {
+  const [isRecording,  setIsRecording]  = useState(false)
+  const [transcript,   setTranscript]   = useState('')
+  const [interimText,  setInterimText]  = useState('')
+  const [kiLoading,    setKiLoading]    = useState(false)
+  const [kiDone,       setKiDone]       = useState(false)
+  const [error,        setError]        = useState('')
+  const [showDiktat,   setShowDiktat]   = useState(false)
+  const recRef         = useRef(null)
+  const transcriptRef  = useRef('')
+
+  const SpeechRec = typeof window !== 'undefined' && (window.SpeechRecognition || window.webkitSpeechRecognition)
+  const voiceOk   = !!SpeechRec
+
+  function setTBoth(val) {
+    const v = typeof val === 'function' ? val(transcriptRef.current) : val
+    transcriptRef.current = v; setTranscript(v)
+  }
+
+  useEffect(() => () => recRef.current?.stop(), [])
+
+  function toggleRecording() {
+    if (isRecording) {
+      recRef.current?.stop(); setIsRecording(false); setInterimText('')
+      if (transcriptRef.current.trim()) processTranscript(transcriptRef.current)
+      return
+    }
+    const apiKey = loadNotizApiKey()
+    if (!apiKey) { setError('Claude API-Schlüssel fehlt (Stammdaten → ⚙️).'); return }
+    if (!SpeechRec) { setError('Spracherkennung nicht verfügbar (Chrome).'); return }
+    setTBoth(''); setInterimText(''); setKiDone(false); setError('')
+    const rec = new SpeechRec()
+    rec.lang = 'de-DE'; rec.continuous = true; rec.interimResults = true
+    rec.onresult = e => {
+      let fin = '', itr = ''
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        if (e.results[i].isFinal) fin += e.results[i][0].transcript + ' '
+        else itr += e.results[i][0].transcript
+      }
+      if (fin) setTBoth(t => t.trimEnd() ? t.trimEnd() + ' ' + fin : fin)
+      setInterimText(itr)
+    }
+    rec.onend   = () => { setIsRecording(false); setInterimText('') }
+    rec.onerror = () => { setIsRecording(false); setInterimText(''); setError('Mikrofon-Fehler.') }
+    rec.start(); recRef.current = rec; setIsRecording(true)
+  }
+
+  async function processTranscript(text, formatHint = 'fliesstext') {
+    const apiKey = loadNotizApiKey()
+    if (!apiKey || !text.trim()) return
+    setKiLoading(true); setError('')
+    const systemPrompts = {
+      fliesstext:   'Du bist Steuerberater-Assistent. Wandle gesprochenen Text in einen sauberen, professionellen internen Arbeitsvermerk um. Kein Briefformat, keine Anrede. Klarer Fließtext mit sinnvollen Absätzen. Antworte NUR mit JSON: {"text":"..."}',
+      stichpunkte:  'Du bist Steuerberater-Assistent. Wandle gesprochenen Text in prägnante Stichpunkte um (mit • Zeichen). Antworte NUR mit JSON: {"text":"..."}',
+      todo:         'Du bist Steuerberater-Assistent. Wandle gesprochenen Text in eine To-do-Liste um (mit ☐ Zeichen). Antworte NUR mit JSON: {"text":"..."}',
+      rueckfrage:   'Du bist Steuerberater-Assistent. Wandle gesprochenen Text in nummerierte Rückfragen an den Mandanten um (höflich, klar). Antworte NUR mit JSON: {"text":"..."}',
+    }
+    try {
+      const result = await callClaudeNotiz(apiKey, systemPrompts[formatHint] ?? systemPrompts.fliesstext, text.trim())
+      const newText = result.text ?? text
+      // An bestehende Notiz anhängen (mit Trenner wenn bereits Text vorhanden)
+      const existing = (value ?? '').trim()
+      const now = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
+      const prefix = existing ? `${existing}\n\n[${now}] ` : `[${now}] `
+      onChange(prefix + newText)
+      setKiDone(true)
+    } catch (err) {
+      setError('KI-Fehler: ' + err.message)
+    } finally {
+      setKiLoading(false)
+    }
+  }
+
+  const labelS = { fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+      {/* Label + Diktat-Button */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <span style={labelS}>Notiz / Kontext</span>
+        <button
+          onClick={() => setShowDiktat(v => !v)}
+          title="Diktat: Gedanken sprechen → KI erstellt sauberen Vermerk"
+          style={{
+            padding: '2px 8px', borderRadius: '10px', fontSize: '10px', fontWeight: 600, cursor: 'pointer',
+            border: `1px solid ${showDiktat ? 'rgba(239,68,68,0.4)' : 'rgba(8,145,178,0.3)'}`,
+            background: showDiktat ? 'rgba(239,68,68,0.08)' : 'rgba(8,145,178,0.06)',
+            color: showDiktat ? '#ef4444' : '#0891b2',
+            animation: isRecording ? 'pulseDiktat 1.2s ease-in-out infinite' : 'none',
+          }}
+        >
+          {isRecording ? '⏹ Aufnahme…' : '🎤 Diktat'}
+        </button>
+      </div>
+
+      {/* Diktat-Bereich (ausklappbar) */}
+      {showDiktat && (
+        <div style={{ padding: '10px 12px', borderRadius: '8px', background: isRecording ? 'rgba(239,68,68,0.05)' : 'rgba(8,145,178,0.04)', border: `1px solid ${isRecording ? 'rgba(239,68,68,0.25)' : 'rgba(8,145,178,0.2)'}`, marginBottom: '4px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: transcript || isRecording || kiLoading ? '8px' : '0' }}>
+            <button
+              onClick={toggleRecording}
+              disabled={kiLoading}
+              style={{
+                width: '36px', height: '36px', borderRadius: '50%', border: 'none', flexShrink: 0,
+                background: isRecording ? '#ef4444' : '#0891b2', color: '#fff', fontSize: '16px', cursor: 'pointer',
+                boxShadow: isRecording ? '0 0 0 5px rgba(239,68,68,0.2)' : 'none',
+                animation: isRecording ? 'pulseDiktat 1.2s ease-in-out infinite' : 'none',
+                transition: 'all 0.2s',
+              }}
+            >
+              {isRecording ? '⏹' : kiLoading ? '⏳' : '🎤'}
+            </button>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: '11px', fontWeight: 700, color: isRecording ? '#ef4444' : kiLoading ? '#7c3aed' : '#0891b2' }}>
+                {isRecording ? '● Aufnahme läuft – sprechen Sie frei…' : kiLoading ? 'KI strukturiert Notiz…' : 'Diktat starten'}
+              </div>
+              <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '1px' }}>
+                {isRecording ? 'Stopp → automatische Aufbereitung' : 'Gedanken / Gesprächsnotizen einfach sprechen'}
+              </div>
+            </div>
+            {transcript.trim() && !isRecording && !kiLoading && (
+              <button
+                onClick={() => processTranscript(transcript, 'fliesstext')}
+                style={{ padding: '4px 10px', borderRadius: '6px', border: 'none', background: '#0891b2', color: '#fff', fontSize: '10px', fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}
+              >
+                ✨ Verarbeiten
+              </button>
+            )}
+          </div>
+
+          {/* Transcript */}
+          {(transcript || isRecording) && (
+            <div style={{ padding: '6px 10px', borderRadius: '6px', background: 'var(--surface)', border: '1px solid var(--border)', fontSize: '11px', lineHeight: 1.6, marginBottom: '8px', color: 'var(--text)', minHeight: '32px' }}>
+              {transcript}
+              {interimText && <span style={{ opacity: 0.5, fontStyle: 'italic', color: '#ef4444' }}>{transcript ? ' ' : ''}{interimText}</span>}
+            </div>
+          )}
+
+          {/* Format-Buttons (nach Aufnahme) */}
+          {transcript.trim() && !isRecording && !kiLoading && (
+            <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
+              {[
+                { key: 'fliesstext',  label: '📝 Fließtext' },
+                { key: 'stichpunkte', label: '• Stichpunkte' },
+                { key: 'todo',        label: '☐ To-do-Liste' },
+                { key: 'rueckfrage',  label: '❓ Rückfragen' },
+              ].map(f => (
+                <button key={f.key} onClick={() => processTranscript(transcript, f.key)}
+                  style={{ padding: '3px 10px', borderRadius: '20px', fontSize: '10px', cursor: 'pointer', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-muted)', transition: 'all 0.15s' }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = '#0891b2'; e.currentTarget.style.color = '#0891b2' }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-muted)' }}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {kiDone && (
+            <div style={{ fontSize: '10px', color: '#16a34a', marginTop: '6px', fontWeight: 600 }}>
+              ✓ Diktat wurde zur Notiz hinzugefügt
+            </div>
+          )}
+          {error && (
+            <div style={{ fontSize: '10px', color: '#ef4444', marginTop: '6px' }}>⚠ {error}</div>
+          )}
+        </div>
+      )}
+
+      {/* Notiz-Textarea */}
+      <textarea value={value ?? ''} rows={rows} onChange={e => onChange(e.target.value)}
+        placeholder={placeholder} style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.5 }} />
+
+      <style>{`
+        @keyframes pulseDiktat {
+          0%,100% { box-shadow: 0 0 0 5px rgba(239,68,68,0.2); }
+          50%      { box-shadow: 0 0 0 10px rgba(239,68,68,0.04); }
+        }
+      `}</style>
+    </div>
+  )
 }
 
 // ── Jahresabschluss-Checkliste ──────────────────────────────────────────────────
@@ -794,11 +995,15 @@ function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete, client, onOpe
             )}
           </div>
 
-          <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: au.emailRef ? '8px' : '14px' }}>
-            <span style={labelStyle}>Notiz / Kontext</span>
-            <textarea value={au.notiz} rows={2} onChange={e => onUpdate({ notiz: e.target.value })}
-              placeholder="Interne Anmerkungen zum Auftrag…" style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.5 }} />
-          </label>
+          <div style={{ marginBottom: au.emailRef ? '8px' : '14px' }}>
+            <NotizDiktatWidget
+              value={au.notiz}
+              onChange={val => onUpdate({ notiz: val })}
+              placeholder="Interne Anmerkungen zum Auftrag…"
+              rows={2}
+              inputStyle={inputStyle}
+            />
+          </div>
 
           {/* E-Mail-Quelle (wenn aus E-Mail erstellt) */}
           {au.emailRef && (
@@ -991,11 +1196,15 @@ function SerienAuftragCard({ au, expanded, onExpand, onUpdate, onDelete }) {
             )}
           </div>
 
-          <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '14px' }}>
-            <span style={labelStyle}>Notiz / Kontext</span>
-            <textarea value={au.notiz ?? ''} rows={2} onChange={e => onUpdate({ notiz: e.target.value })}
-              placeholder="Interne Anmerkungen…" style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.5 }} />
-          </label>
+          <div style={{ marginBottom: '14px' }}>
+            <NotizDiktatWidget
+              value={au.notiz ?? ''}
+              onChange={val => onUpdate({ notiz: val })}
+              placeholder="Interne Anmerkungen…"
+              rows={2}
+              inputStyle={inputStyle}
+            />
+          </div>
 
           {/* ── Instanzen-Zeitstrahl ── */}
           <div style={{ borderTop: '1px solid var(--border)', paddingTop: '12px' }}>
