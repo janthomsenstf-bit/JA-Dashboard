@@ -45,10 +45,18 @@ const HONORAR_TYPEN = [
 
 // ── Verlauf-Typen (interne Ereignisse am Auftrag) ─────────────────────────────
 const VERLAUF_TYPEN = {
-  notiz:       { label: 'Notiz',       icon: '📝', color: '#64748b' },
-  telefon:     { label: 'Telefonat',   icon: '📞', color: '#7c3aed' },
-  erinnerung:  { label: 'Erinnerung',  icon: '🔔', color: '#f97316' },
-  meilenstein: { label: 'Meilenstein', icon: '🏁', color: '#2563eb' },
+  rueckfragen:       { label: 'Rückfragen gesendet',    icon: '📤', color: '#2563eb' },
+  erinnerung:        { label: 'Erinnerung gesendet',    icon: '🔔', color: '#f97316' },
+  antwort:           { label: 'Antwort / Unterlagen erhalten', icon: '💬', color: '#16a34a' },
+  vollstaendigkeit:  { label: 'Vollständigkeitserklärung erhalten', icon: '📋', color: '#0f766e' },
+  telefonat:         { label: 'Telefonat / Persönlich', icon: '📞', color: '#7c3aed' },
+  ste_mandant:       { label: 'Steuererklärung an Mandant gesendet', icon: '✍️', color: '#0f766e' },
+  ste_fa:            { label: 'Steuererklärung ans Finanzamt', icon: '🏛', color: '#0891b2' },
+  ebilanz:           { label: 'E-Bilanz versendet',     icon: '📊', color: '#2563eb' },
+  offenlegung:       { label: 'Offenlegung eingereicht', icon: '📰', color: '#7c3aed' },
+  rechnung:          { label: 'Rechnung erstellt',      icon: '🧾', color: '#16a34a' },
+  notiz:             { label: 'Interne Notiz',          icon: '📝', color: '#64748b' },
+  meilenstein:       { label: 'Meilenstein',            icon: '🏁', color: '#2563eb' },
 }
 
 function genVerlaufId() { return 'vl_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5) }
@@ -713,10 +721,9 @@ function JAHonorarSection({ au, onUpdate }) {
 // ── JA: Verlauf-Sektion (interne Ereignisse + verknüpfte E-Mails) ─────────────
 function JAVerlaufSection({ au, client, onUpdate, onOpenEmail, onUpdateClient, emailVorlagen, emailSignaturen, onedriveTokens, onUpdateOnedriveTokens }) {
   const verlauf    = au.verlauf ?? []
-  const [newTyp,   setNewTyp]  = useState('notiz')
-  const [newText,  setNewText] = useState('')
-  const [newDatum, setNewDatum] = useState(todayISO)
-  const [showForm, setShowForm] = useState(false)
+  const [selectedTyp, setSelectedTyp] = useState(null)
+  const [newNotiz,    setNewNotiz]    = useState('')
+  const [newDatum,    setNewDatum]    = useState(todayISO)
   const [showCompose, setShowCompose] = useState(false)
 
   // Verknüpfte E-Mails: Events aus globalem Kommunikation mit auftragId === au.id
@@ -736,60 +743,62 @@ function JAVerlaufSection({ au, client, onUpdate, onOpenEmail, onUpdateClient, e
     })),
   ].sort((a, b) => new Date(b.datum) - new Date(a.datum))
 
+  function handleQuickAction(typ) {
+    if (selectedTyp === typ) { setSelectedTyp(null); return }
+    setSelectedTyp(typ)
+    setNewDatum(todayISO())
+    setNewNotiz('')
+  }
+
   function addVerlauf() {
-    if (!newText.trim()) return
+    if (!selectedTyp) return
+    const cfg = VERLAUF_TYPEN[selectedTyp]
     const item = {
       id: genVerlaufId(),
-      typ: newTyp,
+      typ: selectedTyp,
       datum: newDatum,
-      text: newText.trim(),
+      text: newNotiz.trim() || cfg.label,
       erstelltAm: new Date().toISOString(),
     }
     onUpdate({ verlauf: [item, ...verlauf] })
-    setNewText(''); setNewDatum(todayISO()); setShowForm(false)
+    setNewNotiz(''); setNewDatum(todayISO()); setSelectedTyp(null)
   }
 
   function deleteVerlauf(id) {
     onUpdate({ verlauf: verlauf.filter(v => v.id !== id) })
   }
 
-  const inputS = { padding: '5px 8px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text)', fontSize: '12px', outline: 'none' }
+  const iStyle = { padding: '6px 10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text)', fontSize: '12px', outline: 'none' }
 
   return (
     <div style={{ marginTop: '14px', borderTop: '1px solid var(--border)', paddingTop: '14px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px', flexWrap: 'wrap' }}>
+
+      {/* ═══════ HEADER ═══════ */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' }}>
         <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>
-          📊 Verlauf & Nachrichten
+          📊 Verlauf & Aktivitäten
         </span>
         <span style={{ fontSize: '10px', color: 'var(--text-muted)', background: 'var(--surface2)', padding: '1px 7px', borderRadius: '10px', border: '1px solid var(--border)' }}>
           {allItems.length}
         </span>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: '6px' }}>
-          {/* Neue E-Mail Button */}
+        <div style={{ marginLeft: 'auto' }}>
           <button
-            onClick={() => { setShowCompose(v => !v); if (!showCompose) setShowForm(false) }}
+            onClick={() => { setShowCompose(v => !v); if (!showCompose) setSelectedTyp(null) }}
             style={{
-              padding: '3px 10px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer', fontWeight: 600,
+              padding: '4px 12px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer', fontWeight: 600,
               border: `1px solid ${showCompose ? 'var(--accent)' : 'rgba(8,145,178,0.3)'}`,
               background: showCompose ? 'rgba(8,145,178,0.1)' : 'rgba(8,145,178,0.05)',
               color: showCompose ? 'var(--accent)' : '#0891b2',
             }}
           >
-            {showCompose ? '✕' : '✉️ Neue E-Mail'}
-          </button>
-          {/* Interner Eintrag Button */}
-          <button
-            onClick={() => { setShowForm(v => !v); if (!showForm) setShowCompose(false) }}
-            style={{ padding: '3px 10px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer', border: '1px solid var(--border)', background: showForm ? 'var(--surface2)' : 'transparent', color: 'var(--text-muted)' }}
-          >
-            {showForm ? '✕' : '+ Eintrag'}
+            {showCompose ? '✕ Schließen' : '✉️ Neue E-Mail'}
           </button>
         </div>
       </div>
 
-      {/* Compose-Panel */}
+      {/* ═══════ COMPOSE-PANEL ═══════ */}
       {showCompose && (
-        <div style={{ marginBottom: '12px' }}>
+        <div style={{ marginBottom: '14px' }}>
           <JAComposePanel
             au={au}
             client={client}
@@ -803,59 +812,150 @@ function JAVerlaufSection({ au, client, onUpdate, onOpenEmail, onUpdateClient, e
         </div>
       )}
 
-      {/* Neuer Eintrag */}
-      {showForm && (
-        <div style={{ display: 'flex', gap: '6px', marginBottom: '10px', padding: '10px', background: 'var(--surface2)', borderRadius: '8px', border: '1px solid var(--border)', flexWrap: 'wrap' }}>
-          <select value={newTyp} onChange={e => setNewTyp(e.target.value)} style={{ ...inputS, minWidth: '130px' }}>
-            {Object.entries(VERLAUF_TYPEN).map(([k, v]) => <option key={k} value={k}>{v.icon} {v.label}</option>)}
-          </select>
-          <input type="date" value={newDatum} onChange={e => setNewDatum(e.target.value)} style={{ ...inputS, width: '130px' }} />
-          <input value={newText} onChange={e => setNewText(e.target.value)}
-            placeholder="Eintrag beschreiben…"
-            style={{ ...inputS, flex: 1, minWidth: '200px' }}
-            onKeyDown={e => e.key === 'Enter' && addVerlauf()} />
-          <button onClick={addVerlauf} disabled={!newText.trim()}
-            style={{ padding: '5px 14px', borderRadius: '6px', border: 'none', background: 'var(--accent)', color: '#fff', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
-            ✓
-          </button>
+      {/* ═══════ AKTIVITÄT ERFASSEN ═══════ */}
+      <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflow: 'hidden', marginBottom: '14px' }}>
+        <div style={{ padding: '10px 14px', background: 'var(--surface)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ fontWeight: 700, fontSize: '13px' }}>➕ Aktivität erfassen</span>
+          <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>— per Schnellauswahl</span>
         </div>
-      )}
 
-      {/* Verlaufsliste */}
+        {/* Schnellauswahl-Chips */}
+        <div style={{ padding: '12px 14px', background: 'var(--surface)' }}>
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+            {Object.entries(VERLAUF_TYPEN).map(([key, cfg]) => {
+              const active = selectedTyp === key
+              return (
+                <button key={key} onClick={() => handleQuickAction(key)} style={{
+                  display: 'flex', alignItems: 'center', gap: '5px',
+                  padding: '6px 14px', borderRadius: '20px', cursor: 'pointer',
+                  border: `1px solid ${active ? cfg.color : 'var(--border)'}`,
+                  background: active ? cfg.color + '18' : 'var(--surface2)',
+                  color: active ? cfg.color : 'var(--text-secondary)',
+                  fontSize: '12px', fontWeight: active ? 600 : 400,
+                  transition: 'all 0.15s',
+                  boxShadow: active ? `0 0 0 2px ${cfg.color}25` : 'none',
+                }}>
+                  {cfg.icon} {cfg.label}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Inline-Formular (erscheint bei Schnellauswahl-Klick) */}
+        {selectedTyp && (() => {
+          const cfg = VERLAUF_TYPEN[selectedTyp]
+          return (
+            <div style={{ padding: '14px', background: cfg.color + '06', borderTop: '1px solid var(--border)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                <span style={{ fontSize: '14px' }}>{cfg.icon}</span>
+                <span style={{ fontWeight: 700, fontSize: '13px', color: cfg.color }}>{cfg.label}</span>
+              </div>
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: '12px' }}>
+                <div>
+                  <label style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '3px', display: 'block' }}>Datum</label>
+                  <input type="date" value={newDatum} onChange={e => setNewDatum(e.target.value)} style={iStyle} />
+                </div>
+                <div style={{ flex: 1, minWidth: '200px' }}>
+                  <label style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '3px', display: 'block' }}>Notiz (optional)</label>
+                  <textarea
+                    value={newNotiz}
+                    onChange={e => setNewNotiz(e.target.value)}
+                    placeholder="z.B. Mandant telefonisch informiert, Unterlagen teilweise erhalten…"
+                    rows={3}
+                    style={{ ...iStyle, width: '100%', resize: 'vertical', whiteSpace: 'pre-wrap', minHeight: '60px', boxSizing: 'border-box' }}
+                    onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) addVerlauf() }}
+                    autoFocus
+                  />
+                  <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '3px' }}>Strg+Enter zum Speichern · Notiz leer → Label wird verwendet</div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button onClick={addVerlauf}
+                  style={{ padding: '7px 18px', borderRadius: '6px', border: 'none', background: cfg.color, color: '#fff', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
+                  ✓ Hinzufügen
+                </button>
+                <button onClick={() => setSelectedTyp(null)}
+                  style={{ padding: '7px 14px', borderRadius: '6px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-muted)', fontSize: '12px', cursor: 'pointer' }}>
+                  ✕ Abbrechen
+                </button>
+              </div>
+            </div>
+          )
+        })()}
+      </div>
+
+      {/* ═══════ TIMELINE ═══════ */}
       {allItems.length === 0 ? (
-        <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontStyle: 'italic', padding: '8px 0' }}>
-          Noch keine Einträge. Erste Aktivitäten werden hier dokumentiert.
+        <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '12px', padding: '20px 12px', background: 'var(--surface2)', borderRadius: 'var(--radius)', border: '2px dashed var(--border)' }}>
+          <div style={{ fontSize: '24px', marginBottom: '6px', opacity: 0.4 }}>🗓</div>
+          Noch keine Aktivitäten erfasst.<br />
+          <span style={{ fontSize: '11px', opacity: 0.7 }}>Erste Aktivität oben hinzufügen.</span>
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-          {allItems.map(item => {
+        <div>
+          {allItems.map((item, idx) => {
             const isEmail = item._source === 'email'
             const cfg = isEmail ? { icon: '✉️', color: '#16a34a' } : (VERLAUF_TYPEN[item.typ] ?? VERLAUF_TYPEN.notiz)
+            const isLast = idx === allItems.length - 1
+
             return (
-              <div key={item.id} style={{
-                display: 'flex', alignItems: 'flex-start', gap: '8px', padding: '7px 10px',
-                borderRadius: '6px', background: isEmail ? 'rgba(22,163,74,0.04)' : 'var(--surface2)',
-                border: `1px solid ${isEmail ? 'rgba(22,163,74,0.2)' : 'var(--border)'}`, fontSize: '12px',
-              }}>
-                <span style={{ fontSize: '14px', flexShrink: 0, marginTop: '1px' }}>{cfg.icon}</span>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.text}</div>
-                  {isEmail && item.absender && (
-                    <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '1px' }}>{item.absender}</div>
-                  )}
-                  <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>{fmtShortDate(item.datum)}</div>
+              <div key={item.id} style={{ display: 'flex', gap: '0', position: 'relative' }}>
+                {/* Timeline-Dot + Linie */}
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '36px', flexShrink: 0 }}>
+                  <div style={{
+                    width: '30px', height: '30px', borderRadius: '50%', zIndex: 1, flexShrink: 0,
+                    background: 'var(--bg, #0f1117)',
+                    border: `2px solid ${cfg.color}`,
+                    boxShadow: `0 0 0 2px ${cfg.color}20`,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px',
+                  }}>
+                    {cfg.icon}
+                  </div>
+                  {!isLast && <div style={{ width: '2px', flex: 1, background: 'var(--border)', marginTop: '2px', minHeight: '12px' }} />}
                 </div>
-                {isEmail && onOpenEmail ? (
-                  <button onClick={() => onOpenEmail(item.eventId)}
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '10px', color: '#16a34a', padding: '2px 6px', borderRadius: '4px', border: '1px solid rgba(22,163,74,0.3)', flexShrink: 0, whiteSpace: 'nowrap' }}>
-                    öffnen →
-                  </button>
-                ) : !isEmail ? (
-                  <button onClick={() => deleteVerlauf(item.id)}
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '12px', padding: '0 2px', flexShrink: 0 }}
-                    onMouseEnter={e => e.currentTarget.style.color = '#ef4444'}
-                    onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}>✕</button>
-                ) : null}
+
+                {/* Inhalt */}
+                <div style={{
+                  flex: 1, marginLeft: '8px', marginBottom: isLast ? '0' : '10px',
+                  background: isEmail ? 'rgba(22,163,74,0.04)' : 'var(--surface2)',
+                  border: `1px solid ${isEmail ? 'rgba(22,163,74,0.2)' : 'var(--border)'}`,
+                  borderRadius: '8px', overflow: 'hidden',
+                }}>
+                  <div style={{ padding: '7px 10px', display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--surface)', borderBottom: item.text && !isEmail && item.text !== (VERLAUF_TYPEN[item.typ]?.label) ? '1px solid var(--border)' : 'none' }}>
+                    <span style={{
+                      fontSize: '10px', fontWeight: 700, color: cfg.color,
+                      background: cfg.color + '15', padding: '2px 8px', borderRadius: '10px',
+                    }}>
+                      {isEmail ? (item.text?.startsWith('📨') ? 'Empfangen' : 'Gesendet') : (VERLAUF_TYPEN[item.typ]?.label ?? 'Eintrag')}
+                    </span>
+                    <span style={{ fontSize: '11px', color: 'var(--text-muted)', flex: 1 }}>
+                      {fmtShortDate(item.datum)}
+                    </span>
+                    {isEmail && onOpenEmail ? (
+                      <button onClick={() => onOpenEmail(item.eventId)}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '10px', color: '#16a34a', padding: '2px 6px', borderRadius: '4px', border: '1px solid rgba(22,163,74,0.3)', flexShrink: 0, whiteSpace: 'nowrap' }}>
+                        öffnen →
+                      </button>
+                    ) : !isEmail ? (
+                      <button onClick={() => deleteVerlauf(item.id)}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '12px', padding: '0 2px', flexShrink: 0 }}
+                        onMouseEnter={e => e.currentTarget.style.color = '#ef4444'}
+                        onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}>✕</button>
+                    ) : null}
+                  </div>
+                  {/* Notiz / E-Mail-Text */}
+                  {isEmail ? (
+                    <div style={{ padding: '5px 10px', fontSize: '11px' }}>
+                      <div style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.text}</div>
+                      {item.absender && <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '1px' }}>{item.absender}</div>}
+                    </div>
+                  ) : item.text && item.text !== (VERLAUF_TYPEN[item.typ]?.label) ? (
+                    <div style={{ padding: '5px 10px', fontSize: '11px', color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>
+                      {item.text}
+                    </div>
+                  ) : null}
+                </div>
               </div>
             )
           })}
