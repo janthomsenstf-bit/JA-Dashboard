@@ -1516,8 +1516,18 @@ export default function AuftraegeTab({ client, onUpdate, initialFilterTyp = 'all
 
   const [filterStatus,       setFilterStatus]       = useState('aktiv')
   const [filterTyp,          setFilterTyp]          = useState(initialFilterTyp)
-  const [expandedId,         setExpandedId]         = useState(null)
+  const [expandedId,         setExpandedId]         = useState(() => {
+    try { return localStorage.getItem(`sda-expanded-auftrag_${client.id}`) ?? null } catch { return null }
+  })
   const [quickTyp,           setQuickTyp]           = useState('lohn')
+
+  // Geöffneten Auftrag persistieren
+  useEffect(() => {
+    try {
+      if (expandedId) localStorage.setItem(`sda-expanded-auftrag_${client.id}`, expandedId)
+      else localStorage.removeItem(`sda-expanded-auftrag_${client.id}`)
+    } catch {}
+  }, [expandedId, client.id])
   const [showBatch,          setShowBatch]          = useState(false)
   const [showSerieErstellen, setShowSerieErstellen] = useState(false)
 

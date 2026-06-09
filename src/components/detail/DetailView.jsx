@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { getMandantStatus, MANDANT_STATUS_CONFIG } from '../../utils/progress.js'
+import { saveSessionState } from '../../utils/sessionPersistence.js'
 import StandDerArbeitTab    from './StandDerArbeitTab.jsx'
 import AuftragTab           from './AuftragTab.jsx'
 import BeratungTab          from './BeratungTab.jsx'
@@ -73,6 +74,20 @@ export default function DetailView({
   const [pendingAttachments, setPendingAttachments] = useState(null)
   const [auftraegeFilterTyp, setAuftraegeFilterTyp] = useState('alle')
   const [localPendingEmailId, setLocalPendingEmailId] = useState(null)  // für E-Mail-Öffnung aus Aufträge-Tab
+
+  // Wenn sich initialTab ändert (z.B. durch Suche, Navigation), Tab synchronisieren
+  const prevInitialTab = useRef(initialTab)
+  useEffect(() => {
+    if (initialTab !== prevInitialTab.current) {
+      setActiveTab(initialTab)
+      prevInitialTab.current = initialTab
+    }
+  }, [initialTab])
+
+  // Aktiven Tab persistieren (für Session-Wiederherstellung)
+  useEffect(() => {
+    saveSessionState({ selectedId: client.id, detailInitialTab: activeTab, activeTab })
+  }, [activeTab, client.id])
 
   function handleSendAsAttachment(attachments) {
     setPendingAttachments(attachments)

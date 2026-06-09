@@ -17,6 +17,7 @@ import StartseiteHome        from './components/dashboard/StartseiteHome.jsx'
 import CommandPalette        from './components/CommandPalette.jsx'
 import { supabase } from './utils/supabaseClient.js'
 import { cloudLoadAll, cloudSave, cloudSaveNow, cloudSnapshot, migrateLocalStorageToCloud } from './utils/cloudStorage.js'
+import { saveSessionState, loadSessionState, clearSessionState } from './utils/sessionPersistence.js'
 import LoginPage from './components/LoginPage.jsx'
 import FormularPage from './components/formular/FormularPage.jsx'
 import BudgetView   from './components/BudgetView.jsx'
@@ -192,7 +193,8 @@ export default function App() {
   const [dataLoading,   setDataLoading]   = useState(false)
   const [migrationData, setMigrationData] = useState(null)       // localStorage-Daten gefunden nach Login
   const [clients, setClients]             = useState([])
-  const [selectedId, setSelectedId]       = useState(null)
+  const _restoredSession                  = useRef(loadSessionState())
+  const [selectedId, setSelectedId]       = useState(_restoredSession.current?.selectedId ?? null)
   const [filter, setFilter]               = useState('all')
   const [mandatsTypFilter, setMandatsTypFilter] = useState('all')
   const [search, setSearch]               = useState('')
@@ -244,7 +246,7 @@ export default function App() {
   const headerMenuRef                            = useRef(null)
   const [calendarOpen,      setCalendarOpen]      = useState(() => localStorage.getItem('calendar-open') !== 'false')
   const [cmdPaletteOpen,    setCmdPaletteOpen]    = useState(false)
-  const [detailInitialTab,  setDetailInitialTab]  = useState(0)
+  const [detailInitialTab,  setDetailInitialTab]  = useState(_restoredSession.current?.detailInitialTab ?? 0)
   const [pendingOpenEmailId, setPendingOpenEmailId] = useState(null)  // E-Mail direkt aus Suche öffnen
 
   // clientsRef immer aktuell halten (für den Interval-Callback)
@@ -306,6 +308,30 @@ export default function App() {
     })
   }, [authUser])
 
+  // ── Session-Wiederherstellung validieren (nach Daten-Laden) ─────────────────
+  const sessionValidatedRef = useRef(false)
+  useEffect(() => {
+    if (dataLoading || sessionValidatedRef.current) return
+    sessionValidatedRef.current = true
+    const restored = _restoredSession.current
+    if (!restored?.selectedId) return
+    // Spezial-IDs (__todo__, __budget__, __bot_inbox__) sind immer gültig
+    if (typeof restored.selectedId === 'string' && restored.selectedId.startsWith('__')) {
+      setBackupToast('✓ Letzte Ansicht wiederhergestellt')
+      setTimeout(() => setBackupToast(''), 3000)
+      return
+    }
+    // Prüfen ob der Mandant noch existiert
+    const found = clients.find(c => c.id === restored.selectedId)
+    if (!found) {
+      setSelectedId(null)
+      setDetailInitialTab(0)
+    } else {
+      setBackupToast(`✓ ${found.name} wiederhergestellt`)
+      setTimeout(() => setBackupToast(''), 3000)
+    }
+  }, [dataLoading, clients])
+
   // ── Cloud speichern (debounced, 1,5s) ────────────────────────────────────────
   useEffect(() => {
     if (!authUser || dataLoading) return
@@ -320,6 +346,8 @@ export default function App() {
     const handleBeforeUnload = () => {
       // Synchron in localStorage schreiben – das klappt immer, auch beim Tab-Schließen
       try { localStorage.setItem(STORAGE_KEY, JSON.stringify(clientsRef.current)) } catch {}
+      // Navigations-Zustand sichern
+      saveSessionState(sessionStateRef.current)
       // Async Cloud-Save mit keepalive (Browser bricht es nicht ab)
       cloudSaveNow(STORAGE_KEY, clientsRef.current).catch(() => {})
     }
@@ -381,6 +409,24 @@ export default function App() {
     if (headerMenuOpen) document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [headerMenuOpen])
+
+  // ── Session-Persistenz: Navigations-Zustand merken ─────────────────────────
+  const sessionStateRef = useRef({ selectedId, detailInitialTab })
+  useEffect(() => {
+    sessionStateRef.current = { selectedId, detailInitialTab }
+    saveSessionState({ selectedId, detailInitialTab })
+  }, [selectedId, detailInitialTab])
+
+  // Beim Tab-Wechsel / Minimieren sofort speichern
+  useEffect(() => {
+    function handleVisibility() {
+      if (document.visibilityState === 'hidden') {
+        saveSessionState(sessionStateRef.current)
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => document.removeEventListener('visibilitychange', handleVisibility)
+  }, [])
 
   // ── CMD+K Command Palette ────────────────────────────────────────────────────
   useEffect(() => {
@@ -585,9 +631,11 @@ export default function App() {
   }
 
   async function handleLogout() {
+    clearSessionState()
     await supabase.auth.signOut()
     setClients([])
     setTermine([])
+    setSelectedId(null)
     setMigrationData(null)
   }
 

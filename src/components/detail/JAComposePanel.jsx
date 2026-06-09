@@ -4,6 +4,7 @@
  */
 import { useState, useRef, useEffect } from 'react'
 import { sendMailGraph, openAuthPopup } from '../../utils/onedriveClient.js'
+import { saveJAComposeDraft, loadJAComposeDraft, clearJAComposeDraft } from '../../utils/sessionPersistence.js'
 
 const ABSENDER_KEY   = 'kommunikation-absender'
 const APIKEY_STORAGE = 'sda-claude-api-key'
@@ -106,31 +107,52 @@ export default function JAComposePanel({
     return 'Sehr geehrte Damen und Herren,'
   })()
 
+  // ── Draft-Wiederherstellung ──────────────────────────────────────────────
+  const _draft = loadJAComposeDraft(client.id, au.id)
+  const draftSaveRef = useRef(null)
+
   // ── States ─────────────────────────────────────────────────────────────────
-  const [to,           setTo]           = useState(defaultTo)
-  const [from,         setFrom]         = useState(defaultFrom)
-  const [subject,      setSubject]      = useState('')
+  const [to,           setTo]           = useState(_draft?.to ?? defaultTo)
+  const [from,         setFrom]         = useState(_draft?.from ?? defaultFrom)
+  const [subject,      setSubject]      = useState(_draft?.subject ?? '')
   const [body,         setBody]         = useState(() => {
+    if (_draft?.body) return _draft.body
     const sig = aktiveSig(defaultSigId)
     return sig ? SIG_SEP + sig.text : ''
   })
-  const [sigId,        setSigId]        = useState(defaultSigId)
-  const [attachments,  setAttachments]  = useState([])
+  const [sigId,        setSigId]        = useState(_draft?.sigId ?? defaultSigId)
+  const [attachments,  setAttachments]  = useState([])  // Dateien nicht persistiert
   const [sending,      setSending]      = useState(false)
-  const [sendMode,     setSendMode]     = useState('smtp')
+  const [sendMode,     setSendMode]     = useState(_draft?.sendMode ?? 'smtp')
   const [error,        setError]        = useState('')
   const [success,      setSuccess]      = useState(false)
+  const [draftRestored, setDraftRestored] = useState(!!(
+    _draft && (_draft.subject || _draft.body?.replace(SIG_SEP, '').trim() || _draft.to !== defaultTo)
+  ))
 
   // Diktat-States
   const [isRecording,   setIsRecording]   = useState(false)
-  const [transcript,    setTranscript]    = useState('')
+  const [transcript,    setTranscript]    = useState(_draft?.transcript ?? '')
   const [interimText,   setInterimText]   = useState('')
   const [kiLoading,     setKiLoading]     = useState(false)
-  const [kiDone,        setKiDone]        = useState(false)  // E-Mail wurde einmal generiert
+  const [kiDone,        setKiDone]        = useState(!!_draft?.subject)  // E-Mail wurde einmal generiert
   const [optLoading,    setOptLoading]    = useState('')     // aktive Optimierungsaktion
   const recRef        = useRef(null)
-  const transcriptRef = useRef('')
+  const transcriptRef = useRef(_draft?.transcript ?? '')
   const fileInputRef  = useRef(null)
+
+  // ── Auto-Save: Entwurf in localStorage ──────────────────────────────────────
+  useEffect(() => {
+    clearTimeout(draftSaveRef.current)
+    draftSaveRef.current = setTimeout(() => {
+      const hasContent = subject.trim() || body.replace(SIG_SEP, '').trim() || transcript.trim()
+      if (!hasContent) { clearJAComposeDraft(client.id, au.id); return }
+      saveJAComposeDraft(client.id, au.id, {
+        to, from, subject, body, sigId, sendMode, transcript,
+      })
+    }, 800)
+    return () => clearTimeout(draftSaveRef.current)
+  }, [to, from, subject, body, sigId, sendMode, transcript, client.id, au.id])
 
   const SpeechRec = typeof window !== 'undefined' && (window.SpeechRecognition || window.webkitSpeechRecognition)
   const voiceOk   = !!SpeechRec
@@ -290,6 +312,7 @@ export default function JAComposePanel({
         anlagen: attachments.map(a => ({ name: a.name, size: a.size, contentType: a.type })),
       }
       onUpdateClient({ kommunikation: { ...komm, events: [newEvent, ...(komm.events ?? [])] } })
+      clearJAComposeDraft(client.id, au.id)
       setSuccess(true)
       setTimeout(onClose, 1800)
     } catch (err) {
@@ -338,6 +361,25 @@ export default function JAComposePanel({
         </div>
         <button onClick={onClose} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '18px', lineHeight: 1 }}>✕</button>
       </div>
+
+      {/* ── Entwurf-Banner ── */}
+      {draftRestored && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '8px',
+          padding: '6px 12px', borderRadius: '8px', marginBottom: '10px',
+          background: 'rgba(22,163,74,0.08)', border: '1px solid rgba(22,163,74,0.2)',
+          fontSize: '11px',
+        }}>
+          <span style={{ color: '#16a34a', fontWeight: 600 }}>💾 Entwurf wiederhergestellt</span>
+          <span style={{ color: 'var(--text-muted)' }}>Dein letzter Stand wurde geladen.</span>
+          <button onClick={() => {
+            clearJAComposeDraft(client.id, au.id)
+            setSubject(''); setBody(aktiveSig(sigId) ? SIG_SEP + aktiveSig(sigId).text : ''); setTranscriptBoth(''); setKiDone(false); setDraftRestored(false)
+          }} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '10px', textDecoration: 'underline' }}>
+            Verwerfen
+          </button>
+        </div>
+      )}
 
       {/* ── 🎤 DIKTAT-BEREICH ── */}
       <div style={{
