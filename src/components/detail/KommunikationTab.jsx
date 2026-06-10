@@ -750,15 +750,21 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
       const res  = await fetch(`/api/get-email-content?uid=${encodeURIComponent(entry.sourceUid)}&account=${encodeURIComponent(entry.sourceAccount)}`)
       const data = await res.json()
       if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`)
-      // Text + HTML + Anlage-Metadaten persistent in Event speichern
+      // Text + HTML + Anlage-Metadaten + CC/An persistent in Event speichern
       const updatedEvents = events.map(e => e.id !== entry.id ? e : {
         ...e,
         text:          data.text ?? e.text,
         html:          data.html ?? undefined,
         anlagen:       data.attachments.map(a => ({ name: a.name, size: a.size, contentType: a.contentType, tooLarge: a.tooLarge ?? false })),
         contentLoaded: true,
+        ...(data.cc  ? { cc: data.cc }            : {}),
+        ...(data.to  ? { empfaenger: data.to }     : {}),
+        ...(data.from ? { absender: data.from }     : {}),
       })
       saveKomm({ events: updatedEvents })
+      // detailEntry aktualisieren damit Inhalt sofort angezeigt wird (nicht erst beim 2. Klick)
+      const enriched = updatedEvents.find(e => e.id === entry.id)
+      if (enriched) setDetailEntry(enriched)
       // Anhang-Binärdaten nur im Component-State (nicht in Supabase)
       setAttachmentData(prev => ({ ...prev, [entry.id]: data.attachments }))
     } catch (e) {

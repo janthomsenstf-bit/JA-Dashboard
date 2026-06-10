@@ -93,6 +93,9 @@ export default async function handler(req, res) {
     return res.status(200).json({
       text:        parsed.text  ?? null,
       html:        parsed.html  ?? null,
+      from:        parsed.from?.value?.[0]?.address ?? null,
+      to:          (parsed.to?.value ?? []).map(a => a.address).join(', ') || null,
+      cc:          (parsed.cc?.value ?? []).map(a => a.address).join(', ') || null,
       attachments,
     })
 
