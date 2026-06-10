@@ -345,6 +345,7 @@ function AbsenderModal({ onClose }) {
             style={{ fontSize: '12px', padding: '6px 10px' }}>
             <option value="hostinger">Hostinger</option>
             <option value="strato">Strato</option>
+            <option value="gmail">Gmail</option>
           </select>
           <button className="btn btn-primary btn-sm" onClick={add}>+ Hinzufügen</button>
         </div>
@@ -927,13 +928,15 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
     if (availFolders.length > 0) return
     setFoldersLoading(true)
     try {
-      const [h, s] = await Promise.all([
+      const [h, s, g] = await Promise.all([
         fetch('/api/list-folders?account=hostinger').then(r => r.json()).catch(() => ({ folders: [] })),
         fetch('/api/list-folders?account=strato').then(r => r.json()).catch(() => ({ folders: [] })),
+        fetch('/api/list-folders?account=gmail').then(r => r.json()).catch(() => ({ folders: [] })),
       ])
       const combined = [
         ...(h.folders ?? []).map(f => ({ ...f, account: 'hostinger' })),
         ...(s.folders ?? []).map(f => ({ ...f, account: 'strato' })),
+        ...(g.folders ?? []).map(f => ({ ...f, account: 'gmail' })),
       ]
       setAvailFolders(combined)
     } finally {
@@ -948,11 +951,12 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
     try {
       // Wenn ein spezifischer Ordner ausgewählt, nur den laden
       const isSpecific = selectedFolder !== 'INBOX'
-      const [h, s] = await Promise.all([
+      const [h, s, g] = await Promise.all([
         fetchEmails('hostinger', null, isSpecific ? selectedFolder : 'INBOX').catch(e => { console.warn('Hostinger IMAP:', e.message); return [] }),
         fetchEmails('strato',    null, isSpecific ? selectedFolder : 'INBOX').catch(e => { console.warn('Strato IMAP:', e.message); return [] }),
+        fetchEmails('gmail',     null, isSpecific ? selectedFolder : 'INBOX').catch(e => { console.warn('Gmail IMAP:', e.message); return [] }),
       ])
-      const all = [...h, ...s].sort((a, b) => new Date(b.datum) - new Date(a.datum))
+      const all = [...h, ...s, ...g].sort((a, b) => new Date(b.datum) - new Date(a.datum))
       setPosteingangEmails(all)
       setPosteingangOpen(true)
     } catch (e) {
@@ -1104,11 +1108,12 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
     )
 
     try {
-      const [h, s] = await Promise.all([
+      const [h, s, g] = await Promise.all([
         fetchEmails('hostinger', null, selectedFolder).catch(() => []),
         fetchEmails('strato',    null, selectedFolder).catch(() => []),
+        fetchEmails('gmail',     null, selectedFolder).catch(() => []),
       ])
-      const all = [...h, ...s]
+      const all = [...h, ...s, ...g]
 
       const newEntries = []
       for (const email of all) {

@@ -15,6 +15,12 @@ const SMTP_ACCOUNTS = {
     user: process.env.SMTP_STRATO_USER,
     pass: process.env.SMTP_STRATO_PASS,
   },
+  gmail: {
+    host: process.env.SMTP_GMAIL_HOST || 'smtp.gmail.com',
+    port: parseInt(process.env.SMTP_GMAIL_PORT || '465'),
+    user: process.env.SMTP_GMAIL_USER,
+    pass: process.env.SMTP_GMAIL_PASS,
+  },
 }
 
 // ── IMAP-Konfiguration (für Sent-Ordner-Append) ───────────────────────────────
@@ -31,6 +37,12 @@ const IMAP_ACCOUNTS = {
     port: parseInt(process.env.IMAP_STRATO_PORT || '993'),
     user: process.env.IMAP_STRATO_USER || process.env.SMTP_STRATO_USER,
     pass: process.env.IMAP_STRATO_PASS || process.env.SMTP_STRATO_PASS,
+  },
+  gmail: {
+    host: process.env.IMAP_GMAIL_HOST || 'imap.gmail.com',
+    port: parseInt(process.env.IMAP_GMAIL_PORT || '993'),
+    user: process.env.IMAP_GMAIL_USER || process.env.SMTP_GMAIL_USER,
+    pass: process.env.IMAP_GMAIL_PASS || process.env.SMTP_GMAIL_PASS,
   },
 }
 

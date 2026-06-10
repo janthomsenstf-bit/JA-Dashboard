@@ -23,6 +23,12 @@ const ACCOUNTS = {
     user: process.env.IMAP_STRATO_USER,
     pass: process.env.IMAP_STRATO_PASS,
   },
+  gmail: {
+    host: process.env.IMAP_GMAIL_HOST || 'imap.gmail.com',
+    port: parseInt(process.env.IMAP_GMAIL_PORT || '993'),
+    user: process.env.IMAP_GMAIL_USER,
+    pass: process.env.IMAP_GMAIL_PASS,
+  },
 }
 
 export default async function handler(req, res) {
