@@ -8,6 +8,7 @@ export const AUFTRAGS_TYP_CFG = {
   lohn:            { label: 'Lohn',             icon: '💼', color: '#7c3aed', bg: 'rgba(124,58,237,0.08)', border: 'rgba(124,58,237,0.25)' },
   beratung:        { label: 'Beratung',          icon: '🧠', color: '#16a34a', bg: 'rgba(22,163,74,0.08)',  border: 'rgba(22,163,74,0.25)' },
   ust:             { label: 'Umsatzsteuer',      icon: '🧾', color: '#f97316', bg: 'rgba(249,115,22,0.08)', border: 'rgba(249,115,22,0.25)' },
+  erfassung:       { label: 'Steuerl. Erfassung', icon: '🏛', color: '#0d9488', bg: 'rgba(13,148,136,0.08)', border: 'rgba(13,148,136,0.25)' },
   freitext:        { label: 'Eigener Auftrag',   icon: '📝', color: '#64748b', bg: 'rgba(100,116,139,0.08)', border: 'rgba(100,116,139,0.25)' },
 }
 
@@ -965,6 +966,197 @@ function JAVerlaufSection({ au, client, onUpdate, onOpenEmail, onUpdateClient, e
   )
 }
 
+// ── Aktivitäten-Typen für Steuerliche Erfassung ──────────────────────────────
+const ERFASSUNG_AKTIVITAETEN = {
+  telefonat:              { label: 'Telefonat geführt',               icon: '📞', color: '#7c3aed' },
+  unterlagen_angefordert: { label: 'Unterlagen angefordert',          icon: '📤', color: '#2563eb' },
+  unterlagen_erhalten:    { label: 'Unterlagen erhalten',             icon: '📬', color: '#16a34a' },
+  antrag_vorbereitet:     { label: 'Antrag vorbereitet',              icon: '📝', color: '#0891b2' },
+  antrag_unterschrift:    { label: 'Antrag zur Unterschrift gesendet', icon: '✍️', color: '#d97706' },
+  antrag_fa:              { label: 'Antrag an Finanzamt gesendet',    icon: '🏛', color: '#2563eb' },
+  warte_rueckmeldung:     { label: 'Warten auf Rückmeldung',         icon: '⏳', color: '#f97316' },
+  steuernummer_erhalten:  { label: 'Steuernummer erhalten',           icon: '✅', color: '#16a34a' },
+  notiz:                  { label: 'Interne Notiz',                   icon: '📝', color: '#64748b' },
+}
+
+function ErfassungVerlaufSection({ au, onUpdate }) {
+  const verlauf = au.verlauf ?? []
+  const [selectedTyp, setSelectedTyp] = useState(null)
+  const [newNotiz,    setNewNotiz]    = useState('')
+  const [newDatum,    setNewDatum]    = useState(todayISO)
+
+  function handleQuickAction(typ) {
+    if (selectedTyp === typ) { setSelectedTyp(null); return }
+    setSelectedTyp(typ)
+    setNewDatum(todayISO())
+    setNewNotiz('')
+  }
+
+  function addVerlauf() {
+    if (!selectedTyp) return
+    const cfg = ERFASSUNG_AKTIVITAETEN[selectedTyp]
+    const item = {
+      id: genVerlaufId(),
+      typ: selectedTyp,
+      datum: newDatum,
+      text: newNotiz.trim() || cfg.label,
+      erstelltAm: new Date().toISOString(),
+    }
+    onUpdate({ verlauf: [item, ...verlauf] })
+    setNewNotiz(''); setNewDatum(todayISO()); setSelectedTyp(null)
+  }
+
+  function deleteVerlauf(id) {
+    onUpdate({ verlauf: verlauf.filter(v => v.id !== id) })
+  }
+
+  const sorted = [...verlauf].sort((a, b) => new Date(b.datum) - new Date(a.datum))
+  const iStyle = { padding: '6px 10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text)', fontSize: '12px', outline: 'none' }
+
+  return (
+    <div style={{ marginTop: '14px', borderTop: '1px solid var(--border)', paddingTop: '14px' }}>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+        <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>
+          🏛 Verlauf & Aktivitäten
+        </span>
+        <span style={{ fontSize: '10px', color: 'var(--text-muted)', background: 'var(--surface2)', padding: '1px 7px', borderRadius: '10px', border: '1px solid var(--border)' }}>
+          {sorted.length}
+        </span>
+      </div>
+
+      {/* Aktivität erfassen */}
+      <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflow: 'hidden', marginBottom: '14px' }}>
+        <div style={{ padding: '10px 14px', background: 'var(--surface)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ fontWeight: 700, fontSize: '13px' }}>➕ Aktivität erfassen</span>
+          <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>— per Schnellauswahl</span>
+        </div>
+
+        <div style={{ padding: '12px 14px', background: 'var(--surface)' }}>
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+            {Object.entries(ERFASSUNG_AKTIVITAETEN).map(([key, cfg]) => {
+              const active = selectedTyp === key
+              return (
+                <button key={key} onClick={() => handleQuickAction(key)} style={{
+                  display: 'flex', alignItems: 'center', gap: '5px',
+                  padding: '6px 14px', borderRadius: '20px', cursor: 'pointer',
+                  border: `1px solid ${active ? cfg.color : 'var(--border)'}`,
+                  background: active ? cfg.color + '18' : 'var(--surface2)',
+                  color: active ? cfg.color : 'var(--text-secondary)',
+                  fontSize: '12px', fontWeight: active ? 600 : 400,
+                  transition: 'all 0.15s',
+                  boxShadow: active ? `0 0 0 2px ${cfg.color}25` : 'none',
+                }}>
+                  {cfg.icon} {cfg.label}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        {selectedTyp && (() => {
+          const cfg = ERFASSUNG_AKTIVITAETEN[selectedTyp]
+          return (
+            <div style={{ padding: '14px', background: cfg.color + '06', borderTop: '1px solid var(--border)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                <span style={{ fontSize: '14px' }}>{cfg.icon}</span>
+                <span style={{ fontWeight: 700, fontSize: '13px', color: cfg.color }}>{cfg.label}</span>
+              </div>
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: '12px' }}>
+                <div>
+                  <label style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '3px', display: 'block' }}>Datum</label>
+                  <input type="date" value={newDatum} onChange={e => setNewDatum(e.target.value)} style={iStyle} />
+                </div>
+                <div style={{ flex: 1, minWidth: '200px' }}>
+                  <label style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '3px', display: 'block' }}>Notiz (optional)</label>
+                  <textarea
+                    value={newNotiz}
+                    onChange={e => setNewNotiz(e.target.value)}
+                    placeholder="z.B. Mandant telefonisch informiert, fehlende Unterlagen besprochen…"
+                    rows={3}
+                    style={{ ...iStyle, width: '100%', resize: 'vertical', whiteSpace: 'pre-wrap', minHeight: '60px', boxSizing: 'border-box' }}
+                    onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) addVerlauf() }}
+                    autoFocus
+                  />
+                  <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '3px' }}>Strg+Enter zum Speichern · Notiz leer → Label wird verwendet</div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button onClick={addVerlauf}
+                  style={{ padding: '7px 18px', borderRadius: '6px', border: 'none', background: cfg.color, color: '#fff', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
+                  ✓ Bestätigen
+                </button>
+                <button onClick={() => setSelectedTyp(null)}
+                  style={{ padding: '7px 14px', borderRadius: '6px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-muted)', fontSize: '12px', cursor: 'pointer' }}>
+                  ✕ Abbrechen
+                </button>
+              </div>
+            </div>
+          )
+        })()}
+      </div>
+
+      {/* Timeline */}
+      {sorted.length === 0 ? (
+        <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '12px', padding: '20px 12px', background: 'var(--surface2)', borderRadius: 'var(--radius)', border: '2px dashed var(--border)' }}>
+          <div style={{ fontSize: '24px', marginBottom: '6px', opacity: 0.4 }}>🏛</div>
+          Noch keine Aktivitäten erfasst.<br />
+          <span style={{ fontSize: '11px', opacity: 0.7 }}>Erste Aktivität oben hinzufügen.</span>
+        </div>
+      ) : (
+        <div>
+          {sorted.map((item, idx) => {
+            const cfg = ERFASSUNG_AKTIVITAETEN[item.typ] ?? ERFASSUNG_AKTIVITAETEN.notiz
+            const isLast = idx === sorted.length - 1
+            return (
+              <div key={item.id} style={{ display: 'flex', gap: '0', position: 'relative' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '36px', flexShrink: 0 }}>
+                  <div style={{
+                    width: '30px', height: '30px', borderRadius: '50%', zIndex: 1, flexShrink: 0,
+                    background: 'var(--bg, #0f1117)',
+                    border: `2px solid ${cfg.color}`,
+                    boxShadow: `0 0 0 2px ${cfg.color}20`,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px',
+                  }}>
+                    {cfg.icon}
+                  </div>
+                  {!isLast && <div style={{ width: '2px', flex: 1, background: 'var(--border)', marginTop: '2px', minHeight: '12px' }} />}
+                </div>
+                <div style={{
+                  flex: 1, marginLeft: '8px', marginBottom: isLast ? '0' : '10px',
+                  background: 'var(--surface2)', border: '1px solid var(--border)',
+                  borderRadius: '8px', overflow: 'hidden',
+                }}>
+                  <div style={{ padding: '7px 10px', display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--surface)', borderBottom: item.text && item.text !== cfg.label ? '1px solid var(--border)' : 'none' }}>
+                    <span style={{
+                      fontSize: '10px', fontWeight: 700, color: cfg.color,
+                      background: cfg.color + '15', padding: '2px 8px', borderRadius: '10px',
+                    }}>
+                      {cfg.label}
+                    </span>
+                    <span style={{ fontSize: '11px', color: 'var(--text-muted)', flex: 1 }}>
+                      {fmtShortDate(item.datum)}
+                    </span>
+                    <button onClick={() => deleteVerlauf(item.id)}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '12px', padding: '0 2px', flexShrink: 0 }}
+                      onMouseEnter={e => e.currentTarget.style.color = '#ef4444'}
+                      onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}>✕</button>
+                  </div>
+                  {item.text && item.text !== cfg.label && (
+                    <div style={{ padding: '5px 10px', fontSize: '11px', color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>
+                      {item.text}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Einzelauftrag-Karte ───────────────────────────────────────────────────────
 function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete, client, onOpenEmail, onUpdateClient, emailVorlagen, emailSignaturen, onedriveTokens, onUpdateOnedriveTokens }) {
   const typCfg    = AUFTRAGS_TYP_CFG[au.typ]      ?? AUFTRAGS_TYP_CFG.freitext
@@ -987,7 +1179,8 @@ function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete, client, onOpe
     setNewH('')
   }
 
-  const isJA     = au.typ === 'jahresabschluss'
+  const isJA        = au.typ === 'jahresabschluss'
+  const isErfassung = au.typ === 'erfassung'
   const jaWfsCfg = isJA ? (JA_WORKFLOW_STATUS[au.jaWorkflowStatus ?? 'neu'] ?? JA_WORKFLOW_STATUS.neu) : null
   // Für JA: Abschluss-Jahr prominent im Titel zeigen
   const titel = au.bezeichnung
@@ -1166,6 +1359,11 @@ function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete, client, onOpe
                 onUpdateOnedriveTokens={onUpdateOnedriveTokens}
               />
             </>
+          )}
+
+          {/* ── Steuerliche Erfassung ── */}
+          {isErfassung && (
+            <ErfassungVerlaufSection au={au} onUpdate={onUpdate} />
           )}
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '14px', paddingTop: '10px', borderTop: '1px solid var(--border)' }}>
