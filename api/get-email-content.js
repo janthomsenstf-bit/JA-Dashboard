@@ -66,8 +66,8 @@ export default async function handler(req, res) {
       return res.status(404).json({ error: 'E-Mail nicht gefunden (möglicherweise bereits gelöscht)' })
     }
 
-    // Größen-Guard: > 8 MB würde Vercel-Response-Limit sprengen
-    if (rawBuffer.length > 8 * 1024 * 1024) {
+    // Größen-Guard: > 25 MB → Vercel-Memory-Limit
+    if (rawBuffer.length > 25 * 1024 * 1024) {
       await client.logout()
       return res.status(413).json({
         error:     'E-Mail zu groß für Inline-Anzeige',
