@@ -994,7 +994,7 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
         res = await callApi('searchMails', { email, maxResults: 100 }, tokens, refreshTokens)
       } catch (searchErr) {
         // 403 / Authorization_RequestDenied → Mail.Read fehlt → separates Auth-Popup
-        if (searchErr.message?.includes('403') || searchErr.message?.includes('Authorization') || searchErr.message?.includes('Mail')) {
+        if (searchErr.message?.includes('403') || searchErr.message?.includes('Authorization') || searchErr.message?.includes('Mail') || searchErr.message?.includes('Access is denied') || searchErr.message?.includes('Insufficient privileges')) {
           setGraphSearchLoading(false)
           setGraphSearchError('mail_read_missing')
           return

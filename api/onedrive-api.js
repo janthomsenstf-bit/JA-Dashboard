@@ -47,7 +47,7 @@ async function refreshAccessToken(refreshToken) {
       client_secret: clientSecret,
       refresh_token: refreshToken,
       grant_type:    'refresh_token',
-      scope:         'Files.ReadWrite offline_access User.Read Mail.Send',
+      scope:         'Files.ReadWrite offline_access User.Read Mail.Send Mail.Read',
     }).toString(),
   })
   const data = await res.json()
