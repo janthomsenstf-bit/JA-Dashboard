@@ -73,7 +73,7 @@ function fmtDE(date, opts) {
 // ── Gemeinsame Tabellenzeile ───────────────────────────────────────────────────
 const thStyle = { padding:'8px 12px', textAlign:'left', fontWeight:600, color:'var(--text-muted)', fontSize:'11px', borderBottom:'2px solid var(--border)' }
 
-function AuftragRow({ au, idx, onSelectClient, onCycleStatus, overdueDays }) {
+function AuftragRow({ au, idx, onSelectClient, onCycleStatus, onNavigateToAuftrag, overdueDays }) {
   const typCfg    = AUFTRAGS_TYP_CFG[au.typ]      ?? AUFTRAGS_TYP_CFG.freitext
   const statusCfg = AUFTRAGS_STATUS_CFG[au.status] ?? AUFTRAGS_STATUS_CFG.offen
   const frist     = fmtFrist(au.frist)
@@ -103,9 +103,12 @@ function AuftragRow({ au, idx, onSelectClient, onCycleStatus, overdueDays }) {
         </button>
       </td>
       <td style={{ padding:'8px 12px', whiteSpace:'nowrap' }}>
-        <span style={{ fontSize:'11px', fontWeight:700, padding:'2px 8px', borderRadius:'10px', background:typCfg.bg, color:typCfg.color, border:`1px solid ${typCfg.border}`, whiteSpace:'nowrap' }}>
+        <button onClick={() => onNavigateToAuftrag?.(au.client.id, au.id)} title={`→ ${typCfg.label} öffnen`}
+          style={{ fontSize:'11px', fontWeight:700, padding:'2px 8px', borderRadius:'10px', background:typCfg.bg, color:typCfg.color, border:`1px solid ${typCfg.border}`, whiteSpace:'nowrap', cursor:'pointer', transition:'filter 0.15s' }}
+          onMouseEnter={e => e.currentTarget.style.filter = 'brightness(0.92)'}
+          onMouseLeave={e => e.currentTarget.style.filter = 'none'}>
           {typCfg.icon} {typCfg.label}
-        </span>
+        </button>
       </td>
       <td style={{ padding:'8px 12px', maxWidth:'260px' }}>
         <div style={{ fontWeight: bezeichnung ? 500 : 400, color: bezeichnung ? 'var(--text)' : 'var(--text-muted)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', display:'flex', alignItems:'center', gap:'5px', textDecoration: erledigt ? 'line-through' : 'none' }}>
@@ -188,7 +191,7 @@ function AuftragRow({ au, idx, onSelectClient, onCycleStatus, overdueDays }) {
 }
 
 // ── Monats-Tabelle ────────────────────────────────────────────────────────────
-function MonthTable({ gefiltert, alleAuftraege, onSelectClient, onCycleStatus }) {
+function MonthTable({ gefiltert, alleAuftraege, onSelectClient, onCycleStatus, onNavigateToAuftrag }) {
   return (
     <div style={{ flex:1, overflowY:'auto', background:'var(--bg)' }}>
       {gefiltert.length === 0 ? (
@@ -211,7 +214,7 @@ function MonthTable({ gefiltert, alleAuftraege, onSelectClient, onCycleStatus })
           </thead>
           <tbody>
             {gefiltert.map((au, idx) => (
-              <AuftragRow key={au.id} au={au} idx={idx} onSelectClient={onSelectClient} onCycleStatus={onCycleStatus} />
+              <AuftragRow key={au.id} au={au} idx={idx} onSelectClient={onSelectClient} onCycleStatus={onCycleStatus} onNavigateToAuftrag={onNavigateToAuftrag} />
             ))}
           </tbody>
         </table>
@@ -221,7 +224,7 @@ function MonthTable({ gefiltert, alleAuftraege, onSelectClient, onCycleStatus })
 }
 
 // ── Wochen-Ansicht ────────────────────────────────────────────────────────────
-function WeekView({ weekDays, onSelectClient, onCycleStatus, onQuickCreate }) {
+function WeekView({ weekDays, onSelectClient, onCycleStatus, onQuickCreate, onNavigateToAuftrag }) {
   const heute = new Date(); heute.setHours(0,0,0,0)
 
   return (
@@ -260,7 +263,7 @@ function WeekView({ weekDays, onSelectClient, onCycleStatus, onQuickCreate }) {
             {/* Items */}
             <div style={{ flex:1, overflowY:'auto', padding:'5px 5px 8px' }}>
               {items.map(au => (
-                <WeekCard key={au.id} au={au} onSelectClient={onSelectClient} onCycleStatus={onCycleStatus} />
+                <WeekCard key={au.id} au={au} onSelectClient={onSelectClient} onCycleStatus={onCycleStatus} onNavigateToAuftrag={onNavigateToAuftrag} />
               ))}
               <button onClick={() => onQuickCreate(date)}
                 style={{ width:'100%', padding:'4px', border:'1px dashed var(--border)', borderRadius:'6px', background:'transparent', color:'var(--text-muted)', fontSize:'11px', cursor:'pointer', marginTop: items.length > 0 ? '4px' : 0 }}>
@@ -274,7 +277,7 @@ function WeekView({ weekDays, onSelectClient, onCycleStatus, onQuickCreate }) {
   )
 }
 
-function WeekCard({ au, onSelectClient, onCycleStatus }) {
+function WeekCard({ au, onSelectClient, onCycleStatus, onNavigateToAuftrag }) {
   const typCfg    = AUFTRAGS_TYP_CFG[au.typ]      ?? AUFTRAGS_TYP_CFG.freitext
   const statusCfg = AUFTRAGS_STATUS_CFG[au.status] ?? AUFTRAGS_STATUS_CFG.offen
   const erledigt  = au.status === 'erledigt'
@@ -291,7 +294,8 @@ function WeekCard({ au, onSelectClient, onCycleStatus }) {
       opacity: erledigt ? 0.6 : 1,
     }}>
       <div style={{ display:'flex', alignItems:'center', gap:'4px', marginBottom:'2px' }}>
-        <span style={{ fontSize:'11px' }}>{typCfg.icon}</span>
+        <button onClick={() => onNavigateToAuftrag?.(au.client.id, au.id)} title={`→ ${typCfg.label} öffnen`}
+          style={{ fontSize:'11px', background:'none', border:'none', cursor:'pointer', padding:0, lineHeight:1 }}>{typCfg.icon}</button>
         {au.istSerie && <span style={{ fontSize:'9px', color:'rgba(99,102,241,0.8)', fontWeight:700 }}>🔁</span>}
         {isOverdue && <span style={{ fontSize:'9px', color:'#ef4444', fontWeight:700 }}>⚠{overdueDays}d</span>}
         <button onClick={() => onCycleStatus(au)} title="Status wechseln"
@@ -311,7 +315,7 @@ function WeekCard({ au, onSelectClient, onCycleStatus }) {
 }
 
 // ── Tages-Ansicht ─────────────────────────────────────────────────────────────
-function DayTable({ items, date, onSelectClient, onCycleStatus, onQuickCreate }) {
+function DayTable({ items, date, onSelectClient, onCycleStatus, onQuickCreate, onNavigateToAuftrag }) {
   const heute = new Date(); heute.setHours(0,0,0,0)
   const istHeute    = isSameDay(date, heute)
   const carryItems  = items.filter(a => a._carryForward)
@@ -334,6 +338,7 @@ function DayTable({ items, date, onSelectClient, onCycleStatus, onQuickCreate })
           {rows.map((au, idx) => (
             <AuftragRow key={au.id} au={au} idx={startIdx + idx}
               onSelectClient={onSelectClient} onCycleStatus={onCycleStatus}
+              onNavigateToAuftrag={onNavigateToAuftrag}
               overdueDays={au._carryForward ? au._carryDays : undefined} />
           ))}
         </tbody>
@@ -474,7 +479,7 @@ function StatBadge({ label, count, color, bg }) {
 }
 
 // ── Hauptkomponente ───────────────────────────────────────────────────────────
-export default function GlobalTodoView({ clients, onUpdateClient, onSelectClient }) {
+export default function GlobalTodoView({ clients, onUpdateClient, onSelectClient, onNavigateToAuftrag }) {
   const aktiveClients = useMemo(() => clients.filter(c => !c.archiviert), [clients])
 
   // ── Ansicht & Navigation ──────────────────────────────────────────────────
@@ -872,13 +877,13 @@ export default function GlobalTodoView({ clients, onUpdateClient, onSelectClient
 
       {/* ── Inhalt ── */}
       {viewMode === 'monat' && (
-        <MonthTable gefiltert={gefiltert} alleAuftraege={alleAuftraege} onSelectClient={onSelectClient} onCycleStatus={cycleStatus} />
+        <MonthTable gefiltert={gefiltert} alleAuftraege={alleAuftraege} onSelectClient={onSelectClient} onCycleStatus={cycleStatus} onNavigateToAuftrag={onNavigateToAuftrag} />
       )}
       {viewMode === 'woche' && weekDays && (
-        <WeekView weekDays={weekDays} onSelectClient={onSelectClient} onCycleStatus={cycleStatus} onQuickCreate={setQuickCreateDay} />
+        <WeekView weekDays={weekDays} onSelectClient={onSelectClient} onCycleStatus={cycleStatus} onQuickCreate={setQuickCreateDay} onNavigateToAuftrag={onNavigateToAuftrag} />
       )}
       {viewMode === 'tag' && dayItems && (
-        <DayTable items={dayItems} date={navDate} onSelectClient={onSelectClient} onCycleStatus={cycleStatus} onQuickCreate={setQuickCreateDay} />
+        <DayTable items={dayItems} date={navDate} onSelectClient={onSelectClient} onCycleStatus={cycleStatus} onQuickCreate={setQuickCreateDay} onNavigateToAuftrag={onNavigateToAuftrag} />
       )}
 
       {/* ── Footer ── */}

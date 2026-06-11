@@ -1283,6 +1283,11 @@ export default function App() {
                 clients={clients}
                 onUpdateClient={updateClient}
                 onSelectClient={id => setSelectedId(id)}
+                onNavigateToAuftrag={(clientId, auftragId) => {
+                  localStorage.setItem('sda-expanded-auftrag_' + clientId, auftragId)
+                  setDetailInitialTab(1)
+                  setSelectedId(clientId)
+                }}
               />
             </div>
           ) : selectedId === '__bot_inbox__' ? (
