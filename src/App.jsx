@@ -22,6 +22,7 @@ import LoginPage from './components/LoginPage.jsx'
 import FormularPage from './components/formular/FormularPage.jsx'
 import BudgetView   from './components/BudgetView.jsx'
 import BotInbox, { BotInboxBadge } from './components/BotInbox.jsx'
+import WebsiteAnfragen from './components/WebsiteAnfragen.jsx'
 
 const BACKUP_INTERVAL_MS = 30 * 60 * 1000  // 30 Minuten
 
@@ -1252,6 +1253,18 @@ export default function App() {
                 active={selectedId === '__bot_inbox__'}
                 onClick={() => setSelectedId('__bot_inbox__')}
               />
+              <button
+                onClick={() => setSelectedId('__website_anfragen__')}
+                style={{
+                  width: '100%', padding: '8px 12px', borderRadius: '8px', border: 'none', cursor: 'pointer', textAlign: 'left',
+                  background: selectedId === '__website_anfragen__' ? '#7c3aed' : 'var(--surface2)',
+                  color: selectedId === '__website_anfragen__' ? '#fff' : 'var(--text)',
+                  fontWeight: 600, fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px',
+                  transition: 'all 0.15s',
+                }}
+              >
+                🌐 Website-Anfragen
+              </button>
             </div>
           )}
           {sidebarOpen && (
@@ -1302,7 +1315,18 @@ export default function App() {
             <div style={{ flex: 1, overflowY: 'auto' }}>
               <BudgetView
                 clients={clients}
-                onSelectClient={(id) => { setDetailInitialTab(4); setSelectedId(id) }}  // TAB.honorare
+                onSelectClient={(id) => { setDetailInitialTab(4); setSelectedId(id) }}
+              />
+            </div>
+          ) : selectedId === '__website_anfragen__' ? (
+            <div style={{ flex: 1, overflowY: 'auto' }}>
+              <WebsiteAnfragen
+                onCreateMandant={(data) => {
+                  addClient({
+                    name: data.name,
+                    notizen: data.notizen || '',
+                  })
+                }}
               />
             </div>
           ) : selectedClient ? (
