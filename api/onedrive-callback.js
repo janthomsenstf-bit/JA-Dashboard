@@ -1,12 +1,37 @@
 /**
  * /api/onedrive-callback
- * Empfängt den Authorization Code von Microsoft, tauscht ihn gegen Tokens
- * und sendet das Ergebnis per postMessage an das Opener-Fenster (SPA).
+ *
+ * Kombinierter OAuth-Endpoint:
+ *   - Ohne code/error → startet den OAuth-Flow (Redirect zu Microsoft)
+ *   - Mit code/error  → empfängt den Authorization Code, tauscht ihn gegen Tokens
+ *                        und sendet das Ergebnis per postMessage an das Opener-Fenster
  */
 export default async function handler(req, res) {
   const { code, error, error_description } = req.query
 
-  // HTML-Seite die postMessage nutzt und sich selbst schließt
+  // ── Auth-Start (kein code/error → Redirect zu Microsoft) ──────────────────
+  if (!code && !error) {
+    const clientId    = process.env.ONEDRIVE_CLIENT_ID
+    const redirectUri = process.env.ONEDRIVE_REDIRECT_URI
+
+    if (!clientId || !redirectUri) {
+      return res.status(500).send('<h2>Fehler: ONEDRIVE_CLIENT_ID oder ONEDRIVE_REDIRECT_URI fehlt.</h2>')
+    }
+
+    const params = new URLSearchParams({
+      client_id:     clientId,
+      response_type: 'code',
+      redirect_uri:  redirectUri,
+      scope:         'Files.ReadWrite offline_access User.Read Mail.Send',
+      response_mode: 'query',
+      prompt:        'select_account',
+    })
+
+    const authUrl = `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?${params.toString()}`
+    return res.redirect(302, authUrl)
+  }
+
+  // ── Callback (code oder error von Microsoft) ──────────────────────────────
   function sendResult(payload) {
     const json = JSON.stringify(payload)
     res.setHeader('Content-Type', 'text/html; charset=utf-8')
@@ -27,9 +52,6 @@ export default async function handler(req, res) {
 
   if (error) {
     return sendResult({ success: false, error, error_description })
-  }
-  if (!code) {
-    return sendResult({ success: false, error: 'no_code' })
   }
 
   const clientId     = process.env.ONEDRIVE_CLIENT_ID

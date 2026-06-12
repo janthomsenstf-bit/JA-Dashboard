@@ -14,7 +14,7 @@ const POPUP_HEIGHT = 640
  * Öffnet den Microsoft OAuth-Login-Popup.
  * Gibt die Tokens zurück wenn erfolgreich, wirft einen Fehler wenn nicht.
  */
-export function openAuthPopup(authUrl = '/api/onedrive-auth') {
+export function openAuthPopup(authUrl = '/api/onedrive-callback') {
   return new Promise((resolve, reject) => {
     const left = Math.round(window.screenX + (window.outerWidth  - POPUP_WIDTH)  / 2)
     const top  = Math.round(window.screenY + (window.outerHeight - POPUP_HEIGHT) / 2)
