@@ -9,6 +9,16 @@ export const AUFTRAGS_TYP_CFG = {
   beratung:        { label: 'Beratung',          icon: '🧠', color: '#16a34a', bg: 'rgba(22,163,74,0.08)',  border: 'rgba(22,163,74,0.25)' },
   ust:             { label: 'Umsatzsteuer',      icon: '🧾', color: '#f97316', bg: 'rgba(249,115,22,0.08)', border: 'rgba(249,115,22,0.25)' },
   erfassung:       { label: 'Steuerl. Erfassung', icon: '🏛', color: '#0d9488', bg: 'rgba(13,148,136,0.08)', border: 'rgba(13,148,136,0.25)' },
+  ust_reg_de:      { label: 'USt-Reg. DE',        icon: '🇩🇪', color: '#2563eb', bg: 'rgba(37,99,235,0.08)',   border: 'rgba(37,99,235,0.25)', gruppe: 'etablering' },
+  ust_reg_se:      { label: 'USt-Reg. SE',        icon: '🇸🇪', color: '#0891b2', bg: 'rgba(8,145,178,0.08)',  border: 'rgba(8,145,178,0.25)', gruppe: 'etablering' },
+  ust_reg_no:      { label: 'USt-Reg. NO',        icon: '🇳🇴', color: '#dc2626', bg: 'rgba(220,38,38,0.08)',  border: 'rgba(220,38,38,0.25)', gruppe: 'etablering' },
+  ust_reg_dk:      { label: 'USt-Reg. DK',        icon: '🇩🇰', color: '#dc2626', bg: 'rgba(220,38,38,0.08)',  border: 'rgba(220,38,38,0.25)', gruppe: 'etablering' },
+  ug_gruendung:    { label: 'UG-Gründung',        icon: '🏢', color: '#7c3aed', bg: 'rgba(124,58,237,0.08)', border: 'rgba(124,58,237,0.25)', gruppe: 'etablering' },
+  gmbh_gruendung:  { label: 'GmbH-Gründung',      icon: '🏛', color: '#2563eb', bg: 'rgba(37,99,235,0.08)',   border: 'rgba(37,99,235,0.25)', gruppe: 'etablering' },
+  vorratsgesell:   { label: 'Vorratsgesellschaft', icon: '📦', color: '#d97706', bg: 'rgba(217,119,6,0.08)',  border: 'rgba(217,119,6,0.25)', gruppe: 'etablering' },
+  geschaeftsadresse:{ label: 'Geschäftsadresse',   icon: '📍', color: '#0f766e', bg: 'rgba(15,118,110,0.08)', border: 'rgba(15,118,110,0.25)', gruppe: 'etablering' },
+  easy_b2b:        { label: 'Easy-B2B',            icon: '🤝', color: '#16a34a', bg: 'rgba(22,163,74,0.08)',  border: 'rgba(22,163,74,0.25)', gruppe: 'etablering' },
+  liquidation:     { label: 'Liquidation',         icon: '🔚', color: '#ef4444', bg: 'rgba(239,68,68,0.08)',  border: 'rgba(239,68,68,0.25)', gruppe: 'etablering' },
   freitext:        { label: 'Eigener Auftrag',   icon: '📝', color: '#64748b', bg: 'rgba(100,116,139,0.08)', border: 'rgba(100,116,139,0.25)' },
 }
 
@@ -58,6 +68,21 @@ const VERLAUF_TYPEN = {
   rechnung:          { label: 'Rechnung erstellt',      icon: '🧾', color: '#16a34a' },
   notiz:             { label: 'Interne Notiz',          icon: '📝', color: '#64748b' },
   meilenstein:       { label: 'Meilenstein',            icon: '🏁', color: '#2563eb' },
+}
+
+function TypOptions() {
+  const kanzlei = Object.entries(AUFTRAGS_TYP_CFG).filter(([, v]) => !v.gruppe)
+  const etab    = Object.entries(AUFTRAGS_TYP_CFG).filter(([, v]) => v.gruppe === 'etablering')
+  return (
+    <>
+      <optgroup label="Kanzlei">
+        {kanzlei.map(([k, v]) => <option key={k} value={k}>{v.icon} {v.label}</option>)}
+      </optgroup>
+      <optgroup label="Etablering / International">
+        {etab.map(([k, v]) => <option key={k} value={k}>{v.icon} {v.label}</option>)}
+      </optgroup>
+    </>
+  )
 }
 
 function genVerlaufId() { return 'vl_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5) }
@@ -1157,6 +1182,439 @@ function ErfassungVerlaufSection({ au, onUpdate }) {
   )
 }
 
+// ── Generische Workflow-Konfigurationen (Etablering + weitere) ────────────────
+const WF_COLORS = {
+  gray:   { color: '#64748b', bg: 'rgba(100,116,139,0.1)',  border: 'rgba(100,116,139,0.3)' },
+  blue:   { color: '#2563eb', bg: 'rgba(37,99,235,0.08)',   border: 'rgba(37,99,235,0.3)' },
+  cyan:   { color: '#0891b2', bg: 'rgba(8,145,178,0.08)',   border: 'rgba(8,145,178,0.3)' },
+  purple: { color: '#7c3aed', bg: 'rgba(124,58,237,0.08)',  border: 'rgba(124,58,237,0.3)' },
+  orange: { color: '#f97316', bg: 'rgba(249,115,22,0.08)',  border: 'rgba(249,115,22,0.3)' },
+  green:  { color: '#16a34a', bg: 'rgba(22,163,74,0.08)',   border: 'rgba(22,163,74,0.3)' },
+  teal:   { color: '#0f766e', bg: 'rgba(15,118,110,0.08)',  border: 'rgba(15,118,110,0.3)' },
+  amber:  { color: '#d97706', bg: 'rgba(217,119,6,0.08)',   border: 'rgba(217,119,6,0.3)' },
+  red:    { color: '#ef4444', bg: 'rgba(239,68,68,0.08)',   border: 'rgba(239,68,68,0.3)' },
+}
+
+export const WORKFLOW_CONFIGS = {
+  ust_reg_de: {
+    label: 'USt-Registrierung Deutschland',
+    steps: [
+      { key: 'anfrage',              label: 'Anfrage eingegangen',          icon: '📨', ...WF_COLORS.gray },
+      { key: 'formular_gesendet',    label: 'Formularlink gesendet',        icon: '📤', ...WF_COLORS.blue },
+      { key: 'formular_ausgefuellt', label: 'Formular ausgefüllt',          icon: '📋', ...WF_COLORS.cyan },
+      { key: 'daten_geprueft',       label: 'Daten geprüft',               icon: '✅', ...WF_COLORS.teal },
+      { key: 'antrag_erzeugt',       label: 'Antrag erzeugt',              icon: '📝', ...WF_COLORS.purple },
+      { key: 'zur_unterschrift',     label: 'Zur Unterschrift gesendet',   icon: '✍️', ...WF_COLORS.amber },
+      { key: 'unterschrieben',       label: 'Unterschrift erhalten',       icon: '📬', ...WF_COLORS.green },
+      { key: 'an_fa',               label: 'An Finanzamt gesendet',       icon: '🏛', ...WF_COLORS.blue },
+      { key: 'steuernr_erhalten',    label: 'Steuernummer erhalten',       icon: '🔢', ...WF_COLORS.green },
+      { key: 'ustid_erhalten',       label: 'USt-ID erhalten',             icon: '🇪🇺', ...WF_COLORS.green },
+      { key: 'abgeschlossen',        label: 'Abgeschlossen',              icon: '✅', ...WF_COLORS.green },
+    ],
+  },
+  ust_reg_se: {
+    label: 'Momsregistrering Sverige',
+    steps: [
+      { key: 'anfrage',              label: 'Anfrage eingegangen',          icon: '📨', ...WF_COLORS.gray },
+      { key: 'formular_gesendet',    label: 'Formularlink gesendet',        icon: '📤', ...WF_COLORS.blue },
+      { key: 'formular_ausgefuellt', label: 'Formular ausgefüllt',          icon: '📋', ...WF_COLORS.cyan },
+      { key: 'daten_geprueft',       label: 'Daten geprüft',               icon: '✅', ...WF_COLORS.teal },
+      { key: 'antrag_erzeugt',       label: 'Antrag erzeugt',              icon: '📝', ...WF_COLORS.purple },
+      { key: 'zur_unterschrift',     label: 'Zur Unterschrift gesendet',   icon: '✍️', ...WF_COLORS.amber },
+      { key: 'unterschrieben',       label: 'Unterschrift erhalten',       icon: '📬', ...WF_COLORS.green },
+      { key: 'eingereicht',          label: 'Bei Skatteverket eingereicht', icon: '🏛', ...WF_COLORS.blue },
+      { key: 'momsnr_erhalten',      label: 'Momsnummer erhalten',         icon: '🔢', ...WF_COLORS.green },
+      { key: 'abgeschlossen',        label: 'Abgeschlossen',              icon: '✅', ...WF_COLORS.green },
+    ],
+  },
+  ust_reg_no: {
+    label: 'MVA-registrering Norge',
+    steps: [
+      { key: 'anfrage',              label: 'Anfrage eingegangen',          icon: '📨', ...WF_COLORS.gray },
+      { key: 'formular_gesendet',    label: 'Formularlink gesendet',        icon: '📤', ...WF_COLORS.blue },
+      { key: 'formular_ausgefuellt', label: 'Formular ausgefüllt',          icon: '📋', ...WF_COLORS.cyan },
+      { key: 'daten_geprueft',       label: 'Daten geprüft',               icon: '✅', ...WF_COLORS.teal },
+      { key: 'antrag_erzeugt',       label: 'Antrag erzeugt',              icon: '📝', ...WF_COLORS.purple },
+      { key: 'zur_unterschrift',     label: 'Zur Unterschrift gesendet',   icon: '✍️', ...WF_COLORS.amber },
+      { key: 'unterschrieben',       label: 'Unterschrift erhalten',       icon: '📬', ...WF_COLORS.green },
+      { key: 'eingereicht',          label: 'Bei Skatteetaten eingereicht', icon: '🏛', ...WF_COLORS.blue },
+      { key: 'mvanr_erhalten',       label: 'MVA-Nummer erhalten',         icon: '🔢', ...WF_COLORS.green },
+      { key: 'abgeschlossen',        label: 'Abgeschlossen',              icon: '✅', ...WF_COLORS.green },
+    ],
+  },
+  ust_reg_dk: {
+    label: 'Momsregistrering Danmark',
+    steps: [
+      { key: 'anfrage',              label: 'Anfrage eingegangen',          icon: '📨', ...WF_COLORS.gray },
+      { key: 'formular_gesendet',    label: 'Formularlink gesendet',        icon: '📤', ...WF_COLORS.blue },
+      { key: 'formular_ausgefuellt', label: 'Formular ausgefüllt',          icon: '📋', ...WF_COLORS.cyan },
+      { key: 'daten_geprueft',       label: 'Daten geprüft',               icon: '✅', ...WF_COLORS.teal },
+      { key: 'antrag_erzeugt',       label: 'Antrag erzeugt',              icon: '📝', ...WF_COLORS.purple },
+      { key: 'zur_unterschrift',     label: 'Zur Unterschrift gesendet',   icon: '✍️', ...WF_COLORS.amber },
+      { key: 'unterschrieben',       label: 'Unterschrift erhalten',       icon: '📬', ...WF_COLORS.green },
+      { key: 'eingereicht',          label: 'Bei Skattestyrelsen eingereicht', icon: '🏛', ...WF_COLORS.blue },
+      { key: 'momsnr_erhalten',      label: 'SE-Nummer erhalten',          icon: '🔢', ...WF_COLORS.green },
+      { key: 'abgeschlossen',        label: 'Abgeschlossen',              icon: '✅', ...WF_COLORS.green },
+    ],
+  },
+  ug_gruendung: {
+    label: 'UG-Gründung',
+    steps: [
+      { key: 'anfrage',              label: 'Anfrage eingegangen',          icon: '📨', ...WF_COLORS.gray },
+      { key: 'formular_gesendet',    label: 'Formularlink gesendet',        icon: '📤', ...WF_COLORS.blue },
+      { key: 'formular_ausgefuellt', label: 'Daten erhalten',              icon: '📋', ...WF_COLORS.cyan },
+      { key: 'daten_geprueft',       label: 'Daten geprüft',               icon: '✅', ...WF_COLORS.teal },
+      { key: 'satzung_erstellt',     label: 'Satzung erstellt',            icon: '📝', ...WF_COLORS.purple },
+      { key: 'notar_termin',         label: 'Notartermin vereinbart',      icon: '📅', ...WF_COLORS.amber },
+      { key: 'beurkundet',           label: 'Beurkundet',                  icon: '📜', ...WF_COLORS.teal },
+      { key: 'handelsregister',      label: 'Handelsregister eingereicht', icon: '🏛', ...WF_COLORS.blue },
+      { key: 'eingetragen',          label: 'HR-Eintragung erhalten',      icon: '✅', ...WF_COLORS.green },
+      { key: 'steuerl_erfassung',    label: 'Steuerliche Erfassung',       icon: '🔢', ...WF_COLORS.orange },
+      { key: 'geschaeftskonto',      label: 'Geschäftskonto eröffnet',     icon: '🏦', ...WF_COLORS.cyan },
+      { key: 'abgeschlossen',        label: 'Abgeschlossen',              icon: '✅', ...WF_COLORS.green },
+    ],
+  },
+  gmbh_gruendung: {
+    label: 'GmbH-Gründung',
+    steps: [
+      { key: 'anfrage',              label: 'Anfrage eingegangen',          icon: '📨', ...WF_COLORS.gray },
+      { key: 'formular_gesendet',    label: 'Formularlink gesendet',        icon: '📤', ...WF_COLORS.blue },
+      { key: 'formular_ausgefuellt', label: 'Daten erhalten',              icon: '📋', ...WF_COLORS.cyan },
+      { key: 'daten_geprueft',       label: 'Daten geprüft',               icon: '✅', ...WF_COLORS.teal },
+      { key: 'satzung_erstellt',     label: 'Satzung erstellt',            icon: '📝', ...WF_COLORS.purple },
+      { key: 'notar_termin',         label: 'Notartermin vereinbart',      icon: '📅', ...WF_COLORS.amber },
+      { key: 'beurkundet',           label: 'Beurkundet',                  icon: '📜', ...WF_COLORS.teal },
+      { key: 'stammkapital',         label: 'Stammkapital eingezahlt',     icon: '💰', ...WF_COLORS.green },
+      { key: 'handelsregister',      label: 'Handelsregister eingereicht', icon: '🏛', ...WF_COLORS.blue },
+      { key: 'eingetragen',          label: 'HR-Eintragung erhalten',      icon: '✅', ...WF_COLORS.green },
+      { key: 'steuerl_erfassung',    label: 'Steuerliche Erfassung',       icon: '🔢', ...WF_COLORS.orange },
+      { key: 'geschaeftskonto',      label: 'Geschäftskonto eröffnet',     icon: '🏦', ...WF_COLORS.cyan },
+      { key: 'abgeschlossen',        label: 'Abgeschlossen',              icon: '✅', ...WF_COLORS.green },
+    ],
+  },
+  vorratsgesell: {
+    label: 'Vorratsgesellschaft',
+    steps: [
+      { key: 'anfrage',              label: 'Anfrage eingegangen',          icon: '📨', ...WF_COLORS.gray },
+      { key: 'angebot_gesendet',     label: 'Angebot gesendet',            icon: '📤', ...WF_COLORS.blue },
+      { key: 'angebot_angenommen',   label: 'Angebot angenommen',          icon: '✅', ...WF_COLORS.green },
+      { key: 'kaufvertrag',          label: 'Kaufvertrag erstellt',        icon: '📝', ...WF_COLORS.purple },
+      { key: 'notar_termin',         label: 'Notartermin vereinbart',      icon: '📅', ...WF_COLORS.amber },
+      { key: 'beurkundet',           label: 'Beurkundet / Übertragen',    icon: '📜', ...WF_COLORS.teal },
+      { key: 'umfirmiert',           label: 'Umfirmierung eingetragen',    icon: '🏛', ...WF_COLORS.blue },
+      { key: 'abgeschlossen',        label: 'Abgeschlossen',              icon: '✅', ...WF_COLORS.green },
+    ],
+  },
+  geschaeftsadresse: {
+    label: 'Geschäftsadresse',
+    steps: [
+      { key: 'anfrage',              label: 'Anfrage eingegangen',          icon: '📨', ...WF_COLORS.gray },
+      { key: 'angebot_gesendet',     label: 'Angebot gesendet',            icon: '📤', ...WF_COLORS.blue },
+      { key: 'vertrag_gesendet',     label: 'Vertrag gesendet',            icon: '📝', ...WF_COLORS.purple },
+      { key: 'vertrag_unterzeichnet',label: 'Vertrag unterzeichnet',       icon: '✍️', ...WF_COLORS.amber },
+      { key: 'adresse_aktiv',        label: 'Adresse aktiv',               icon: '📍', ...WF_COLORS.green },
+      { key: 'abgeschlossen',        label: 'Abgeschlossen / Gekündigt',  icon: '✅', ...WF_COLORS.green },
+    ],
+  },
+  easy_b2b: {
+    label: 'Easy-B2B-Anfrage',
+    steps: [
+      { key: 'anfrage',              label: 'Anfrage eingegangen',          icon: '📨', ...WF_COLORS.gray },
+      { key: 'kontakt_aufgenommen',  label: 'Kontakt aufgenommen',         icon: '📞', ...WF_COLORS.blue },
+      { key: 'angebot_gesendet',     label: 'Angebot gesendet',            icon: '📤', ...WF_COLORS.purple },
+      { key: 'in_umsetzung',         label: 'In Umsetzung',               icon: '🔧', ...WF_COLORS.cyan },
+      { key: 'abgeschlossen',        label: 'Abgeschlossen',              icon: '✅', ...WF_COLORS.green },
+    ],
+  },
+  liquidation: {
+    label: 'Liquidation',
+    steps: [
+      { key: 'anfrage',              label: 'Anfrage eingegangen',          icon: '📨', ...WF_COLORS.gray },
+      { key: 'beratung',             label: 'Beratungsgespräch',           icon: '📞', ...WF_COLORS.blue },
+      { key: 'beschluss',            label: 'Gesellschafterbeschluss',     icon: '📝', ...WF_COLORS.purple },
+      { key: 'hr_anmeldung',         label: 'HR-Anmeldung eingereicht',   icon: '🏛', ...WF_COLORS.blue },
+      { key: 'sperrjahr',            label: 'Sperrjahr läuft',            icon: '⏳', ...WF_COLORS.orange },
+      { key: 'schlussrechnung',      label: 'Schlussrechnung erstellt',    icon: '🧾', ...WF_COLORS.cyan },
+      { key: 'loeschung',            label: 'Löschung beantragt',         icon: '🔚', ...WF_COLORS.red },
+      { key: 'abgeschlossen',        label: 'Abgeschlossen',              icon: '✅', ...WF_COLORS.green },
+    ],
+  },
+}
+
+// ── Generisches Workflow-Panel (für alle Typen mit WORKFLOW_CONFIGS) ──────────
+function WorkflowPanel({ au, onUpdate }) {
+  const wfCfg = WORKFLOW_CONFIGS[au.typ]
+  if (!wfCfg) return null
+
+  const current = au.workflowStatus ?? wfCfg.steps[0]?.key ?? 'anfrage'
+  const currentStep = wfCfg.steps.find(s => s.key === current) ?? wfCfg.steps[0]
+  const currentIdx = wfCfg.steps.findIndex(s => s.key === current)
+
+  function setStatus(key) {
+    onUpdate({ workflowStatus: key, workflowStatusDatum: todayISO() })
+  }
+
+  return (
+    <div style={{ marginBottom: '16px' }}>
+      {/* Aktueller Status */}
+      <div style={{ padding: '12px 14px', background: currentStep.bg, borderRadius: '8px', border: `1px solid ${currentStep.border}`, marginBottom: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>Status</span>
+          <span style={{ fontSize: '12px', fontWeight: 700, color: currentStep.color, display: 'flex', alignItems: 'center', gap: '4px' }}>
+            {currentStep.icon} {currentStep.label}
+          </span>
+          <span style={{ fontSize: '10px', color: 'var(--text-muted)', marginLeft: 'auto' }}>
+            {currentIdx + 1} / {wfCfg.steps.length}
+            {au.workflowStatusDatum && <> · seit {fmtShortDate(au.workflowStatusDatum)}</>}
+          </span>
+        </div>
+
+        {/* Fortschrittsbalken */}
+        <div style={{ display: 'flex', gap: '2px', marginBottom: '10px' }}>
+          {wfCfg.steps.map((step, idx) => (
+            <div key={step.key} style={{
+              flex: 1, height: '4px', borderRadius: '2px',
+              background: idx <= currentIdx ? currentStep.color : 'var(--border)',
+              opacity: idx <= currentIdx ? 1 : 0.4,
+              transition: 'background 0.2s',
+            }} />
+          ))}
+        </div>
+
+        {/* Stufen-Chips */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+          {wfCfg.steps.map((step, idx) => {
+            const isActive = step.key === current
+            const isPast = idx < currentIdx
+            return (
+              <button
+                key={step.key}
+                onClick={() => setStatus(step.key)}
+                title={step.label}
+                style={{
+                  padding: '3px 9px', borderRadius: '20px', fontSize: '10px', cursor: 'pointer',
+                  fontWeight: isActive ? 700 : 400,
+                  border: `1px solid ${isActive ? step.color : isPast ? step.color + '60' : 'var(--border)'}`,
+                  background: isActive ? step.bg : isPast ? step.color + '08' : 'transparent',
+                  color: isActive ? step.color : isPast ? step.color + 'cc' : 'var(--text-muted)',
+                  textDecoration: isPast ? 'none' : 'none',
+                }}
+              >
+                {step.icon} {step.label}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Schnellnavigation: Vor/Zurück */}
+      <div style={{ display: 'flex', gap: '6px' }}>
+        {currentIdx > 0 && (
+          <button onClick={() => setStatus(wfCfg.steps[currentIdx - 1].key)}
+            style={{ padding: '4px 12px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer', border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text-muted)' }}>
+            ← {wfCfg.steps[currentIdx - 1].label}
+          </button>
+        )}
+        {currentIdx < wfCfg.steps.length - 1 && (
+          <button onClick={() => setStatus(wfCfg.steps[currentIdx + 1].key)}
+            style={{ padding: '4px 12px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer', fontWeight: 600, border: `1px solid ${wfCfg.steps[currentIdx + 1].color}`, background: wfCfg.steps[currentIdx + 1].bg, color: wfCfg.steps[currentIdx + 1].color }}>
+            → {wfCfg.steps[currentIdx + 1].label}
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── Generische Verlauf-Aktivitäten für Workflow-Aufträge ─────────────────────
+const WORKFLOW_AKTIVITAETEN = {
+  telefonat:              { label: 'Telefonat geführt',               icon: '📞', color: '#7c3aed' },
+  email_gesendet:         { label: 'E-Mail gesendet',                icon: '📤', color: '#2563eb' },
+  unterlagen_angefordert: { label: 'Unterlagen angefordert',          icon: '📋', color: '#0891b2' },
+  unterlagen_erhalten:    { label: 'Unterlagen erhalten',             icon: '📬', color: '#16a34a' },
+  dokument_erstellt:      { label: 'Dokument erstellt',               icon: '📝', color: '#0891b2' },
+  zur_unterschrift:       { label: 'Zur Unterschrift gesendet',       icon: '✍️', color: '#d97706' },
+  unterschrift_erhalten:  { label: 'Unterschrift erhalten',           icon: '📬', color: '#16a34a' },
+  eingereicht:            { label: 'Eingereicht / Übermittelt',       icon: '🏛', color: '#2563eb' },
+  rueckmeldung_erhalten:  { label: 'Rückmeldung erhalten',            icon: '💬', color: '#16a34a' },
+  warte:                  { label: 'Warten auf Rückmeldung',          icon: '⏳', color: '#f97316' },
+  notiz:                  { label: 'Interne Notiz',                   icon: '📝', color: '#64748b' },
+}
+
+function WorkflowVerlaufSection({ au, onUpdate }) {
+  const verlauf = au.verlauf ?? []
+  const [selectedTyp, setSelectedTyp] = useState(null)
+  const [newNotiz,    setNewNotiz]    = useState('')
+  const [newDatum,    setNewDatum]    = useState(todayISO)
+
+  function handleQuickAction(typ) {
+    if (selectedTyp === typ) { setSelectedTyp(null); return }
+    setSelectedTyp(typ)
+    setNewDatum(todayISO())
+    setNewNotiz('')
+  }
+
+  function addVerlauf() {
+    if (!selectedTyp) return
+    const cfg = WORKFLOW_AKTIVITAETEN[selectedTyp]
+    const item = {
+      id: genVerlaufId(),
+      typ: selectedTyp,
+      datum: newDatum,
+      text: newNotiz.trim() || cfg.label,
+      erstelltAm: new Date().toISOString(),
+    }
+    onUpdate({ verlauf: [item, ...verlauf] })
+    setNewNotiz(''); setNewDatum(todayISO()); setSelectedTyp(null)
+  }
+
+  function deleteVerlauf(id) {
+    onUpdate({ verlauf: verlauf.filter(v => v.id !== id) })
+  }
+
+  const sorted = [...verlauf].sort((a, b) => new Date(b.datum) - new Date(a.datum))
+  const iStyle = { padding: '6px 10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text)', fontSize: '12px', outline: 'none' }
+
+  return (
+    <div style={{ marginTop: '14px', borderTop: '1px solid var(--border)', paddingTop: '14px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+        <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>
+          📊 Verlauf & Aktivitäten
+        </span>
+        <span style={{ fontSize: '10px', color: 'var(--text-muted)', background: 'var(--surface2)', padding: '1px 7px', borderRadius: '10px', border: '1px solid var(--border)' }}>
+          {sorted.length}
+        </span>
+      </div>
+
+      {/* Aktivität erfassen */}
+      <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflow: 'hidden', marginBottom: '14px' }}>
+        <div style={{ padding: '10px 14px', background: 'var(--surface)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ fontWeight: 700, fontSize: '13px' }}>➕ Aktivität erfassen</span>
+        </div>
+        <div style={{ padding: '12px 14px', background: 'var(--surface)' }}>
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+            {Object.entries(WORKFLOW_AKTIVITAETEN).map(([key, cfg]) => {
+              const active = selectedTyp === key
+              return (
+                <button key={key} onClick={() => handleQuickAction(key)} style={{
+                  display: 'flex', alignItems: 'center', gap: '5px',
+                  padding: '6px 14px', borderRadius: '20px', cursor: 'pointer',
+                  border: `1px solid ${active ? cfg.color : 'var(--border)'}`,
+                  background: active ? cfg.color + '18' : 'var(--surface2)',
+                  color: active ? cfg.color : 'var(--text-secondary)',
+                  fontSize: '12px', fontWeight: active ? 600 : 400,
+                  transition: 'all 0.15s',
+                  boxShadow: active ? `0 0 0 2px ${cfg.color}25` : 'none',
+                }}>
+                  {cfg.icon} {cfg.label}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        {selectedTyp && (() => {
+          const cfg = WORKFLOW_AKTIVITAETEN[selectedTyp]
+          return (
+            <div style={{ padding: '14px', background: cfg.color + '06', borderTop: '1px solid var(--border)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                <span style={{ fontSize: '14px' }}>{cfg.icon}</span>
+                <span style={{ fontWeight: 700, fontSize: '13px', color: cfg.color }}>{cfg.label}</span>
+              </div>
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: '12px' }}>
+                <div>
+                  <label style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '3px', display: 'block' }}>Datum</label>
+                  <input type="date" value={newDatum} onChange={e => setNewDatum(e.target.value)} style={iStyle} />
+                </div>
+                <div style={{ flex: 1, minWidth: '200px' }}>
+                  <label style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '3px', display: 'block' }}>Notiz (optional)</label>
+                  <textarea
+                    value={newNotiz}
+                    onChange={e => setNewNotiz(e.target.value)}
+                    placeholder="Details zur Aktivität…"
+                    rows={3}
+                    style={{ ...iStyle, width: '100%', resize: 'vertical', whiteSpace: 'pre-wrap', minHeight: '60px', boxSizing: 'border-box' }}
+                    onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) addVerlauf() }}
+                    autoFocus
+                  />
+                  <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '3px' }}>Strg+Enter zum Speichern</div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button onClick={addVerlauf}
+                  style={{ padding: '7px 18px', borderRadius: '6px', border: 'none', background: cfg.color, color: '#fff', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
+                  ✓ Bestätigen
+                </button>
+                <button onClick={() => setSelectedTyp(null)}
+                  style={{ padding: '7px 14px', borderRadius: '6px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-muted)', fontSize: '12px', cursor: 'pointer' }}>
+                  ✕ Abbrechen
+                </button>
+              </div>
+            </div>
+          )
+        })()}
+      </div>
+
+      {/* Timeline */}
+      {sorted.length === 0 ? (
+        <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '12px', padding: '20px 12px', background: 'var(--surface2)', borderRadius: 'var(--radius)', border: '2px dashed var(--border)' }}>
+          <div style={{ fontSize: '24px', marginBottom: '6px', opacity: 0.4 }}>📊</div>
+          Noch keine Aktivitäten erfasst.
+        </div>
+      ) : (
+        <div>
+          {sorted.map((item, idx) => {
+            const cfg = WORKFLOW_AKTIVITAETEN[item.typ] ?? WORKFLOW_AKTIVITAETEN.notiz
+            const isLast = idx === sorted.length - 1
+            return (
+              <div key={item.id} style={{ display: 'flex', gap: '0', position: 'relative' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '36px', flexShrink: 0 }}>
+                  <div style={{
+                    width: '30px', height: '30px', borderRadius: '50%', zIndex: 1, flexShrink: 0,
+                    background: 'var(--bg, #0f1117)',
+                    border: `2px solid ${cfg.color}`,
+                    boxShadow: `0 0 0 2px ${cfg.color}20`,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px',
+                  }}>
+                    {cfg.icon}
+                  </div>
+                  {!isLast && <div style={{ width: '2px', flex: 1, background: 'var(--border)', marginTop: '2px', minHeight: '12px' }} />}
+                </div>
+                <div style={{
+                  flex: 1, marginLeft: '8px', marginBottom: isLast ? '0' : '10px',
+                  background: 'var(--surface2)', border: '1px solid var(--border)',
+                  borderRadius: '8px', overflow: 'hidden',
+                }}>
+                  <div style={{ padding: '7px 10px', display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--surface)', borderBottom: item.text && item.text !== cfg.label ? '1px solid var(--border)' : 'none' }}>
+                    <span style={{
+                      fontSize: '10px', fontWeight: 700, color: cfg.color,
+                      background: cfg.color + '15', padding: '2px 8px', borderRadius: '10px',
+                    }}>
+                      {cfg.label}
+                    </span>
+                    <span style={{ fontSize: '11px', color: 'var(--text-muted)', flex: 1 }}>
+                      {fmtShortDate(item.datum)}
+                    </span>
+                    <button onClick={() => deleteVerlauf(item.id)}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '12px', padding: '0 2px', flexShrink: 0 }}
+                      onMouseEnter={e => e.currentTarget.style.color = '#ef4444'}
+                      onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}>✕</button>
+                  </div>
+                  {item.text && item.text !== cfg.label && (
+                    <div style={{ padding: '5px 10px', fontSize: '11px', color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>
+                      {item.text}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Einzelauftrag-Karte ───────────────────────────────────────────────────────
 function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete, client, onOpenEmail, onUpdateClient, emailVorlagen, emailSignaturen, onedriveTokens, onUpdateOnedriveTokens }) {
   const typCfg    = AUFTRAGS_TYP_CFG[au.typ]      ?? AUFTRAGS_TYP_CFG.freitext
@@ -1181,7 +1639,9 @@ function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete, client, onOpe
 
   const isJA        = au.typ === 'jahresabschluss'
   const isErfassung = au.typ === 'erfassung'
+  const hasWorkflow = !!WORKFLOW_CONFIGS[au.typ]
   const jaWfsCfg = isJA ? (JA_WORKFLOW_STATUS[au.jaWorkflowStatus ?? 'neu'] ?? JA_WORKFLOW_STATUS.neu) : null
+  const wfCurrentStep = hasWorkflow ? (WORKFLOW_CONFIGS[au.typ].steps.find(s => s.key === (au.workflowStatus ?? 'anfrage')) ?? WORKFLOW_CONFIGS[au.typ].steps[0]) : null
   // Für JA: Abschluss-Jahr prominent im Titel zeigen
   const titel = au.bezeichnung
     || (isJA && au.abschlussJahr ? `Jahresabschluss ${au.abschlussJahr}` : `${typCfg.label}${au.monat ? ' ' + MONATE[au.monat - 1] : ''} ${au.jahr}`)
@@ -1211,7 +1671,13 @@ function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete, client, onOpe
                 {jaWfsCfg.icon} {jaWfsCfg.label}
               </span>
             )}
-            {!isJA && (au.monat
+            {/* Workflow-Typen: aktuellen Schritt anzeigen */}
+            {hasWorkflow && wfCurrentStep && (
+              <span style={{ fontSize: '10px', fontWeight: 600, color: wfCurrentStep.color, background: wfCurrentStep.bg, padding: '1px 6px', borderRadius: '8px', border: `1px solid ${wfCurrentStep.border}` }}>
+                {wfCurrentStep.icon} {wfCurrentStep.label}
+              </span>
+            )}
+            {!isJA && !hasWorkflow && (au.monat
               ? <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{MONATE[au.monat - 1]} {au.jahr}</span>
               : au.jahr && <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{au.jahr}</span>
             )}
@@ -1219,8 +1685,8 @@ function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete, client, onOpe
             {offeneH > 0 && <span style={{ fontSize: '10px', color: '#f97316', fontWeight: 600 }}>· {offeneH} offen</span>}
           </div>
         </div>
-        {/* JA: kein cycle-Button (Workflow-Status hat eigene 11-Stufen-Auswahl unten) */}
-        {!isJA && (
+        {/* JA + Workflow-Typen: kein einfacher cycle-Button */}
+        {!isJA && !hasWorkflow && (
           <button onClick={cycleStatus} title="Status wechseln"
             style={{ fontSize: '10px', fontWeight: 700, padding: '3px 10px', borderRadius: '20px', border: `1px solid ${statusCfg.border}`, background: statusCfg.bg, color: statusCfg.color, cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap' }}>
             {statusCfg.icon} {statusCfg.label}
@@ -1255,6 +1721,11 @@ function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete, client, onOpe
             </>
           )}
 
+          {/* ── Workflow-Typen: Prozess-Stepper oben ── */}
+          {hasWorkflow && (
+            <WorkflowPanel au={au} onUpdate={onUpdate} />
+          )}
+
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: '10px', marginBottom: '12px' }}>
             <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
               <span style={labelStyle}>Bezeichnung</span>
@@ -1263,7 +1734,7 @@ function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete, client, onOpe
             <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
               <span style={labelStyle}>Typ</span>
               <select value={au.typ} onChange={e => onUpdate({ typ: e.target.value })} style={inputStyle}>
-                {Object.entries(AUFTRAGS_TYP_CFG).map(([k, v]) => <option key={k} value={k}>{v.icon} {v.label}</option>)}
+                <TypOptions />
               </select>
             </label>
             <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -1366,6 +1837,11 @@ function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete, client, onOpe
             <ErfassungVerlaufSection au={au} onUpdate={onUpdate} />
           )}
 
+          {/* ── Workflow-Typen: Verlauf & Aktivitäten ── */}
+          {hasWorkflow && (
+            <WorkflowVerlaufSection au={au} onUpdate={onUpdate} />
+          )}
+
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '14px', paddingTop: '10px', borderTop: '1px solid var(--border)' }}>
             <button onClick={onDelete}
               style={{ fontSize: '11px', color: '#ef4444', background: 'none', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '6px', padding: '4px 12px', cursor: 'pointer' }}>
@@ -1450,7 +1926,7 @@ function SerienAuftragCard({ au, expanded, onExpand, onUpdate, onDelete }) {
             <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
               <span style={labelStyle}>Typ</span>
               <select value={au.typ} onChange={e => onUpdate({ typ: e.target.value })} style={inputStyle}>
-                {Object.entries(AUFTRAGS_TYP_CFG).map(([k, v]) => <option key={k} value={k}>{v.icon} {v.label}</option>)}
+                <TypOptions />
               </select>
             </label>
             <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -1614,7 +2090,7 @@ function BatchSeriePanel({ onCreate, onClose }) {
         <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
           <span style={labelStyle}>Typ</span>
           <select value={typ} onChange={e => handleTypChange(e.target.value)} style={inputStyle}>
-            {Object.entries(AUFTRAGS_TYP_CFG).map(([k, v]) => <option key={k} value={k}>{v.icon} {v.label}</option>)}
+            <TypOptions />
           </select>
         </label>
         <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -1730,7 +2206,7 @@ function SerieErstellenPanel({ onCreate, onClose }) {
         <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
           <span style={labelStyle}>Typ</span>
           <select value={typ} onChange={e => setTyp(e.target.value)} style={inputStyle}>
-            {Object.entries(AUFTRAGS_TYP_CFG).map(([k, v]) => <option key={k} value={k}>{v.icon} {v.label}</option>)}
+            <TypOptions />
           </select>
         </label>
         <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -1904,7 +2380,7 @@ export default function AuftraegeTab({ client, onUpdate, initialFilterTyp = 'all
         <div style={{ marginLeft: 'auto', display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
           <select value={quickTyp} onChange={e => setQuickTyp(e.target.value)}
             style={{ padding: '6px 10px', borderRadius: '7px', border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text)', fontSize: '12px', cursor: 'pointer' }}>
-            {Object.entries(AUFTRAGS_TYP_CFG).map(([k, v]) => <option key={k} value={k}>{v.icon} {v.label}</option>)}
+            <TypOptions />
           </select>
           <button onClick={createAuftrag}
             style={{ padding: '7px 16px', borderRadius: '7px', border: 'none', background: 'var(--accent)', color: '#fff', fontSize: '12px', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
