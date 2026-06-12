@@ -1342,6 +1342,10 @@ export const WORKFLOW_CONFIGS = {
 }
 
 // ── Generisches Workflow-Panel (für alle Typen mit WORKFLOW_CONFIGS) ──────────
+const FORMULAR_URLS = {
+  ust_reg_de: 'https://etablering-tyskland.com/formular/ust-registrierung-de',
+}
+
 function WorkflowPanel({ au, onUpdate }) {
   const wfCfg = WORKFLOW_CONFIGS[au.typ]
   if (!wfCfg) return null
@@ -1349,9 +1353,25 @@ function WorkflowPanel({ au, onUpdate }) {
   const current = au.workflowStatus ?? wfCfg.steps[0]?.key ?? 'anfrage'
   const currentStep = wfCfg.steps.find(s => s.key === current) ?? wfCfg.steps[0]
   const currentIdx = wfCfg.steps.findIndex(s => s.key === current)
+  const [linkCopied, setLinkCopied] = useState(false)
+  const formularUrl = FORMULAR_URLS[au.typ]
 
   function setStatus(key) {
     onUpdate({ workflowStatus: key, workflowStatusDatum: todayISO() })
+  }
+
+  function copyFormularLink() {
+    if (!formularUrl) return
+    navigator.clipboard?.writeText(formularUrl).catch(() => {
+      const el = document.createElement('textarea')
+      el.value = formularUrl
+      document.body.appendChild(el)
+      el.select()
+      document.execCommand('copy')
+      document.body.removeChild(el)
+    })
+    setLinkCopied(true)
+    setTimeout(() => setLinkCopied(false), 2000)
   }
 
   return (
@@ -1406,6 +1426,21 @@ function WorkflowPanel({ au, onUpdate }) {
           })}
         </div>
       </div>
+
+      {/* Formular-Link senden */}
+      {formularUrl && (
+        <div style={{ padding: '10px 14px', background: 'rgba(37,99,235,0.06)', borderRadius: '8px', border: '1px solid rgba(37,99,235,0.2)', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>📋 Formular:</span>
+          <a href={formularUrl} target="_blank" rel="noopener noreferrer"
+            style={{ fontSize: '11px', color: '#2563eb', textDecoration: 'underline', wordBreak: 'break-all' }}>
+            {formularUrl}
+          </a>
+          <button onClick={copyFormularLink}
+            style={{ marginLeft: 'auto', padding: '3px 10px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer', fontWeight: 600, border: '1px solid #2563eb', background: linkCopied ? '#16a34a' : '#2563eb', color: '#fff', transition: 'background 0.2s', whiteSpace: 'nowrap' }}>
+            {linkCopied ? '✓ Kopiert!' : '📋 Link kopieren'}
+          </button>
+        </div>
+      )}
 
       {/* Schnellnavigation: Vor/Zurück */}
       <div style={{ display: 'flex', gap: '6px' }}>
