@@ -1373,6 +1373,30 @@ export default function AuftragTab({ client, onUpdate, claudeApiKey, onUpdateCla
       {/* ══════════════════ 2. KONTAKTPERSONEN ══════════════════ */}
       <KontaktpersonenSection client={client} onUpdate={onUpdate} />
 
+      {/* ══════════════════ 2b. NOTIZEN ══════════════════ */}
+      <div style={{
+        background: 'var(--surface)', borderRadius: '10px',
+        border: '1px solid var(--border)', padding: '16px 20px', marginBottom: 16,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: 10 }}>
+          <span style={{ fontSize: '15px' }}>📝</span>
+          <span style={{ fontWeight: 700, fontSize: '13px', color: 'var(--text)' }}>Notizen</span>
+        </div>
+        <textarea
+          value={client.notizen || ''}
+          onChange={e => onUpdate({ notizen: e.target.value })}
+          placeholder="Allgemeine Notizen zum Mandanten (Herkunft, Besonderheiten, Hintergrund)…"
+          rows={4}
+          style={{
+            display: 'block', width: '100%', padding: '10px 12px',
+            borderRadius: '8px', border: '1px solid var(--border)',
+            background: 'var(--surface2)', color: 'var(--text)',
+            fontSize: '13px', lineHeight: '1.5', resize: 'vertical',
+            whiteSpace: 'pre-wrap',
+          }}
+        />
+      </div>
+
       {/* ══════════════════ 3. ABSENDER ══════════════════ */}
       <AbsenderSection client={client} onUpdate={onUpdate} />
 
