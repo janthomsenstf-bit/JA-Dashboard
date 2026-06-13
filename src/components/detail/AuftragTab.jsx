@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { MONAT_NAMEN } from '../../utils/aufgaben.js'
+import { supabase } from '../../utils/supabaseClient.js'
 import OneDriveFolderPickerModal from '../shared/OneDriveFolderPickerModal.jsx'
 import { TAB } from './DetailView.jsx'
 
@@ -1122,6 +1123,142 @@ function MandantSchnellansicht({ client, onNavigateToTab, onNavigateToAuftraegeT
   )
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Website-Anfrage Sektion (zeigt verknüpfte Anfrage + Dokumente)
+// ─────────────────────────────────────────────────────────────────────────────
+function WebsiteAnfrageSection({ websiteAnfrageId }) {
+  const [anfrage, setAnfrage] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    if (!websiteAnfrageId) { setLoading(false); return }
+    let cancelled = false
+    supabase.from('website_anfragen').select('*').eq('id', websiteAnfrageId).single()
+      .then(({ data }) => { if (!cancelled && data) setAnfrage(data); setLoading(false) })
+    return () => { cancelled = true }
+  }, [websiteAnfrageId])
+
+  if (!websiteAnfrageId || loading || !anfrage) return null
+
+  function downloadFile(fileObj) {
+    if (!fileObj || !fileObj.data) return
+    const byteChars = atob(fileObj.data)
+    const bytes = new Uint8Array(byteChars.length)
+    for (let i = 0; i < byteChars.length; i++) bytes[i] = byteChars.charCodeAt(i)
+    const blob = new Blob([bytes], { type: fileObj.type || 'application/pdf' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = fileObj.filename || 'datei'
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  function fmtDate(iso) {
+    if (!iso) return '—'
+    const d = new Date(iso)
+    return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
+      + ', ' + d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
+  }
+
+  const hasDocs = (anfrage.passkopie && anfrage.passkopie.filename) || (anfrage.cvr_dokument && anfrage.cvr_dokument.filename)
+
+  return (
+    <div style={{
+      background: 'var(--surface)', borderRadius: '10px',
+      border: '1px solid var(--border)', overflow: 'hidden', marginBottom: 16,
+    }}>
+      <div style={{
+        padding: '10px 16px', background: 'linear-gradient(135deg, rgba(124,58,237,0.08), rgba(124,58,237,0.02))',
+        borderBottom: '1px solid var(--border)',
+        display: 'flex', alignItems: 'center', gap: '8px',
+      }}>
+        <span style={{ fontSize: '15px' }}>🌐</span>
+        <span style={{ fontWeight: 700, fontSize: '13px', color: 'var(--text)' }}>Website-Anfrage</span>
+        <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginLeft: 'auto' }}>
+          {fmtDate(anfrage.erstellt_am)}
+        </span>
+      </div>
+
+      <div style={{ padding: '14px 16px' }}>
+        {/* Interesse / Leistung */}
+        {anfrage.interesse && (
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>
+              Gewünschte Leistung
+            </div>
+            <div style={{ fontSize: '13px', color: 'var(--text)', fontWeight: 600 }}>
+              {anfrage.interesse}
+            </div>
+          </div>
+        )}
+
+        {/* Nachricht */}
+        {anfrage.nachricht && (
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>
+              Nachricht / Formulardaten
+            </div>
+            <pre style={{
+              margin: 0, padding: '10px 12px', borderRadius: '8px',
+              background: 'var(--surface2)', border: '1px solid var(--border)',
+              fontSize: '12px', lineHeight: 1.5, whiteSpace: 'pre-wrap',
+              color: 'var(--text)', maxHeight: 250, overflowY: 'auto',
+            }}>
+              {anfrage.nachricht}
+            </pre>
+          </div>
+        )}
+
+        {/* Dokumente */}
+        {hasDocs && (
+          <div>
+            <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>
+              Hochgeladene Dokumente
+            </div>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              {anfrage.passkopie && anfrage.passkopie.filename && (
+                <button
+                  onClick={() => downloadFile(anfrage.passkopie)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '8px',
+                    padding: '8px 14px', borderRadius: '8px',
+                    border: '1px solid var(--border)', background: 'var(--surface2)',
+                    color: 'var(--text)', cursor: 'pointer', fontSize: '13px',
+                    transition: 'border-color 0.15s',
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.borderColor = '#7c3aed'}
+                  onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}
+                >
+                  <span style={{ fontSize: '18px' }}>📄</span>
+                  <span>Passkopie: {anfrage.passkopie.filename}</span>
+                </button>
+              )}
+              {anfrage.cvr_dokument && anfrage.cvr_dokument.filename && (
+                <button
+                  onClick={() => downloadFile(anfrage.cvr_dokument)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '8px',
+                    padding: '8px 14px', borderRadius: '8px',
+                    border: '1px solid var(--border)', background: 'var(--surface2)',
+                    color: 'var(--text)', cursor: 'pointer', fontSize: '13px',
+                    transition: 'border-color 0.15s',
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.borderColor = '#7c3aed'}
+                  onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}
+                >
+                  <span style={{ fontSize: '18px' }}>📄</span>
+                  <span>CVR-Auszug: {anfrage.cvr_dokument.filename}</span>
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function AuftragTab({ client, onUpdate, claudeApiKey, onUpdateClaudeApiKey, emailSignaturen = [], onedriveTokens = null, onUpdateOnedriveTokens, onNavigateToTab, onNavigateToAuftraegeTyp }) {
   const auftrag = client.auftrag ?? {}
 
@@ -1373,7 +1510,12 @@ export default function AuftragTab({ client, onUpdate, claudeApiKey, onUpdateCla
       {/* ══════════════════ 2. KONTAKTPERSONEN ══════════════════ */}
       <KontaktpersonenSection client={client} onUpdate={onUpdate} />
 
-      {/* ══════════════════ 2b. NOTIZEN ══════════════════ */}
+      {/* ══════════════════ 2b. WEBSITE-ANFRAGE ══════════════════ */}
+      {client.websiteAnfrageId && (
+        <WebsiteAnfrageSection websiteAnfrageId={client.websiteAnfrageId} />
+      )}
+
+      {/* ══════════════════ 2c. NOTIZEN ══════════════════ */}
       <div style={{
         background: 'var(--surface)', borderRadius: '10px',
         border: '1px solid var(--border)', padding: '16px 20px', marginBottom: 16,
