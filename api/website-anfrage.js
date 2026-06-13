@@ -67,25 +67,33 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end()
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
-  const { name, firma, email, telefon, interesse, nachricht, land } = req.body ?? {}
+  const { name, firma, email, telefon, interesse, nachricht, land, passkopie, cvr_dokument } = req.body ?? {}
 
   if (!name || !email || !interesse) {
     return res.status(400).json({ error: 'Name, E-Mail und Interesse sind Pflichtfelder.' })
   }
 
+  const row = {
+    name,
+    firma: firma || null,
+    email,
+    telefon: telefon || null,
+    interesse,
+    nachricht: nachricht || null,
+    land: land || null,
+    status: 'neu',
+  }
+  if (passkopie && passkopie.filename) {
+    row.passkopie = { filename: passkopie.filename, type: passkopie.type, data: passkopie.data }
+  }
+  if (cvr_dokument && cvr_dokument.filename) {
+    row.cvr_dokument = { filename: cvr_dokument.filename, type: cvr_dokument.type, data: cvr_dokument.data }
+  }
+
   // In Supabase speichern
   const { data, error } = await sb
     .from('website_anfragen')
-    .insert({
-      name,
-      firma: firma || null,
-      email,
-      telefon: telefon || null,
-      interesse,
-      nachricht: nachricht || null,
-      land: land || null,
-      status: 'neu',
-    })
+    .insert(row)
     .select('id')
     .single()
 

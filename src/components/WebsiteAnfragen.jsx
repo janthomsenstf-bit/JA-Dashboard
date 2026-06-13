@@ -69,6 +69,20 @@ export default function WebsiteAnfragen({ onCreateMandant }) {
     if (expanded === id) setExpanded(null)
   }
 
+  function downloadFile(fileObj) {
+    if (!fileObj || !fileObj.data) return
+    const byteChars = atob(fileObj.data)
+    const bytes = new Uint8Array(byteChars.length)
+    for (let i = 0; i < byteChars.length; i++) bytes[i] = byteChars.charCodeAt(i)
+    const blob = new Blob([bytes], { type: fileObj.type || 'application/pdf' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = fileObj.filename || 'datei'
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   const visible = anfragen.filter(a => {
     if (filter !== 'all' && a.status !== filter) return false
     if (search.trim()) {
@@ -206,6 +220,43 @@ export default function WebsiteAnfragen({ onCreateMandant }) {
                         }}>
                           {a.nachricht}
                         </pre>
+                      </div>
+                    )}
+
+                    {/* Dateien */}
+                    {(a.passkopie || a.cvr_dokument) && (
+                      <div style={{ marginBottom: 16 }}>
+                        <strong style={{ fontSize: '13px' }}>Hochgeladene Dateien:</strong>
+                        <div style={{ display: 'flex', gap: '10px', marginTop: 8, flexWrap: 'wrap' }}>
+                          {a.passkopie && a.passkopie.filename && (
+                            <button
+                              onClick={() => downloadFile(a.passkopie)}
+                              style={{
+                                display: 'flex', alignItems: 'center', gap: '8px',
+                                padding: '8px 14px', borderRadius: '8px',
+                                border: '1px solid var(--border)', background: 'var(--surface)',
+                                color: 'var(--text)', cursor: 'pointer', fontSize: '13px',
+                              }}
+                            >
+                              <span style={{ fontSize: '18px' }}>📄</span>
+                              <span>Passkopie: {a.passkopie.filename}</span>
+                            </button>
+                          )}
+                          {a.cvr_dokument && a.cvr_dokument.filename && (
+                            <button
+                              onClick={() => downloadFile(a.cvr_dokument)}
+                              style={{
+                                display: 'flex', alignItems: 'center', gap: '8px',
+                                padding: '8px 14px', borderRadius: '8px',
+                                border: '1px solid var(--border)', background: 'var(--surface)',
+                                color: 'var(--text)', cursor: 'pointer', fontSize: '13px',
+                              }}
+                            >
+                              <span style={{ fontSize: '18px' }}>📄</span>
+                              <span>CVR-Auszug: {a.cvr_dokument.filename}</span>
+                            </button>
+                          )}
+                        </div>
                       </div>
                     )}
 

@@ -1322,9 +1322,18 @@ export default function App() {
             <div style={{ flex: 1, overflowY: 'auto' }}>
               <WebsiteAnfragen
                 onCreateMandant={(data) => {
+                  const kontakt = {
+                    id: 'p' + Date.now().toString(36),
+                    name: data.ansprechpartner || data.name || '',
+                    rolle: 'Ansprechpartner',
+                    email: data.email || '',
+                    telefon: data.telefon || '',
+                  }
                   addClient({
                     name: data.name,
                     notizen: data.notizen || '',
+                    kontakte: [kontakt],
+                    land: data.land || '',
                   })
                 }}
               />
