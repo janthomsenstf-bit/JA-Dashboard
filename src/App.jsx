@@ -701,6 +701,10 @@ export default function App() {
   function addClient(data) {
     const newClient = {
       id: generateId(),
+      notizen: '',
+      kontakte: [],
+      archivSummary: '',
+      archivDatum: null,
       ...data,
       archiviert: false,
       rueckfragen: [],
@@ -714,9 +718,6 @@ export default function App() {
       faUebermittelt: false,
       faUebermitteltDatum: null,
       erinnerungen: [],
-      notizen: '',
-      archivSummary: '',
-      archivDatum: null,
       berechnungen: { kfz: [], arbeitszimmer: [], reisekosten: [] },
       auftrag: {},
       susa: { typ: null, kontorahmen: 'skr03', konten: [], importDatum: null, dateiname: '' },

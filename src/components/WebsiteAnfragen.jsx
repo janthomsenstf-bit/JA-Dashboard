@@ -303,7 +303,7 @@ export default function WebsiteAnfragen({ onCreateMandant }) {
                             email: a.email,
                             telefon: a.telefon || '',
                             land: a.land || '',
-                            notizen: `Anfrage vom ${formatDate(a.erstellt_am)}\nInteresse: ${a.interesse}\n\n${a.nachricht || ''}`,
+                            notizen: `── Website-Anfrage ──\nEingegangen: ${formatDate(a.erstellt_am)}\nGewünschte Leistung: ${a.interesse}\n\n${a.nachricht || ''}`,
                           })
                           updateStatus(a.id, 'erledigt')
                         }}
