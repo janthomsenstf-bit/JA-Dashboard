@@ -39,6 +39,12 @@ const ALLOWED_ORIGINS = [
   'http://localhost:3002',
 ]
 
+function isAllowedOrigin(origin) {
+  if (ALLOWED_ORIGINS.includes(origin)) return true
+  if (/^https:\/\/etablering-tyskland.*\.vercel\.app$/.test(origin)) return true
+  return false
+}
+
 const NOTIFY_EMAIL = process.env.WEBSITE_NOTIFY_EMAIL || 'jan.thomsen.stf@gmail.com'
 
 const sb = createClient(SUPABASE_URL, SUPABASE_KEY, {
@@ -47,7 +53,7 @@ const sb = createClient(SUPABASE_URL, SUPABASE_KEY, {
 
 function corsHeaders(req, res) {
   const origin = req.headers.origin ?? ''
-  if (ALLOWED_ORIGINS.includes(origin)) {
+  if (isAllowedOrigin(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin)
   } else {
     res.setHeader('Access-Control-Allow-Origin', ALLOWED_ORIGINS[0])
