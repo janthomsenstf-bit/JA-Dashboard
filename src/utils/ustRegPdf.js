@@ -13,9 +13,9 @@ import { jsPDF } from 'jspdf'
 
 // Kanzlei (nur für Vollmacht als Bevollmächtigter) — via Einstellungen pflegbar.
 const KANZLEI_FALLBACK = {
-  name:    'Steuerkanzlei Jan Thomsen',
-  strasse: '',
-  plzOrt:  '',
+  name:    'Jan Thomsen',
+  strasse: 'Hauptstraße 24a',
+  plzOrt:  '24986 Mittelangeln',
   telefon: '',
   email:   'jan.thomsen.stf@gmail.com',
 }
