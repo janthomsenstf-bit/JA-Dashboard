@@ -135,56 +135,111 @@ export function buildAntragFinanzamt(client, au) {
   return doc
 }
 
-// ── 2) Vollmacht ──────────────────────────────────────────────────────────────
+// Zuständiges Finanzamt (für ausländische Unternehmer i. d. R. Flensburg)
+const FINANZAMT = {
+  name:    'Finanzamt Flensburg',
+  strasse: 'Duburger Straße 58-64',
+  plzOrt:  '24939 Flensburg',
+}
+
+// ── 2) Empfangsvollmacht nach § 123 AO ────────────────────────────────────────
 export function buildVollmacht(client, au) {
   const doc = new jsPDF({ unit: 'mm', format: 'a4' })
   const kanzlei = loadKanzlei()
   const ed = au?.erfassungsdaten ?? {}
   const g = (k, def = '') => safe(ed[k]) || def
-  const L = 25, R = 185, W = R - L
-  let y = 30
+  const L = 20, R = 190, MID = 105
+  let y = 22
 
-  doc.setFont('helvetica', 'bold').setFontSize(18)
-  doc.text('Vollmacht', L, y)
-  doc.setFont('helvetica', 'normal').setFontSize(10).setTextColor(110)
-  doc.text('zur Vertretung in steuerlichen Angelegenheiten', L, y + 7)
-  doc.setTextColor(0)
-  y += 22
-
-  const firma  = g('firmenname') || safe(client?.name) || '—'
-  const cvr    = g('cvr_nummer')
+  const firma  = g('firmenname') || safe(client?.name) || ''
   const anschr = [g('adresse_strasse'), g('adresse_plz_ort'), g('adresse_land')].filter(Boolean).join(', ')
-  const gf     = g('geschaeftsfuehrer_name')
+  const steuernr = g('steuernummer') || safe(client?.steuernummer)
 
-  doc.setFont('helvetica', 'bold').setFontSize(10.5)
-  doc.text('Vollmachtgeber', L, y); y += 6
-  doc.setFont('helvetica', 'normal').setFontSize(10.5)
-  const vgLines = doc.splitTextToSize(
-    [firma, cvr ? `CVR-/Reg.-Nr.: ${cvr}` : '', anschr, gf ? `vertreten durch: ${gf}` : ''].filter(Boolean).join('\n'),
-    W
-  )
-  doc.text(vgLines, L, y); y += vgLines.length * 5 + 8
+  // ── Kopf: links Finanzamt, rechts Antragsteller ──
+  doc.setFont('helvetica', 'normal').setFontSize(10).setTextColor(0)
+  doc.text('An das', L, y)
+  doc.setFont('helvetica', 'bold')
+  doc.text(FINANZAMT.name, L, y + 5)
+  doc.setFont('helvetica', 'normal')
+  doc.text(FINANZAMT.strasse, L, y + 10)
+  doc.text(FINANZAMT.plzOrt, L, y + 15)
+  doc.text('(Tyskland / Germany)', L, y + 20)
 
-  doc.setFont('helvetica', 'bold').setFontSize(10.5)
-  doc.text('Bevollmächtigter', L, y); y += 6
-  doc.setFont('helvetica', 'normal').setFontSize(10.5)
-  const bvLines = doc.splitTextToSize(
-    [kanzlei.name, kanzlei.strasse, kanzlei.plzOrt, kanzlei.email].filter(Boolean).join('\n'),
-    W
-  )
-  doc.text(bvLines, L, y); y += bvLines.length * 5 + 10
+  const rx = MID + 6, vx = rx + 26
+  doc.text('Name:', rx, y)
+  doc.text(firma, vx, y, { maxWidth: R - vx })
+  doc.text('Anschrift:', rx, y + 6)
+  doc.text(doc.splitTextToSize(anschr, R - vx), vx, y + 6)
+  doc.text('Steuernummer:', rx, y + 18)
+  doc.text(steuernr, vx, y + 18)
+  doc.setFontSize(7).setTextColor(110)
+  doc.text('(soweit schon vergeben)', rx, y + 22)
+  doc.setFontSize(10).setTextColor(0)
 
-  const text = `Der Bevollmächtigte wird hiermit bevollmächtigt, den Vollmachtgeber in allen steuerlichen Angelegenheiten gegenüber den Finanzbehörden zu vertreten. Die Vollmacht umfasst insbesondere die Beantragung der steuerlichen Erfassung und der umsatzsteuerlichen Registrierung in Deutschland, die Entgegennahme von Steuernummer und USt-IdNr., die Abgabe von Anträgen und Erklärungen sowie den gesamten damit verbundenen Schriftverkehr.`
-  const tLines = doc.splitTextToSize(text, W)
-  doc.text(tLines, L, y); y += tLines.length * 5 + 22
+  // ── Titel ──
+  y += 38
+  doc.setFont('helvetica', 'bold').setFontSize(12)
+  doc.text('Benennung eines Empfangsbevollmächtigten nach § 123 AO', MID, y, { align: 'center' })
+  doc.setFont('helvetica', 'normal').setFontSize(10)
+  y += 10
 
-  doc.setDrawColor(120)
+  // ── Einleitungstext ──
+  const intro = `Wir bitten Sie, unter Hinweis auf § 123 Abgabenordnung, um die Benennung eines inländischen (in Deutschland ansässigen) Empfangsbevollmächtigten, der ermächtigt ist, alle Schriftstücke in Steuerangelegenheiten zu empfangen, die für Sie bestimmt sind. Unterlassen Sie dies, so gilt ein an Sie ins Ausland gerichtetes Schriftstück einen Monat nach Aufgabe zur Post als zugegangen. Den Nachweis über einen verspäteten bzw. Nichtzugang haben Sie zu führen.`
+  const introLines = doc.splitTextToSize(intro, R - L)
+  doc.text(introLines, L, y, { align: 'justify', maxWidth: R - L })
+  y += introLines.length * 5 + 6
+
+  doc.setFont('helvetica', 'bold')
+  doc.text('Zutreffendes bitte ankreuzen und ggf. ausfüllen!', MID, y, { align: 'center' })
+  doc.setFont('helvetica', 'normal')
+  y += 10
+
+  // ── Option 1 (angekreuzt): Empfangsbevollmächtigter ──
+  doc.setDrawColor(0); doc.setLineWidth(0.3)
+  doc.rect(L, y - 3.5, 4, 4)
+  doc.setFont('helvetica', 'bold').setFontSize(11)
+  doc.text('X', L + 0.7, y - 0.4)
+  doc.setFont('helvetica', 'normal').setFontSize(10)
+  doc.text('Ich benenne folgenden Empfangsbevollmächtigten:', L + 7, y)
+  y += 8
+
+  const bx = L + 60, lvx = bx + 24
+  const bvFelder = [
+    ['Name', kanzlei.name],
+    ['Anschrift', [kanzlei.strasse, kanzlei.plzOrt].filter(Boolean).join(', ')],
+    ['Telefon', kanzlei.telefon],
+  ]
+  bvFelder.forEach(([label, val]) => {
+    doc.setTextColor(90); doc.text(label, bx, y)
+    doc.setTextColor(0)
+    doc.text(safe(val), lvx, y)
+    doc.setDrawColor(180); doc.setLineWidth(0.2)
+    doc.line(lvx, y + 1.5, R, y + 1.5)
+    y += 8
+  })
+  y += 4
+
+  // ── Option 2 (nicht angekreuzt) ──
+  doc.setDrawColor(0); doc.setLineWidth(0.3)
+  doc.rect(L, y - 3.5, 4, 4)
+  doc.text('Ich benenne keinen inländischen Empfangsbevollmächtigten.', L + 7, y)
+  y += 7
+  doc.setFontSize(8.5).setTextColor(80)
+  const opt2 = `Ein an mich ins Ausland gerichtetes Schriftstück gilt einen Monat nach Postaufgabe als bekanntgegeben. Den Nachweis über einen verspäteten bzw. Nichtzugang habe ich zu führen.`
+  const opt2Lines = doc.splitTextToSize(opt2, R - L - 7)
+  doc.text(opt2Lines, L + 7, y)
+  doc.setFontSize(10).setTextColor(0)
+  y += opt2Lines.length * 4.5 + 24
+
+  // ── Unterschrift ──
+  if (y > 270) y = 270
+  doc.setDrawColor(120); doc.setLineWidth(0.3)
   doc.line(L, y, L + 70, y)
-  doc.line(R - 70, y, R, y)
+  doc.line(R - 75, y, R, y)
   y += 5
   doc.setFontSize(9).setTextColor(110)
   doc.text('Ort, Datum', L, y)
-  doc.text(`Unterschrift${gf ? ' (' + gf + ')' : ''}`, R - 70, y)
+  doc.text('Unterschrift des gesetzlichen Vertreters', R, y, { align: 'right' })
   doc.setTextColor(0)
 
   return doc
@@ -194,7 +249,7 @@ export function buildVollmacht(client, au) {
 export function pdfFilename(art, au) {
   const firma = (((au && au.erfassungsdaten) || {}).firmenname || 'Mandant')
     .replace(/[^\wäöüÄÖÜß \-]/g, '').trim().replace(/\s+/g, '_')
-  const label = art === 'vollmacht' ? 'Vollmacht' : 'Antrag_USt-Registrierung'
+  const label = art === 'vollmacht' ? 'Empfangsvollmacht' : 'Antrag_USt-Registrierung'
   return `${label}_${firma}.pdf`
 }
 

@@ -1804,7 +1804,7 @@ function AntragsdatenSection({ au, client, onUpdate }) {
       id: genVerlaufId(),
       typ: 'dokument_erstellt',
       datum: todayISO(),
-      text: (art === 'vollmacht' ? 'Vollmacht' : 'Antrag ans Finanzamt') + ' erzeugt: ' + filename,
+      text: (art === 'vollmacht' ? 'Empfangsvollmacht' : 'Antrag ans Finanzamt') + ' erzeugt: ' + filename,
       erstelltAm: new Date().toISOString(),
     }
     const patch = {
@@ -1855,7 +1855,7 @@ function AntragsdatenSection({ au, client, onUpdate }) {
             </button>
             <button onClick={() => handleGeneratePdf('vollmacht')}
               style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', borderRadius: '8px', border: '1px solid #2563eb', background: 'transparent', color: '#2563eb', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
-              📄 Vollmacht erzeugen (PDF)
+              📄 Empfangsvollmacht (PDF)
             </button>
           </div>
 
