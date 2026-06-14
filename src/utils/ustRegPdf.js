@@ -43,11 +43,34 @@ function deDate(s) {
   return m ? `${m[3]}.${m[2]}.${m[1]}` : safe(s)
 }
 
+const MONATE_DE = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember']
+
+// Monat+Jahr (YYYY-MM) → "März 2026", sonst unverändert
+function fmtMonthYear(s) {
+  const m = /^(\d{4})-(\d{2})$/.exec(safe(s))
+  if (m) { const i = parseInt(m[2], 10) - 1; return `${MONATE_DE[i] || m[2]} ${m[1]}` }
+  return safe(s)
+}
+
+// Hängt " €" an, falls noch kein €/EUR enthalten
+function withEuro(s) {
+  const v = safe(s)
+  if (!v) return ''
+  return /€|eur/i.test(v) ? v : `${v} €`
+}
+
 // Fixe Standardvorgaben des Formulars (überschreibbar über erfassungsdaten)
 export const ANTRAG_DEFAULTS = {
   fa_betriebsart:      'Website-Verkäufe',
   fa_inland_besteht:   '-',
   fa_finanzamt_ertrag: 'Flensburg',
+  fa_10_1:             'Nein',
+  fa_10_2:             'Ja',
+  fa_10_3:             'Ja',
+  fa_10_4:             'Nein',
+  fa_11:               'Nein',
+  fa_12:               'Nein',
+  fa_13:               'Nein',
   fa_14:               'Ja',
   fa_14_1:             'Für die Registrierung bei Onlinemarktplätzen',
 }
@@ -84,18 +107,18 @@ export function buildAntragFinanzamt(client, au) {
     ['6. Art des Betriebes oder der beruflichen Tätigkeit', g('fa_betriebsart', ANTRAG_DEFAULTS.fa_betriebsart)],
     ['7. Im Inland besteht ein/eine', g('fa_inland_besteht', ANTRAG_DEFAULTS.fa_inland_besteht)],
     ['8. Finanzamt, wo die Firma ertragsteuerlich geführt wird (z. B. bei Geschäftssitz/Anlage)', g('fa_finanzamt_ertrag', ANTRAG_DEFAULTS.fa_finanzamt_ertrag)],
-    ['9. Beginn der unternehmerischen Betätigung in Deutschland', g('taetigkeit_beginn')],
-    ['10.1 Lieferung ohne Montage an Unternehmer mit ID-Nr.', g('fa_10_1')],
-    ['10.2 Lieferung ohne Montage an Kunden ohne ID-Nr.', g('fa_10_2')],
-    ['10.3 Ein- und Verkauf innerhalb Deutschlands', g('fa_10_3')],
-    ['10.4 Innergemeinschaftliche steuerfreie Lieferungen (Einfuhr aus Drittland, Ausfuhr in anderes EU-Land)', g('fa_10_4')],
-    ['11. Geht der Lieferung ein freiwilliges innergemeinschaftliches Verbringen voraus?', g('fa_11')],
-    ['12. Lieferung mit Montage (Werklieferungen) oder reine sonstige Leistungen (z. B. Dienstleistungen) an:', g('fa_12')],
-    ['13. Ausländische Subunternehmer beschäftigt, deren Steuer Sie nach § 13b (2) UStG schulden?', g('fa_13')],
+    ['9. Beginn der unternehmerischen Betätigung in Deutschland', fmtMonthYear(g('taetigkeit_beginn'))],
+    ['10.1 Lieferung ohne Montage an Unternehmer mit ID-Nr.', g('fa_10_1', ANTRAG_DEFAULTS.fa_10_1)],
+    ['10.2 Lieferung ohne Montage an Kunden ohne ID-Nr.', g('fa_10_2', ANTRAG_DEFAULTS.fa_10_2)],
+    ['10.3 Ein- und Verkauf innerhalb Deutschlands', g('fa_10_3', ANTRAG_DEFAULTS.fa_10_3)],
+    ['10.4 Innergemeinschaftliche steuerfreie Lieferungen (Einfuhr aus Drittland, Ausfuhr in anderes EU-Land)', g('fa_10_4', ANTRAG_DEFAULTS.fa_10_4)],
+    ['11. Geht der Lieferung ein freiwilliges innergemeinschaftliches Verbringen voraus?', g('fa_11', ANTRAG_DEFAULTS.fa_11)],
+    ['12. Lieferung mit Montage (Werklieferungen) oder reine sonstige Leistungen (z. B. Dienstleistungen) an:', g('fa_12', ANTRAG_DEFAULTS.fa_12)],
+    ['13. Ausländische Subunternehmer beschäftigt, deren Steuer Sie nach § 13b (2) UStG schulden?', g('fa_13', ANTRAG_DEFAULTS.fa_13)],
     ['14. Wird eine Umsatzsteuer-Identifikationsnummer benötigt?', g('fa_14', ANTRAG_DEFAULTS.fa_14)],
     ['14.1 Wenn ja, wofür?', g('fa_14_1', ANTRAG_DEFAULTS.fa_14_1)],
-    ['15.1 Höhe des Umsatzes (geschätzt) in Deutschland im laufenden Jahr in EUR', g('umsatz_geschaetzt')],
-    ['15.2 Höhe des Umsatzes (geschätzt) in Deutschland im kommenden Jahr in EUR', g('umsatz_folgejahr')],
+    ['15.1 Höhe des Umsatzes (geschätzt) in Deutschland im laufenden Jahr in EUR', withEuro(g('umsatz_geschaetzt'))],
+    ['15.2 Höhe des Umsatzes (geschätzt) in Deutschland im kommenden Jahr in EUR', withEuro(g('umsatz_folgejahr'))],
   ]
 
   const padX = 2.5, padY = 1.9, lh = 4.0
@@ -121,16 +144,17 @@ export function buildAntragFinanzamt(client, au) {
     y += rowH
   })
 
-  // Unterschrift
-  y += 12
-  if (y > 285) { doc.addPage(); y = 30 }
-  doc.setDrawColor(120); doc.setLineWidth(0.3)
-  doc.line(L, y, R, y)
-  y += 5
-  doc.setFontSize(9).setTextColor(110)
-  doc.text('Datum, Ort', L, y)
-  doc.text('Unterschrift', R, y, { align: 'right' })
-  doc.setTextColor(0)
+  // ── Unterschrift (unten am Dokument, hervorgehoben) ──
+  const gf = g('geschaeftsfuehrer_name')
+  let sigY = Math.max(y + 18, 272)
+  if (sigY > 282) { doc.addPage(); sigY = 40 }
+  doc.setDrawColor(40); doc.setLineWidth(0.6)
+  doc.line(L, sigY, L + 75, sigY)
+  doc.line(R - 82, sigY, R, sigY)
+  doc.setFont('helvetica', 'bold').setFontSize(10.5).setTextColor(0)
+  doc.text('Datum, Ort', L, sigY + 5.5)
+  doc.text(`Unterschrift${gf ? ' – ' + gf : ''}`, R - 82, sigY + 5.5)
+  doc.setFont('helvetica', 'normal')
 
   return doc
 }
