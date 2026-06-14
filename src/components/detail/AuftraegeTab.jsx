@@ -1957,7 +1957,7 @@ function AntragsdatenSection({ au, client, onUpdate }) {
   useEffect(() => () => { if (preview?.url) URL.revokeObjectURL(preview.url) }, [preview])
 
   function setFeld(key, val) {
-    onUpdate({ erfassungsdaten: { ...ed, [key]: val } })
+    onUpdate({ erfassungsdaten: { ...ed, [key]: val }, erfassungsdatenBearbeitetAm: new Date().toISOString() })
   }
 
   // Vorschau öffnen — erzeugt PDF nur zur Ansicht, noch kein Download / keine Aufzeichnung
@@ -2089,6 +2089,26 @@ function AntragsdatenSection({ au, client, onUpdate }) {
               </div>
             </div>
           ))}
+
+          {/* Änderungshistorie */}
+          <div style={{ marginTop: '6px', paddingTop: '10px', borderTop: '1px solid var(--border)', fontSize: '11px', color: 'var(--text-muted)' }}>
+            {au.erfassungsdatenBearbeitetAm
+              ? <span>✏️ Zuletzt bearbeitet: {fmtShortDate(au.erfassungsdatenBearbeitetAm)}</span>
+              : <span>Unverändert – Originaldaten aus dem Webformular</span>}
+            {au.erfassungsdatenOriginal && (
+              <details style={{ marginTop: '6px' }}>
+                <summary style={{ cursor: 'pointer', color: 'var(--accent)' }}>Ursprüngliche Webformular-Daten anzeigen</summary>
+                <div style={{ marginTop: '6px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: '3px 16px' }}>
+                  {Object.entries(au.erfassungsdatenOriginal).filter(([, v]) => String(v ?? '').trim()).map(([k, v]) => (
+                    <div key={k} style={{ display: 'flex', gap: '6px' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>{k}:</span>
+                      <span style={{ color: 'var(--text-secondary)' }}>{String(v)}</span>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            )}
+          </div>
         </div>
       )}
 

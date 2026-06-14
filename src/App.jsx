@@ -1361,6 +1361,7 @@ export default function App() {
                       workflowStatus: data.formularDaten ? 'formular_ausgefuellt' : 'anfrage',
                       workflowStatusDatum: today,
                       erfassungsdaten: { ...fd },
+                      erfassungsdatenOriginal: { ...fd },   // Snapshot der ursprünglichen Webformular-Daten
                       dokumente: [],
                     }
                     auftraege = [auftrag]

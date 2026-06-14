@@ -144,17 +144,28 @@ export function buildAntragFinanzamt(client, au) {
     y += rowH
   })
 
-  // ── Unterschrift (unten am Dokument, hervorgehoben) ──
+  // ── Unterschrift (unten am Dokument, deutlich hervorgehoben) ──
   const gf = g('geschaeftsfuehrer_name')
-  let sigY = Math.max(y + 18, 272)
-  if (sigY > 282) { doc.addPage(); sigY = 40 }
-  doc.setDrawColor(40); doc.setLineWidth(0.6)
-  doc.line(L, sigY, L + 75, sigY)
-  doc.line(R - 82, sigY, R, sigY)
+  let sigY = Math.max(y + 22, 266)
+  if (sigY > 278) { doc.addPage(); sigY = 40 }
+  // Hinweis
   doc.setFont('helvetica', 'bold').setFontSize(10.5).setTextColor(0)
-  doc.text('Datum, Ort', L, sigY + 5.5)
-  doc.text(`Unterschrift${gf ? ' – ' + gf : ''}`, R - 82, sigY + 5.5)
-  doc.setFont('helvetica', 'normal')
+  doc.text('Bitte hier unterschreiben:', L, sigY)
+  sigY += 11
+  // Unterschriftslinien
+  doc.setDrawColor(0); doc.setLineWidth(0.7)
+  doc.line(L, sigY, L + 70, sigY)
+  doc.line(R - 92, sigY, R, sigY)
+  // Beschriftungen
+  doc.setFont('helvetica', 'normal').setFontSize(9).setTextColor(90)
+  doc.text('Datum, Ort', L, sigY + 4.5)
+  doc.setFont('helvetica', 'bold').setFontSize(9.5).setTextColor(0)
+  doc.text('Unterschrift Geschäftsführer', R - 92, sigY + 4.5)
+  if (gf) {
+    doc.setFont('helvetica', 'normal').setFontSize(9).setTextColor(90)
+    doc.text(gf, R - 92, sigY + 9)
+  }
+  doc.setFont('helvetica', 'normal').setTextColor(0)
 
   return doc
 }
@@ -256,16 +267,21 @@ export function buildVollmacht(client, au) {
   doc.setFontSize(10).setTextColor(0)
   y += opt2Lines.length * 4.5 + 24
 
-  // ── Unterschrift ──
-  if (y > 270) y = 270
-  doc.setDrawColor(120); doc.setLineWidth(0.3)
+  // ── Unterschrift (deutlich hervorgehoben) ──
+  if (y > 262) y = 262
+  doc.setFont('helvetica', 'bold').setFontSize(10.5).setTextColor(0)
+  doc.text('Bitte hier unterschreiben:', L, y)
+  y += 11
+  doc.setDrawColor(0); doc.setLineWidth(0.7)
   doc.line(L, y, L + 70, y)
-  doc.line(R - 75, y, R, y)
-  y += 5
-  doc.setFontSize(9).setTextColor(110)
-  doc.text('Ort, Datum', L, y)
-  doc.text('Unterschrift des gesetzlichen Vertreters', R, y, { align: 'right' })
-  if (gf) doc.text(`(${gf})`, R, y + 4, { align: 'right' })
+  doc.line(R - 92, y, R, y)
+  doc.setFont('helvetica', 'normal').setFontSize(9).setTextColor(90)
+  doc.text('Ort, Datum', L, y + 4.5)
+  doc.setFont('helvetica', 'bold').setFontSize(9.5).setTextColor(0)
+  doc.text('Unterschrift Geschäftsführer', R - 92, y + 4.5)
+  doc.setFont('helvetica', 'normal').setFontSize(9).setTextColor(90)
+  if (gf) doc.text(gf, R - 92, y + 9)
+  doc.text('(gesetzlicher Vertreter)', R - 92, y + (gf ? 13 : 9))
   doc.setTextColor(0)
 
   return doc
@@ -399,17 +415,23 @@ export function buildEinwilligung(client, au, variant = 'jur') {
   para(`Mir ist bekannt, dass eine unverschlüsselte elektronische Kommunikation nicht sicher ist und eventuell durch Dritte eingesehen und manipuliert werden kann. Die Möglichkeit, dass dadurch meine steuerlichen Sachverhalte${isJur ? ' der von mir vertretenen Firma' : ''} unbefugten Dritten bekannt werden, nehme ich in Kauf.`)
   para('Diese Einwilligung kann ich jederzeit schriftlich (Brief, Fax), per E-Mail oder durch persönlichen Vortrag im Finanzamt widerrufen. Der Widerruf wird erst ab dem Zeitpunkt wirksam, in dem er dem Finanzamt zugeht.')
 
-  // Unterschrift
-  y = Math.max(y + 16, 255)
-  doc.setDrawColor(40); doc.setLineWidth(0.5)
+  // Unterschrift (deutlich hervorgehoben)
+  y = Math.max(y + 16, 252)
+  doc.setFont('helvetica', 'bold').setFontSize(10).setTextColor(0)
+  doc.text('Bitte hier unterschreiben:', L, y)
+  y += 10
+  doc.setDrawColor(0); doc.setLineWidth(0.7)
   doc.line(L, y, L + 70, y)
-  doc.line(R - 75, y, R, y)
-  y += 5
-  doc.setFont('helvetica', 'bold').setFontSize(9.5).setTextColor(0)
+  doc.line(R - 92, y, R, y)
+  y += 4.5
+  doc.setFont('helvetica', 'normal').setFontSize(9).setTextColor(90)
   doc.text('(Ort, Datum)', L, y)
-  doc.text(`Unterschrift${gf ? ' – ' + gf : ''}`, R - 75, y)
-  doc.setFont('helvetica', 'normal').setFontSize(7).setTextColor(120)
-  y += 5
+  doc.setFont('helvetica', 'bold').setFontSize(9.5).setTextColor(0)
+  doc.text('Unterschrift Geschäftsführer', R - 92, y)
+  doc.setFont('helvetica', 'normal').setFontSize(9).setTextColor(90)
+  if (gf) { doc.text(gf, R - 92, y + 4.5) }
+  doc.setFontSize(7).setTextColor(120)
+  y += (gf ? 9 : 5)
   doc.text(isJur
     ? 'Bei Körperschaften ist die Einwilligung vom gesetzlichen Vertreter zu unterschreiben.'
     : 'Bei nicht/beschränkt geschäftsfähigen Personen ist die Einwilligung vom gesetzlichen Vertreter zu unterschreiben.', L, y)
