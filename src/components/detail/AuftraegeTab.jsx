@@ -1612,7 +1612,9 @@ function WorkflowVerlaufSection({ au, onUpdate, client, onUpdateClient, emailVor
   const [newNotiz,    setNewNotiz]    = useState('')
   const [newDatum,    setNewDatum]    = useState(todayISO)
   const [showCompose, setShowCompose] = useState(false)
-  const [sendMode, setSendMode] = useState(false)   // dedizierter "Unterlagen senden"-Modus
+  const [sendMode, setSendMode] = useState(false)     // dedizierter "Unterlagen senden"-Modus
+  const [sendSelect, setSendSelect] = useState(null)  // Anlagen-Auswahl offen (Objekt mit booleans)
+  const [sendArts, setSendArts] = useState([])        // gewählte Dokument-Arten für die Mail
   const canCompose = !!(client && onUpdateClient)
   const isUstReg = au.typ === 'ust_reg_de'
   const ustRegVorlagen = useMemo(
@@ -1623,12 +1625,35 @@ function WorkflowVerlaufSection({ au, onUpdate, client, onUpdateClient, emailVor
     () => (showCompose && !sendMode && isUstReg) ? buildPdfAttachments(client, au) : [],
     [showCompose, sendMode, au.dokumente, au.erfassungsdaten, client]
   )
-  // Vorbelegte Sende-Mail: Vorlage (DE/DK, Du-Form) + alle 3 frisch erzeugten Anhänge
+  // Vorbelegte Sende-Mail: Vorlage (DE/DK, Du-Form) + die ausgewählten Anhänge (frisch erzeugt)
   const sendPreset = useMemo(() => {
     if (!sendMode || !isUstReg) return null
     const v = buildSendeVorlage(client, au)
-    return { subject: v.subject, body: v.body, attachments: buildAllPdfAttachments(client, au) }
-  }, [sendMode, isUstReg, au.erfassungsdaten, client])
+    const attachments = sendArts.map(art => ({
+      name: pdfFilename(art, au),
+      data: pdfToBase64(buildDoc(art, client, au)),
+      type: 'application/pdf',
+      size: 0,
+    }))
+    return { subject: v.subject, body: v.body, attachments }
+  }, [sendMode, sendArts, isUstReg, au.erfassungsdaten, client])
+
+  // Auswählbare Dokumente (Reihenfolge wie in der E-Mail)
+  const SEND_DOKS = [
+    { art: 'antrag',           label: 'Antrag auf umsatzsteuerliche Registrierung' },
+    { art: 'vollmacht',        label: 'Empfangsvollmacht' },
+    { art: 'einwilligung_jur', label: 'Einwilligung E-Mail – juristische Person' },
+    { art: 'einwilligung_nat', label: 'Einwilligung E-Mail – natürliche Person' },
+  ]
+  function defaultSendSel() {
+    const pa = (au.erfassungsdaten || {}).personenart
+    return {
+      antrag: true,
+      vollmacht: true,
+      einwilligung_jur: pa !== 'natuerlich',
+      einwilligung_nat: pa === 'natuerlich',
+    }
+  }
 
   // Verknüpfte E-Mails (global, mit auftragId) → in Timeline + Reiter Nachrichten sichtbar
   const linkedEmails = (client?.kommunikation?.events ?? [])
@@ -1670,7 +1695,21 @@ function WorkflowVerlaufSection({ au, onUpdate, client, onUpdateClient, emailVor
     setShowCompose(true)
     setSelectedTyp(null)
   }
-  function closeCompose() { setShowCompose(false); setSendMode(false) }
+  function closeCompose() { setShowCompose(false); setSendMode(false); setSendSelect(null) }
+
+  // Schritt 1: Anlagen-Auswahl öffnen
+  function startSend() {
+    setSendSelect(defaultSendSel())
+    setShowCompose(false); setSendMode(false); setSelectedTyp(null)
+  }
+  // Schritt 2: ausgewählte Anlagen übernehmen → E-Mail-Entwurf öffnen
+  function prepareSend() {
+    const arts = SEND_DOKS.map(d => d.art).filter(a => sendSelect?.[a])
+    setSendArts(arts)
+    setSendSelect(null)
+    setSendMode(true)
+    setShowCompose(true)
+  }
 
   // Nach erfolgreichem Versand (Sende-Modus): Status vorrücken + PDFs in OneDrive ablegen
   function handleSent(info) {
@@ -1701,15 +1740,15 @@ function WorkflowVerlaufSection({ au, onUpdate, client, onUpdateClient, emailVor
           <div style={{ marginLeft: 'auto', display: 'flex', gap: '6px' }}>
             {isUstReg && (
               <button
-                onClick={() => showCompose ? closeCompose() : openCompose(true)}
+                onClick={() => (sendSelect || (showCompose && sendMode)) ? closeCompose() : startSend()}
                 style={{
                   padding: '4px 12px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer', fontWeight: 700,
                   border: '1px solid #2563eb',
-                  background: (showCompose && sendMode) ? 'rgba(37,99,235,0.15)' : '#2563eb',
-                  color: (showCompose && sendMode) ? '#2563eb' : '#fff',
+                  background: (sendSelect || (showCompose && sendMode)) ? 'rgba(37,99,235,0.15)' : '#2563eb',
+                  color: (sendSelect || (showCompose && sendMode)) ? '#2563eb' : '#fff',
                 }}
               >
-                📨 Antragsunterlagen an Mandanten senden
+                {(sendSelect || (showCompose && sendMode)) ? '✕ Schließen' : '📨 Antragsunterlagen an Mandanten senden'}
               </button>
             )}
             <button
@@ -1727,12 +1766,42 @@ function WorkflowVerlaufSection({ au, onUpdate, client, onUpdateClient, emailVor
         )}
       </div>
 
+      {/* Anlagen-Auswahl (Schritt 1) */}
+      {canCompose && sendSelect && (
+        <div style={{ marginBottom: '14px', border: '1px solid rgba(37,99,235,0.3)', borderRadius: '10px', background: 'rgba(37,99,235,0.04)', padding: '14px' }}>
+          <div style={{ fontWeight: 700, fontSize: '13px', marginBottom: '4px', color: 'var(--text)' }}>📎 Anlagen auswählen</div>
+          <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '10px' }}>
+            Welche Dokumente sollen an die E-Mail angehängt werden? (frisch aus den aktuellen Antragsdaten erzeugt)
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '12px' }}>
+            {SEND_DOKS.map(d => (
+              <label key={d.art} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', cursor: 'pointer' }}>
+                <input type="checkbox" checked={!!sendSelect[d.art]}
+                  onChange={e => setSendSelect(s => ({ ...s, [d.art]: e.target.checked }))}
+                  style={{ accentColor: '#2563eb', cursor: 'pointer', width: '15px', height: '15px' }} />
+                <span>📄 {d.label}</span>
+              </label>
+            ))}
+          </div>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button onClick={prepareSend} disabled={!SEND_DOKS.some(d => sendSelect[d.art])}
+              style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: SEND_DOKS.some(d => sendSelect[d.art]) ? '#2563eb' : 'var(--border)', color: '#fff', fontSize: '12px', fontWeight: 700, cursor: SEND_DOKS.some(d => sendSelect[d.art]) ? 'pointer' : 'not-allowed' }}>
+              ✉️ E-Mail vorbereiten
+            </button>
+            <button onClick={() => setSendSelect(null)}
+              style={{ padding: '8px 14px', borderRadius: '8px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text)', fontSize: '12px', cursor: 'pointer' }}>
+              Abbrechen
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Compose-Panel */}
       {canCompose && showCompose && (
         <div style={{ marginBottom: '14px' }}>
           {sendMode && (
             <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '6px' }}>
-              Vorbefüllte E-Mail ({/dänemark|danmark|denmark|\bdk\b/.test((au.erfassungsdaten?.adresse_land || '').toLowerCase()) ? '🇩🇰 Dänisch' : '🇩🇪 Deutsch'}) mit angehängtem Antrag, Vollmacht &amp; Einwilligung. Bitte prüfen, dann „Senden".
+              Vorbefüllte E-Mail ({/dänemark|danmark|denmark|\bdk\b/.test((au.erfassungsdaten?.adresse_land || '').toLowerCase()) ? '🇩🇰 Dänisch' : '🇩🇪 Deutsch'}) mit {sendArts.length} {sendArts.length === 1 ? 'Anlage' : 'Anlagen'}. Bitte prüfen, dann „Senden".
             </div>
           )}
           <JAComposePanel
