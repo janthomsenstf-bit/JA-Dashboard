@@ -297,16 +297,19 @@ export default function WebsiteAnfragen({ onCreateMandant }) {
                       )}
                       <button
                         onClick={() => {
-                          onCreateMandant({
+                          const ok = onCreateMandant({
                             name: a.firma || a.name,
                             ansprechpartner: a.name,
                             email: a.email,
                             telefon: a.telefon || '',
                             land: a.land || '',
+                            interesse: a.interesse || '',
+                            formularDaten: a.formular_daten || null,
                             websiteAnfrageId: a.id,
+                            erstelltAm: a.erstellt_am || null,
                             notizen: `── Website-Anfrage ──\nEingegangen: ${formatDate(a.erstellt_am)}\nGewünschte Leistung: ${a.interesse}\n\n${a.nachricht || ''}`,
                           })
-                          updateStatus(a.id, 'erledigt')
+                          if (ok) updateStatus(a.id, 'erledigt')
                         }}
                         style={actionBtn('#7c3aed')}
                       >

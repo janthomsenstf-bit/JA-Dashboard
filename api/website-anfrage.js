@@ -25,6 +25,12 @@
  * alter table public.website_anfragen enable row level security;
  * create policy "service_role_all" on public.website_anfragen
  *   using (true) with check (true);
+ *
+ * Zusätzliche Spalten (nachträglich ergänzt):
+ * alter table public.website_anfragen
+ *   add column if not exists passkopie      jsonb,
+ *   add column if not exists cvr_dokument   jsonb,
+ *   add column if not exists formular_daten jsonb;
  */
 
 import { createClient } from '@supabase/supabase-js'
@@ -67,7 +73,7 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end()
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
-  const { name, firma, email, telefon, interesse, nachricht, land, passkopie, cvr_dokument } = req.body ?? {}
+  const { name, firma, email, telefon, interesse, nachricht, land, passkopie, cvr_dokument, formular_daten } = req.body ?? {}
 
   if (!name || !email || !interesse) {
     return res.status(400).json({ error: 'Name, E-Mail und Interesse sind Pflichtfelder.' })
@@ -88,6 +94,9 @@ export default async function handler(req, res) {
   }
   if (cvr_dokument && cvr_dokument.filename) {
     row.cvr_dokument = { filename: cvr_dokument.filename, type: cvr_dokument.type, data: cvr_dokument.data }
+  }
+  if (formular_daten && typeof formular_daten === 'object') {
+    row.formular_daten = formular_daten
   }
 
   // In Supabase speichern

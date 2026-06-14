@@ -83,6 +83,8 @@ function buildOptimierungsPrompt(anweisung) {
 export default function JAComposePanel({
   au, client,
   emailVorlagen   = [],
+  extraVorlagen   = [],
+  initialAttachments = [],
   emailSignaturen = [],
   onedriveTokens  = null,
   onUpdateOnedriveTokens,
@@ -90,6 +92,7 @@ export default function JAComposePanel({
   onClose,
 }) {
   const absenderList = loadAbsender()
+  const allVorlagen = [...extraVorlagen, ...emailVorlagen]
 
   const defaultTo    = (client.kontakte ?? []).find(k => k.email)?.email ?? ''
   const defaultFrom  = client.kommunikation?.standardAbsender
@@ -121,7 +124,7 @@ export default function JAComposePanel({
     return sig ? SIG_SEP + sig.text : ''
   })
   const [sigId,        setSigId]        = useState(_draft?.sigId ?? defaultSigId)
-  const [attachments,  setAttachments]  = useState([])  // Dateien nicht persistiert
+  const [attachments,  setAttachments]  = useState(initialAttachments)  // Dateien nicht persistiert
   const [sending,      setSending]      = useState(false)
   const [sendMode,     setSendMode]     = useState(_draft?.sendMode ?? 'smtp')
   const [error,        setError]        = useState('')
@@ -255,7 +258,7 @@ export default function JAComposePanel({
 
   // ── Vorlage / Signatur ──────────────────────────────────────────────────────
   function applyVorlage(vorlageId) {
-    const v = emailVorlagen.find(v => v.id === vorlageId)
+    const v = allVorlagen.find(v => v.id === vorlageId)
     if (!v) return
     setSubject(v.betreff ?? '')
     const sig = aktiveSig(sigId)
@@ -497,12 +500,12 @@ export default function JAComposePanel({
       {/* ── FORMULAR ── */}
 
       {/* Vorlage */}
-      {emailVorlagen.length > 0 && (
+      {allVorlagen.length > 0 && (
         <div style={{ marginBottom: '8px' }}>
           <select onChange={e => { if (e.target.value) applyVorlage(e.target.value); e.target.value = '' }} defaultValue=""
             style={{ ...inputStyle, width: '100%', fontSize: '11px' }}>
             <option value="">📄 Vorlage auswählen…</option>
-            {emailVorlagen.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+            {allVorlagen.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
           </select>
         </div>
       )}

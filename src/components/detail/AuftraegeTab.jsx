@@ -1,5 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import JAComposePanel from './JAComposePanel.jsx'
+import { buildAnschreiben, buildVollmacht, downloadPdf, pdfFilename, pdfToBase64 } from '../../utils/ustRegPdf.js'
 
 // ── Konfiguration (auch von AuftragKontextPanel genutzt) ──────────────────────
 export const AUFTRAGS_TYP_CFG = {
@@ -1476,11 +1477,57 @@ const WORKFLOW_AKTIVITAETEN = {
   notiz:                  { label: 'Interne Notiz',                   icon: '📝', color: '#64748b' },
 }
 
-function WorkflowVerlaufSection({ au, onUpdate }) {
+// ── E-Mail-Vorlagen für USt-Reg. DE (vorbefüllt aus Antragsdaten) ─────────────
+function buildUstRegVorlagen(client, au) {
+  const ed = au.erfassungsdaten ?? {}
+  const firma  = ed.firmenname || client?.name || 'das Unternehmen'
+  const ap     = ed.ansprechpartner_name || (client?.kontakte ?? [])[0]?.name || ''
+  const anrede = ap ? `Sehr geehrte/r ${ap},` : 'Sehr geehrte Damen und Herren,'
+  return [
+    {
+      id: '_ustreg_unterschrift',
+      name: '✍️ Antrag zur Unterschrift (an Mandant)',
+      betreff: `USt-Registrierung Deutschland – Vollmacht zur Unterschrift (${firma})`,
+      text: `${anrede}\n\nfür die umsatzsteuerliche Registrierung von ${firma} in Deutschland haben wir die Vollmacht sowie das Anschreiben an das Finanzamt vorbereitet (siehe Anhang).\n\nBitte unterschreiben Sie die Vollmacht und senden Sie uns das unterschriebene Dokument zurück – gerne als Scan per E-Mail. Anschließend reichen wir den Antrag beim Finanzamt ein.\n\nBei Fragen stehen wir Ihnen jederzeit zur Verfügung.`,
+    },
+    {
+      id: '_ustreg_fa',
+      name: '🏛 Antrag ans Finanzamt',
+      betreff: `Steuerliche Erfassung / Umsatzsteuerliche Registrierung – ${firma}`,
+      text: `Sehr geehrte Damen und Herren,\n\nnamens und im Auftrag von ${firma} beantragen wir die steuerliche Erfassung sowie die Erteilung einer Steuernummer für umsatzsteuerliche Zwecke in Deutschland.\n\nDie erforderlichen Angaben sowie die Vollmacht, eine Passkopie des Geschäftsführers und ein aktueller Registerauszug sind beigefügt.\n\nFür Rückfragen stehen wir Ihnen gerne zur Verfügung.`,
+    },
+    {
+      id: '_ustreg_erinnerung',
+      name: '🔔 Erinnerung ans Finanzamt',
+      betreff: `Erinnerung: Steuerliche Erfassung – ${firma}`,
+      text: `Sehr geehrte Damen und Herren,\n\nwir nehmen Bezug auf unseren Antrag auf steuerliche Erfassung von ${firma}. Da uns bislang keine Rückmeldung vorliegt, möchten wir höflich um eine kurze Information zum aktuellen Bearbeitungsstand bitten.\n\nVielen Dank für Ihre Unterstützung.`,
+    },
+  ]
+}
+
+function buildPdfAttachments(client, au) {
+  const docs = au.dokumente ?? []
+  return docs.map(d => {
+    const doc = d.art === 'vollmacht' ? buildVollmacht(client, au) : buildAnschreiben(client, au)
+    return { name: pdfFilename(d.art, au), data: pdfToBase64(doc), type: 'application/pdf', size: 0 }
+  })
+}
+
+function WorkflowVerlaufSection({ au, onUpdate, client, onUpdateClient, emailVorlagen = [], emailSignaturen = [], onedriveTokens = null, onUpdateOnedriveTokens }) {
   const verlauf = au.verlauf ?? []
   const [selectedTyp, setSelectedTyp] = useState(null)
   const [newNotiz,    setNewNotiz]    = useState('')
   const [newDatum,    setNewDatum]    = useState(todayISO)
+  const [showCompose, setShowCompose] = useState(false)
+  const canCompose = !!(client && onUpdateClient)
+  const ustRegVorlagen = useMemo(
+    () => au.typ === 'ust_reg_de' ? buildUstRegVorlagen(client, au) : [],
+    [au.typ, au.erfassungsdaten, client]
+  )
+  const pdfAttachments = useMemo(
+    () => (showCompose && au.typ === 'ust_reg_de') ? buildPdfAttachments(client, au) : [],
+    [showCompose, au.dokumente, au.erfassungsdaten, client]
+  )
 
   function handleQuickAction(typ) {
     if (selectedTyp === typ) { setSelectedTyp(null); return }
@@ -1512,14 +1559,47 @@ function WorkflowVerlaufSection({ au, onUpdate }) {
 
   return (
     <div style={{ marginTop: '14px', borderTop: '1px solid var(--border)', paddingTop: '14px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' }}>
         <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>
           📊 Verlauf & Aktivitäten
         </span>
         <span style={{ fontSize: '10px', color: 'var(--text-muted)', background: 'var(--surface2)', padding: '1px 7px', borderRadius: '10px', border: '1px solid var(--border)' }}>
           {sorted.length}
         </span>
+        {canCompose && (
+          <div style={{ marginLeft: 'auto' }}>
+            <button
+              onClick={() => { setShowCompose(v => !v); if (!showCompose) setSelectedTyp(null) }}
+              style={{
+                padding: '4px 12px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer', fontWeight: 600,
+                border: `1px solid ${showCompose ? 'var(--accent)' : 'rgba(8,145,178,0.3)'}`,
+                background: showCompose ? 'rgba(8,145,178,0.1)' : 'rgba(8,145,178,0.05)',
+                color: showCompose ? 'var(--accent)' : '#0891b2',
+              }}
+            >
+              {showCompose ? '✕ Schließen' : '✉️ Neue E-Mail'}
+            </button>
+          </div>
+        )}
       </div>
+
+      {/* Compose-Panel (mit USt-Reg-Vorlagen + angehängten PDFs) */}
+      {canCompose && showCompose && (
+        <div style={{ marginBottom: '14px' }}>
+          <JAComposePanel
+            au={au}
+            client={client}
+            emailVorlagen={emailVorlagen}
+            extraVorlagen={ustRegVorlagen}
+            initialAttachments={pdfAttachments}
+            emailSignaturen={emailSignaturen}
+            onedriveTokens={onedriveTokens}
+            onUpdateOnedriveTokens={onUpdateOnedriveTokens}
+            onUpdateClient={onUpdateClient}
+            onClose={() => setShowCompose(false)}
+          />
+        </div>
+      )}
 
       {/* Aktivität erfassen */}
       <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflow: 'hidden', marginBottom: '14px' }}>
@@ -1651,6 +1731,151 @@ function WorkflowVerlaufSection({ au, onUpdate }) {
 }
 
 // ── Einzelauftrag-Karte ───────────────────────────────────────────────────────
+// ── Antragsdaten + Dokumente (USt-Reg. DE) ────────────────────────────────────
+const ERFASSUNG_FELDER = [
+  { gruppe: 'Unternehmen', felder: [
+    { key: 'firmenname',       label: 'Firmenname' },
+    { key: 'cvr_nummer',       label: 'CVR-/Handelsreg.-Nr.' },
+    { key: 'adresse_strasse',  label: 'Straße, Hausnr.' },
+    { key: 'adresse_plz_ort',  label: 'PLZ & Ort' },
+    { key: 'adresse_land',     label: 'Land' },
+  ]},
+  { gruppe: 'Geschäftsführer / Inhaber', felder: [
+    { key: 'geschaeftsfuehrer_name',         label: 'Name' },
+    { key: 'geschaeftsfuehrer_geburtsdatum', label: 'Geburtsdatum' },
+    { key: 'geschaeftsfuehrer_adresse',      label: 'Privatadresse' },
+  ]},
+  { gruppe: 'Ansprechpartner', felder: [
+    { key: 'ansprechpartner_name',    label: 'Name' },
+    { key: 'ansprechpartner_email',   label: 'E-Mail' },
+    { key: 'ansprechpartner_telefon', label: 'Telefon' },
+  ]},
+  { gruppe: 'Tätigkeit & Umsatz', felder: [
+    { key: 'taetigkeit_beschreibung', label: 'Tätigkeit', textarea: true, wide: true },
+    { key: 'taetigkeit_beginn',       label: 'Beginn DE-Tätigkeit' },
+    { key: 'umsatz_art',              label: 'Art der Umsätze' },
+    { key: 'umsatz_geschaetzt',       label: 'Umsatz DE (1. Jahr)' },
+    { key: 'umsatz_folgejahr',        label: 'Umsatz Folgejahr' },
+    { key: 'lager_in_deutschland',    label: 'Lager / Büro in DE' },
+    { key: 'bereits_registriert',     label: 'Bereits registriert?' },
+  ]},
+  { gruppe: 'Bank & Sonstiges', felder: [
+    { key: 'bankverbindung_iban', label: 'IBAN' },
+    { key: 'bemerkungen',         label: 'Bemerkungen', textarea: true, wide: true },
+  ]},
+]
+
+function AntragsdatenSection({ au, client, onUpdate }) {
+  const [open, setOpen] = useState(true)
+  const ed = au.erfassungsdaten ?? {}
+  const dokumente = au.dokumente ?? []
+
+  function setFeld(key, val) {
+    onUpdate({ erfassungsdaten: { ...ed, [key]: val } })
+  }
+
+  function handleGeneratePdf(art) {
+    const doc = art === 'vollmacht' ? buildVollmacht(client, au) : buildAnschreiben(client, au)
+    const filename = pdfFilename(art, au)
+    downloadPdf(doc, filename)
+
+    const eintrag = {
+      id: 'dok_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+      art,
+      name: filename,
+      contentType: 'application/pdf',
+      erstelltAm: new Date().toISOString(),
+    }
+    const verlaufItem = {
+      id: genVerlaufId(),
+      typ: 'dokument_erstellt',
+      datum: todayISO(),
+      text: (art === 'vollmacht' ? 'Vollmacht' : 'Anschreiben ans Finanzamt') + ' erzeugt: ' + filename,
+      erstelltAm: new Date().toISOString(),
+    }
+    const patch = {
+      dokumente: [eintrag, ...dokumente.filter(d => d.art !== art)],
+      verlauf: [verlaufItem, ...(au.verlauf ?? [])],
+    }
+    // Status auf 'antrag_erzeugt' vorrücken, falls noch davor
+    const order = (WORKFLOW_CONFIGS[au.typ]?.steps ?? []).map(s => s.key)
+    const curIdx = order.indexOf(au.workflowStatus ?? order[0])
+    const targetIdx = order.indexOf('antrag_erzeugt')
+    if (targetIdx >= 0 && curIdx < targetIdx) {
+      patch.workflowStatus = 'antrag_erzeugt'
+      patch.workflowStatusDatum = todayISO()
+    }
+    onUpdate(patch)
+  }
+
+  const fieldInput = (f) => f.textarea ? (
+    <textarea
+      value={ed[f.key] ?? ''}
+      onChange={e => setFeld(f.key, e.target.value)}
+      rows={2}
+      style={{ ...inputStyle, resize: 'vertical', whiteSpace: 'pre-wrap', minHeight: '44px' }}
+    />
+  ) : (
+    <input value={ed[f.key] ?? ''} onChange={e => setFeld(f.key, e.target.value)} style={inputStyle} />
+  )
+
+  return (
+    <div style={{ marginBottom: '16px', border: '1px solid rgba(37,99,235,0.25)', borderRadius: '10px', overflow: 'hidden', background: 'rgba(37,99,235,0.03)' }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        style={{ width: '100%', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(37,99,235,0.06)', border: 'none', cursor: 'pointer', textAlign: 'left', borderBottom: open ? '1px solid rgba(37,99,235,0.2)' : 'none' }}
+      >
+        <span style={{ fontSize: '15px' }}>📋</span>
+        <span style={{ fontWeight: 700, fontSize: '13px', color: 'var(--text)', flex: 1 }}>Antragsdaten</span>
+        <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{open ? '▲' : '▼'}</span>
+      </button>
+
+      {open && (
+        <div style={{ padding: '14px' }}>
+          {/* PDF-Buttons */}
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '14px' }}>
+            <button onClick={() => handleGeneratePdf('anschreiben')}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', borderRadius: '8px', border: 'none', background: '#2563eb', color: '#fff', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
+              📝 Anschreiben erzeugen (PDF)
+            </button>
+            <button onClick={() => handleGeneratePdf('vollmacht')}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', borderRadius: '8px', border: '1px solid #2563eb', background: 'transparent', color: '#2563eb', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
+              📄 Vollmacht erzeugen (PDF)
+            </button>
+          </div>
+
+          {dokumente.length > 0 && (
+            <div style={{ marginBottom: '14px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              {dokumente.map(d => (
+                <div key={d.id} style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span>📄</span>
+                  <span style={{ color: 'var(--text-secondary)' }}>{d.name}</span>
+                  <span>· erzeugt {fmtShortDate(d.erstelltAm)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Felder gruppiert */}
+          {ERFASSUNG_FELDER.map(grp => (
+            <div key={grp.gruppe} style={{ marginBottom: '12px' }}>
+              <div style={{ ...labelStyle, marginBottom: '6px', color: '#2563eb' }}>{grp.gruppe}</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '8px' }}>
+                {grp.felder.map(f => (
+                  <label key={f.key} style={{ display: 'flex', flexDirection: 'column', gap: '3px', gridColumn: f.wide ? '1 / -1' : 'auto' }}>
+                    <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{f.label}</span>
+                    {fieldInput(f)}
+                  </label>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete, client, onOpenEmail, onUpdateClient, emailVorlagen, emailSignaturen, onedriveTokens, onUpdateOnedriveTokens }) {
   const typCfg    = AUFTRAGS_TYP_CFG[au.typ]      ?? AUFTRAGS_TYP_CFG.freitext
   const statusCfg = AUFTRAGS_STATUS_CFG[au.status] ?? AUFTRAGS_STATUS_CFG.offen
@@ -1759,6 +1984,11 @@ function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete, client, onOpe
           {/* ── Workflow-Typen: Prozess-Stepper oben ── */}
           {hasWorkflow && (
             <WorkflowPanel au={au} onUpdate={onUpdate} />
+          )}
+
+          {/* ── USt-Reg. DE: Antragsdaten + PDF-Erzeugung ── */}
+          {(au.typ === 'ust_reg_de' || au.erfassungsdaten) && (
+            <AntragsdatenSection au={au} client={client} onUpdate={onUpdate} />
           )}
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: '10px', marginBottom: '12px' }}>
@@ -1874,7 +2104,12 @@ function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete, client, onOpe
 
           {/* ── Workflow-Typen: Verlauf & Aktivitäten ── */}
           {hasWorkflow && (
-            <WorkflowVerlaufSection au={au} onUpdate={onUpdate} />
+            <WorkflowVerlaufSection
+              au={au} onUpdate={onUpdate}
+              client={client} onUpdateClient={onUpdateClient}
+              emailVorlagen={emailVorlagen} emailSignaturen={emailSignaturen}
+              onedriveTokens={onedriveTokens} onUpdateOnedriveTokens={onUpdateOnedriveTokens}
+            />
           )}
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '14px', paddingTop: '10px', borderTop: '1px solid var(--border)' }}>

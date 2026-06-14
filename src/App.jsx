@@ -1330,13 +1330,56 @@ export default function App() {
                     email: data.email || '',
                     telefon: data.telefon || '',
                   }
+
+                  // Interesse → Auftragstyp (Etablering-Workflows)
+                  const TYP_MAP = { 'USt-Registrierung DE': 'ust_reg_de' }
+                  const auftragTyp = TYP_MAP[data.interesse] || null
+
+                  let auftraege
+                  if (auftragTyp) {
+                    const today = new Date().toISOString().slice(0, 10)
+                    const fd = data.formularDaten || {}
+                    const auftrag = {
+                      id: 'au_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+                      typ: auftragTyp,
+                      bezeichnung: 'USt-Registrierung DE' + (data.name ? ' – ' + data.name : ''),
+                      jahr: new Date().getFullYear(),
+                      monat: null,
+                      frist: '',
+                      status: 'in_bearbeitung',
+                      notiz: '',
+                      hinweise: [],
+                      verlauf: [{
+                        id: 'v_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+                        typ: 'unterlagen_erhalten',
+                        datum: data.erstelltAm ? String(data.erstelltAm).slice(0, 10) : today,
+                        text: 'Anfrage über Homepage-Formular eingegangen',
+                        erstelltAm: new Date().toISOString(),
+                      }],
+                      erstelltAm: new Date().toISOString(),
+                      erledigtAm: null,
+                      workflowStatus: data.formularDaten ? 'formular_ausgefuellt' : 'anfrage',
+                      workflowStatusDatum: today,
+                      erfassungsdaten: { ...fd },
+                      dokumente: [],
+                    }
+                    auftraege = [auftrag]
+                  }
+
+                  const confirmMsg = auftragTyp
+                    ? `Mandant „${data.name}" anlegen und Auftrag „USt-Registrierung DE" automatisch erstellen?`
+                    : `Mandant „${data.name}" anlegen?`
+                  if (!window.confirm(confirmMsg)) return
+
                   addClient({
                     name: data.name,
                     notizen: data.notizen || '',
                     kontakte: [kontakt],
                     land: data.land || '',
                     websiteAnfrageId: data.websiteAnfrageId || null,
+                    ...(auftraege ? { auftraege } : {}),
                   })
+                  return true
                 }}
               />
             </div>
