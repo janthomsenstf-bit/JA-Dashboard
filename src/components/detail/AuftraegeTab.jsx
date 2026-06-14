@@ -1781,15 +1781,30 @@ const ERFASSUNG_FELDER = [
 
 function AntragsdatenSection({ au, client, onUpdate }) {
   const [open, setOpen] = useState(true)
+  const [preview, setPreview] = useState(null)   // { art, doc, url }
   const ed = au.erfassungsdaten ?? {}
   const dokumente = au.dokumente ?? []
+
+  // Blob-URL freigeben, wenn Vorschau wechselt/schließt
+  useEffect(() => () => { if (preview?.url) URL.revokeObjectURL(preview.url) }, [preview])
 
   function setFeld(key, val) {
     onUpdate({ erfassungsdaten: { ...ed, [key]: val } })
   }
 
-  function handleGeneratePdf(art) {
+  // Vorschau öffnen — erzeugt PDF nur zur Ansicht, noch kein Download / keine Aufzeichnung
+  function openPreview(art) {
     const doc = art === 'vollmacht' ? buildVollmacht(client, au) : buildAntragFinanzamt(client, au)
+    const url = URL.createObjectURL(doc.output('blob'))
+    setPreview({ art, doc, url })
+  }
+
+  function closePreview() { setPreview(null) }
+
+  // Erst beim Bestätigen in der Vorschau: Download + Verlauf + Status
+  function confirmDownload() {
+    if (!preview) return
+    const { art, doc } = preview
     const filename = pdfFilename(art, au)
     downloadPdf(doc, filename)
 
@@ -1820,6 +1835,7 @@ function AntragsdatenSection({ au, client, onUpdate }) {
       patch.workflowStatusDatum = todayISO()
     }
     onUpdate(patch)
+    closePreview()
   }
 
   const fieldInput = (f) => f.textarea ? (
@@ -1847,16 +1863,19 @@ function AntragsdatenSection({ au, client, onUpdate }) {
 
       {open && (
         <div style={{ padding: '14px' }}>
-          {/* PDF-Buttons */}
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '14px' }}>
-            <button onClick={() => handleGeneratePdf('antrag')}
+          {/* PDF-Buttons (öffnen Vorschau) */}
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '6px' }}>
+            <button onClick={() => openPreview('antrag')}
               style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', borderRadius: '8px', border: 'none', background: '#2563eb', color: '#fff', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
-              📝 Antrag ans Finanzamt (PDF)
+              📝 Antrag ans Finanzamt – Vorschau
             </button>
-            <button onClick={() => handleGeneratePdf('vollmacht')}
+            <button onClick={() => openPreview('vollmacht')}
               style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', borderRadius: '8px', border: '1px solid #2563eb', background: 'transparent', color: '#2563eb', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
-              📄 Empfangsvollmacht (PDF)
+              📄 Empfangsvollmacht – Vorschau
             </button>
+          </div>
+          <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginBottom: '14px' }}>
+            Erst Vorschau prüfen — heruntergeladen wird das PDF erst nach Bestätigung.
           </div>
 
           {dokumente.length > 0 && (
@@ -1885,6 +1904,35 @@ function AntragsdatenSection({ au, client, onUpdate }) {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* ── PDF-Vorschau-Modal ── */}
+      {preview && (
+        <div onClick={closePreview} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: 'var(--surface)', borderRadius: '12px', width: 'min(900px, 95vw)', height: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 10px 40px rgba(0,0,0,0.45)' }}>
+            <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '10px', borderBottom: '1px solid var(--border)' }}>
+              <span style={{ fontSize: '15px' }}>{preview.art === 'vollmacht' ? '📄' : '📝'}</span>
+              <span style={{ fontWeight: 700, fontSize: '14px', color: 'var(--text)', flex: 1 }}>
+                Vorschau – {preview.art === 'vollmacht' ? 'Empfangsvollmacht' : 'Antrag ans Finanzamt'}
+              </span>
+              <button onClick={closePreview} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '18px', lineHeight: 1 }}>✕</button>
+            </div>
+            <iframe title="PDF-Vorschau" src={preview.url} style={{ flex: 1, width: '100%', border: 'none', background: '#fff' }} />
+            <div style={{ padding: '12px 16px', display: 'flex', gap: '8px', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border)' }}>
+              <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                Stimmt alles? Sonst „Abbrechen", oben die Antragsdaten korrigieren und erneut prüfen.
+              </span>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button onClick={closePreview} style={{ padding: '8px 16px', borderRadius: '8px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text)', fontSize: '13px', cursor: 'pointer' }}>
+                  Abbrechen
+                </button>
+                <button onClick={confirmDownload} style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: '#2563eb', color: '#fff', fontSize: '13px', fontWeight: 700, cursor: 'pointer' }}>
+                  ⬇️ Herunterladen
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>
