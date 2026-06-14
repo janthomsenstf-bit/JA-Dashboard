@@ -16,7 +16,7 @@ const KANZLEI_FALLBACK = {
   name:    'Jan Thomsen',
   strasse: 'Hauptstraße 24a',
   plzOrt:  '24986 Mittelangeln',
-  telefon: '',
+  telefon: '046342019750',
   email:   'jan.thomsen.stf@gmail.com',
 }
 
@@ -178,6 +178,7 @@ export function buildVollmacht(client, au) {
   const firma  = g('firmenname') || safe(client?.name) || ''
   const anschr = [g('adresse_strasse'), g('adresse_plz_ort'), g('adresse_land')].filter(Boolean).join(', ')
   const steuernr = g('steuernummer') || safe(client?.steuernummer)
+  const gf     = g('geschaeftsfuehrer_name')
 
   // ── Kopf: links Finanzamt, rechts Antragsteller ──
   doc.setFont('helvetica', 'normal').setFontSize(10).setTextColor(0)
@@ -264,6 +265,7 @@ export function buildVollmacht(client, au) {
   doc.setFontSize(9).setTextColor(110)
   doc.text('Ort, Datum', L, y)
   doc.text('Unterschrift des gesetzlichen Vertreters', R, y, { align: 'right' })
+  if (gf) doc.text(`(${gf})`, R, y + 4, { align: 'right' })
   doc.setTextColor(0)
 
   return doc
