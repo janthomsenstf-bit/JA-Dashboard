@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import JAComposePanel from './JAComposePanel.jsx'
-import { buildAntragFinanzamt, buildVollmacht, downloadPdf, pdfFilename, pdfToBase64 } from '../../utils/ustRegPdf.js'
+import { buildDoc, downloadPdf, pdfFilename, pdfToBase64 } from '../../utils/ustRegPdf.js'
 
 // ── Konfiguration (auch von AuftragKontextPanel genutzt) ──────────────────────
 export const AUFTRAGS_TYP_CFG = {
@@ -1508,7 +1508,7 @@ function buildUstRegVorlagen(client, au) {
 function buildPdfAttachments(client, au) {
   const docs = au.dokumente ?? []
   return docs.map(d => {
-    const doc = d.art === 'vollmacht' ? buildVollmacht(client, au) : buildAntragFinanzamt(client, au)
+    const doc = buildDoc(d.art, client, au)
     return { name: pdfFilename(d.art, au), data: pdfToBase64(doc), type: 'application/pdf', size: 0 }
   })
 }
@@ -1734,6 +1734,10 @@ function WorkflowVerlaufSection({ au, onUpdate, client, onUpdateClient, emailVor
 // ── Antragsdaten + Dokumente (USt-Reg. DE) ────────────────────────────────────
 const ERFASSUNG_FELDER = [
   { gruppe: 'Unternehmen', felder: [
+    { key: 'personenart',      label: 'Personenart (für Einwilligung)', options: [
+      { value: 'juristisch', label: 'Juristische Person (ApS, GmbH …)' },
+      { value: 'natuerlich', label: 'Natürliche Person (Einzelunternehmer)' },
+    ]},
     { key: 'firmenname',       label: 'Firmenname' },
     { key: 'cvr_nummer',       label: 'CVR-/Handelsreg.-Nr.' },
     { key: 'adresse_strasse',  label: 'Straße, Hausnr.' },
@@ -1779,6 +1783,15 @@ const ERFASSUNG_FELDER = [
   ]},
 ]
 
+function dokLabel(art) {
+  switch (art) {
+    case 'vollmacht':        return 'Empfangsvollmacht'
+    case 'einwilligung_jur': return 'Einwilligung E-Mail (juristisch)'
+    case 'einwilligung_nat': return 'Einwilligung E-Mail (natürlich)'
+    default:                 return 'Antrag ans Finanzamt'
+  }
+}
+
 function AntragsdatenSection({ au, client, onUpdate }) {
   const [open, setOpen] = useState(true)
   const [preview, setPreview] = useState(null)   // { art, doc, url }
@@ -1794,9 +1807,14 @@ function AntragsdatenSection({ au, client, onUpdate }) {
 
   // Vorschau öffnen — erzeugt PDF nur zur Ansicht, noch kein Download / keine Aufzeichnung
   function openPreview(art) {
-    const doc = art === 'vollmacht' ? buildVollmacht(client, au) : buildAntragFinanzamt(client, au)
+    // Einwilligung: passende Variante nach Personenart wählen
+    let resolvedArt = art
+    if (art === 'einwilligung') {
+      resolvedArt = (ed.personenart === 'natuerlich') ? 'einwilligung_nat' : 'einwilligung_jur'
+    }
+    const doc = buildDoc(resolvedArt, client, au)
     const url = URL.createObjectURL(doc.output('blob'))
-    setPreview({ art, doc, url })
+    setPreview({ art: resolvedArt, doc, url })
   }
 
   function closePreview() { setPreview(null) }
@@ -1819,7 +1837,7 @@ function AntragsdatenSection({ au, client, onUpdate }) {
       id: genVerlaufId(),
       typ: 'dokument_erstellt',
       datum: todayISO(),
-      text: (art === 'vollmacht' ? 'Empfangsvollmacht' : 'Antrag ans Finanzamt') + ' erzeugt: ' + filename,
+      text: dokLabel(art) + ' erzeugt: ' + filename,
       erstelltAm: new Date().toISOString(),
     }
     const patch = {
@@ -1838,7 +1856,12 @@ function AntragsdatenSection({ au, client, onUpdate }) {
     closePreview()
   }
 
-  const fieldInput = (f) => f.textarea ? (
+  const fieldInput = (f) => f.options ? (
+    <select value={ed[f.key] ?? ''} onChange={e => setFeld(f.key, e.target.value)} style={inputStyle}>
+      {(ed[f.key] ?? '') === '' && <option value="">— bitte wählen —</option>}
+      {f.options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+    </select>
+  ) : f.textarea ? (
     <textarea
       value={ed[f.key] ?? ''}
       onChange={e => setFeld(f.key, e.target.value)}
@@ -1872,6 +1895,13 @@ function AntragsdatenSection({ au, client, onUpdate }) {
             <button onClick={() => openPreview('vollmacht')}
               style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', borderRadius: '8px', border: '1px solid #2563eb', background: 'transparent', color: '#2563eb', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
               📄 Empfangsvollmacht – Vorschau
+            </button>
+            <button onClick={() => openPreview('einwilligung')}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', borderRadius: '8px', border: '1px solid #2563eb', background: 'transparent', color: '#2563eb', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
+              📧 Einwilligung E-Mail – Vorschau
+              <span style={{ fontSize: '10px', fontWeight: 400, opacity: 0.75 }}>
+                ({(ed.personenart === 'natuerlich') ? 'natürl.' : 'jurist.'})
+              </span>
             </button>
           </div>
           <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginBottom: '14px' }}>
@@ -1912,9 +1942,9 @@ function AntragsdatenSection({ au, client, onUpdate }) {
         <div onClick={closePreview} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
           <div onClick={e => e.stopPropagation()} style={{ background: 'var(--surface)', borderRadius: '12px', width: 'min(900px, 95vw)', height: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 10px 40px rgba(0,0,0,0.45)' }}>
             <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '10px', borderBottom: '1px solid var(--border)' }}>
-              <span style={{ fontSize: '15px' }}>{preview.art === 'vollmacht' ? '📄' : '📝'}</span>
+              <span style={{ fontSize: '15px' }}>{preview.art === 'vollmacht' ? '📄' : preview.art.startsWith('einwilligung') ? '📧' : '📝'}</span>
               <span style={{ fontWeight: 700, fontSize: '14px', color: 'var(--text)', flex: 1 }}>
-                Vorschau – {preview.art === 'vollmacht' ? 'Empfangsvollmacht' : 'Antrag ans Finanzamt'}
+                Vorschau – {dokLabel(preview.art)}
               </span>
               <button onClick={closePreview} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '18px', lineHeight: 1 }}>✕</button>
             </div>

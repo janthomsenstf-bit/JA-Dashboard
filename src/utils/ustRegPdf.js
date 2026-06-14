@@ -271,11 +271,172 @@ export function buildVollmacht(client, au) {
   return doc
 }
 
+// ── 3) Einwilligung unverschlüsselte E-Mail (§ 87a AO) ────────────────────────
+// variant: 'jur' (Körperschaft) | 'nat' (natürliche Person)
+export function buildEinwilligung(client, au, variant = 'jur') {
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' })
+  const ed = au?.erfassungsdaten ?? {}
+  const g = (k, d = '') => safe(ed[k]) || d
+  const isJur = variant !== 'nat'
+  const L = 20, R = 190, W = R - L
+  let y = 16
+
+  function field(label, value) {
+    doc.setFont('helvetica', 'normal').setFontSize(9.5).setTextColor(0)
+    doc.text(label, L, y)
+    const vx = L + 44
+    doc.text(safe(value), vx, y)
+    doc.setDrawColor(150); doc.setLineWidth(0.2); doc.line(vx, y + 1.3, R, y + 1.3)
+    y += 8
+  }
+  function checkbox(text, checked) {
+    doc.setDrawColor(0); doc.setLineWidth(0.3)
+    doc.rect(L, y - 3.2, 3.6, 3.6)
+    if (checked) { doc.setFont('helvetica', 'bold').setFontSize(10); doc.text('X', L + 0.5, y - 0.4) }
+    doc.setFont('helvetica', 'normal').setFontSize(9)
+    const lines = doc.splitTextToSize(text, W - 7)
+    doc.text(lines, L + 6, y)
+    y += lines.length * 4.3 + 3
+  }
+  function para(text, size = 9, gap = 3) {
+    doc.setFont('helvetica', 'normal').setFontSize(size).setTextColor(0)
+    const lines = doc.splitTextToSize(text, W)
+    doc.text(lines, L, y)
+    y += lines.length * (size * 0.46) + gap
+  }
+  function pageFooter(n) {
+    doc.setFontSize(7.5).setTextColor(120)
+    doc.text('Einwilligung gemäß § 87a Absatz 1 Satz 4 AO', L, 287)
+    doc.text(`Seite ${n} von 2`, R, 287, { align: 'right' })
+    doc.text('Nr. 605/244 (01.25) OFD NRW - St 31', L, 291)
+    doc.setTextColor(0)
+  }
+
+  // ── Titel ──
+  doc.setFont('helvetica', 'bold').setFontSize(11)
+  doc.text(doc.splitTextToSize('Einwilligung in den Versand unverschlüsselter E-Mails durch Finanzbehörden', W), 105, y, { align: 'center' })
+  y += 9
+  doc.setFontSize(9.5)
+  doc.text('gemäß § 87a Abs. 1 Satz 4 Halbsatz 2 der Abgabenordnung (AO)', 105, y, { align: 'center' })
+  y += 5
+  doc.text(isJur ? '- für Körperschaften -' : '- für Bürgerinnen und Bürger -', 105, y, { align: 'center' })
+  y += 8
+  doc.setFont('helvetica', 'normal').setFontSize(8.5).setTextColor(60)
+  doc.text('Bitte beachten Sie unbedingt die Hinweise auf der zweiten Seite dieses Formulars.', 105, y, { align: 'center' })
+  y += 4
+  doc.text('Füllen Sie die Felder bitte leserlich aus. Kreuzen Sie bitte Zutreffendes an.', 105, y, { align: 'center' })
+  y += 9
+  doc.setTextColor(0)
+
+  const anschrift = [g('adresse_strasse'), g('adresse_plz_ort'), g('adresse_land')].filter(Boolean).join(', ')
+  const email = g('ansprechpartner_email')
+  const gf = g('geschaeftsfuehrer_name')
+
+  if (isJur) {
+    field('Firma:', g('firmenname'))
+    field('Anschrift:', anschrift)
+    field('Steuernummer:', g('steuernummer'))
+    y += 2
+    doc.setFont('helvetica', 'bold').setFontSize(9.5)
+    doc.text('Gesetzlich vertreten durch', L, y); y += 6
+    field('Name, Vorname:', gf)
+    field('Geburtsdatum:', deDate(g('geschaeftsfuehrer_geburtsdatum')))
+    field('Anschrift:', g('geschaeftsfuehrer_adresse'))
+    y += 1
+    checkbox('Die gesetzliche Vertretung und deren Umfang sind dem zuständigen Finanzamt bereits bekannt.', false)
+    checkbox('Ein Nachweis der gesetzlichen Vertretung liegt bei.', false)
+    y += 1
+    para('Als gesetzlicher Vertreter der o. g. Firma bitte ich Sie, den zukünftigen Informationsaustausch über folgende E-Mail-Adresse zu führen:', 9, 4)
+    field('E-Mail-Adresse:', email)
+    checkbox('Es handelt sich um die E-Mail-Adresse der/des steuerlichen Bevollmächtigten der o. g. Firma', false)
+  } else {
+    doc.setFont('helvetica', 'normal').setFontSize(9.5)
+    doc.text(FINANZAMT.name, L, y); y += 4.5
+    doc.text(FINANZAMT.strasse, L, y); y += 4.5
+    doc.text(FINANZAMT.plzOrt, L, y); y += 8
+    field('Name, Vorname:', gf || g('firmenname'))
+    field('Anschrift:', anschrift)
+    field('Steuernummer:', g('steuernummer'))
+    field('Geburtsdatum:', deDate(g('geschaeftsfuehrer_geburtsdatum')))
+    field('Identifikationsnummer:', g('idnr'))
+    y += 1
+    doc.setFont('helvetica', 'normal').setFontSize(8.5).setTextColor(60)
+    doc.text('Bei nicht geschäftsfähigen bzw. beschränkt geschäftsfähigen natürlichen Personen:', L, y); y += 6
+    doc.setTextColor(0)
+    doc.setFont('helvetica', 'bold').setFontSize(9.5)
+    doc.text('Gesetzlich vertreten durch', L, y); y += 6
+    field('Name, Vorname:', '')
+    field('Geburtsdatum:', '')
+    field('Anschrift:', '')
+    y += 1
+    checkbox('Die gesetzliche Vertretung und deren Umfang sind dem zuständigen Finanzamt bereits bekannt.', false)
+    checkbox('Ein Nachweis der gesetzlichen Vertretung und – im Fall einer Betreuung – ihre Reichweite liegt bei.', false)
+    y += 1
+    para('Bitte führen Sie den zukünftigen Informationsaustausch über folgende E-Mail-Adresse:', 9, 4)
+    field('E-Mail-Adresse:', email)
+    checkbox('Es handelt sich um die E-Mail-Adresse meiner Vertreterin/meines Vertreters bzw. meiner/meines Bevollmächtigten.', false)
+  }
+  y += 1
+  para('Die Überwachung des E-Mail-Postfachs auf Mitteilungen des Finanzamtes liegt in meiner Verantwortung.', 9)
+  pageFooter(1)
+
+  // ── Seite 2: Wichtige Hinweise ──
+  doc.addPage(); y = 16
+  doc.setFont('helvetica', 'bold').setFontSize(11)
+  doc.text('Wichtige Hinweise', L, y); y += 7
+  para('Das Finanzamt darf nur dann unverschlüsselte E-Mails mit geschützten Daten versenden, wenn die betroffene Person ausdrücklich in die unverschlüsselte Datenübermittlung eingewilligt und einer mit diesem Kommunikationsweg möglicherweise verbundenen Offenbarung ihrer steuerlichen Verhältnisse zugestimmt hat (§ 30 Absatz 4 Nr. 3 und § 87a Absatz 1 Satz 4 Halbsatz 2 AO, Artikel 6 Absatz 1 der Datenschutz-Grundverordnung – DSGVO –).')
+  para('Möchten Sie, dass das Finanzamt Ihnen oder der von Ihnen bevollmächtigten Person unverschlüsselte E-Mails übersendet, unterschreiben Sie bitte eigenhändig den vollständig ausgefüllten Vordruck und senden ihn per Post an das Finanzamt. Sie können ihn auch einscannen und die pdf-Datei als Anhang an Ihr zuständiges Finanzamt schicken. Jede Person, deren Daten unverschlüsselt übermittelt werden sollen, muss zuvor eine eigene schriftliche Einwilligungserklärung nach diesem Muster abgeben (insbesondere zusammenveranlagte Personen).')
+  para('Diese Einwilligung begründet keinen Anspruch auf unverschlüsselte Kommunikation per E-Mail. Das Finanzamt behält sich vor, auf andere Weise mit Ihnen zu kommunizieren (z. B. per Post). Insbesondere ist die Bekanntgabe von Steuerbescheiden mittels unverschlüsselter E-Mail nicht zulässig.')
+  para('Steuererklärungen können nicht per E-Mail an das Finanzamt übermittelt werden. Hierfür steht Ihnen das Portal ELSTER zur Verfügung.')
+  y += 2
+  para('In Kenntnis aller Hinweise willige ich darin ein, dass das Finanzamt mir oder der von mir bevollmächtigten Person geschützte Daten per unverschlüsselter E-Mail übermitteln darf. Die Einwilligung erstreckt sich auf', 9, 4)
+  checkbox('die gesamte elektronisch zulässige Kommunikation  oder', true)
+  checkbox('nur auf', false)
+  doc.setDrawColor(150); doc.setLineWidth(0.2); doc.line(L + 6, y, R, y); y += 4
+  doc.setFontSize(7.5).setTextColor(120)
+  doc.text('(Beispiele: Betriebsprüfung, Lohnsteuer-Außenprüfung, Umsatzsteuer-Sonderprüfung)', L + 6, y); y += 6
+  doc.setTextColor(0)
+  para(`Mir ist bekannt, dass eine unverschlüsselte elektronische Kommunikation nicht sicher ist und eventuell durch Dritte eingesehen und manipuliert werden kann. Die Möglichkeit, dass dadurch meine steuerlichen Sachverhalte${isJur ? ' der von mir vertretenen Firma' : ''} unbefugten Dritten bekannt werden, nehme ich in Kauf.`)
+  para('Diese Einwilligung kann ich jederzeit schriftlich (Brief, Fax), per E-Mail oder durch persönlichen Vortrag im Finanzamt widerrufen. Der Widerruf wird erst ab dem Zeitpunkt wirksam, in dem er dem Finanzamt zugeht.')
+
+  // Unterschrift
+  y = Math.max(y + 16, 255)
+  doc.setDrawColor(40); doc.setLineWidth(0.5)
+  doc.line(L, y, L + 70, y)
+  doc.line(R - 75, y, R, y)
+  y += 5
+  doc.setFont('helvetica', 'bold').setFontSize(9.5).setTextColor(0)
+  doc.text('(Ort, Datum)', L, y)
+  doc.text(`Unterschrift${gf ? ' – ' + gf : ''}`, R - 75, y)
+  doc.setFont('helvetica', 'normal').setFontSize(7).setTextColor(120)
+  y += 5
+  doc.text(isJur
+    ? 'Bei Körperschaften ist die Einwilligung vom gesetzlichen Vertreter zu unterschreiben.'
+    : 'Bei nicht/beschränkt geschäftsfähigen Personen ist die Einwilligung vom gesetzlichen Vertreter zu unterschreiben.', L, y)
+  doc.setTextColor(0)
+  pageFooter(2)
+
+  return doc
+}
+
+// ── Zentraler Dispatcher: art → Dokument ──────────────────────────────────────
+export function buildDoc(art, client, au) {
+  switch (art) {
+    case 'vollmacht':       return buildVollmacht(client, au)
+    case 'einwilligung_jur': return buildEinwilligung(client, au, 'jur')
+    case 'einwilligung_nat': return buildEinwilligung(client, au, 'nat')
+    default:                return buildAntragFinanzamt(client, au)
+  }
+}
+
 // ── Ausgabe-Helfer ────────────────────────────────────────────────────────────
 export function pdfFilename(art, au) {
   const firma = (((au && au.erfassungsdaten) || {}).firmenname || 'Mandant')
     .replace(/[^\wäöüÄÖÜß \-]/g, '').trim().replace(/\s+/g, '_')
-  const label = art === 'vollmacht' ? 'Empfangsvollmacht' : 'Antrag_USt-Registrierung'
+  const label = art === 'vollmacht' ? 'Empfangsvollmacht'
+    : art === 'einwilligung_jur' ? 'Einwilligung_E-Mail_juristisch'
+    : art === 'einwilligung_nat' ? 'Einwilligung_E-Mail_natuerlich'
+    : 'Antrag_USt-Registrierung'
   return `${label}_${firma}.pdf`
 }
 
