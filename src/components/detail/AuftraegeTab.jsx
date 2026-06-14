@@ -1,6 +1,7 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import JAComposePanel from './JAComposePanel.jsx'
 import { buildDoc, downloadPdf, pdfFilename, pdfToBase64 } from '../../utils/ustRegPdf.js'
+import { callApi, getMandantPath, openAuthPopup } from '../../utils/onedriveClient.js'
 
 // ── Konfiguration (auch von AuftragKontextPanel genutzt) ──────────────────────
 export const AUFTRAGS_TYP_CFG = {
@@ -1163,10 +1164,13 @@ function ErfassungVerlaufSection({ au, onUpdate }) {
                     <span style={{ fontSize: '11px', color: 'var(--text-muted)', flex: 1 }}>
                       {fmtShortDate(item.datum)}
                     </span>
-                    <button onClick={() => deleteVerlauf(item.id)}
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '12px', padding: '0 2px', flexShrink: 0 }}
-                      onMouseEnter={e => e.currentTarget.style.color = '#ef4444'}
-                      onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}>✕</button>
+                    {item._email
+                      ? <span style={{ fontSize: '9px', color: 'var(--text-muted)', flexShrink: 0 }}>📧 Nachrichten</span>
+                      : <button onClick={() => deleteVerlauf(item.id)}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '12px', padding: '0 2px', flexShrink: 0 }}
+                          onMouseEnter={e => e.currentTarget.style.color = '#ef4444'}
+                          onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}>✕</button>
+                    }
                   </div>
                   {item.text && item.text !== cfg.label && (
                     <div style={{ padding: '5px 10px', fontSize: '11px', color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>
@@ -1513,21 +1517,128 @@ function buildPdfAttachments(client, au) {
   })
 }
 
+// Alle 3 Unterlagen frisch erzeugen (für den Versand) — Einwilligung nach Personenart
+function buildAllPdfAttachments(client, au) {
+  const personenart = (au.erfassungsdaten || {}).personenart
+  const einwArt = personenart === 'natuerlich' ? 'einwilligung_nat' : 'einwilligung_jur'
+  return ['antrag', 'vollmacht', einwArt].map(art => {
+    const doc = buildDoc(art, client, au)
+    return { name: pdfFilename(art, au), data: pdfToBase64(doc), type: 'application/pdf', size: 0 }
+  })
+}
+
+// Sende-Vorlage (Du-Form, Sprache nach Land) mit vorbefüllten Variablen
+function buildSendeVorlage(client, au) {
+  const ed = au.erfassungsdaten || {}
+  const land = (ed.adresse_land || client?.land || '').toLowerCase()
+  const isDK = /dänemark|danmark|denmark|\bdk\b/.test(land)
+  const firma = (ed.firmenname || client?.name || '').trim()
+  const apName = (ed.ansprechpartner_name || (client?.kontakte || [])[0]?.name || ed.geschaeftsfuehrer_name || '').trim()
+  const vorname = apName.split(/\s+/)[0] || ''
+
+  if (isDK) {
+    return {
+      subject: `Dokumenter til momsregistrering i Tyskland${firma ? ' – ' + firma : ''}`,
+      body:
+`Hej${vorname ? ' ' + vorname : ''},
+
+vedhæftet finder du dokumenterne til momsregistreringen i Tyskland.
+
+Vedhæftet er:
+• Ansøgning om skattemæssig registrering
+• Fuldmagt (modtagelsesfuldmagt)
+• Samtykke til kommunikation med Finanzamt via e-mail
+
+Gennemgå venligst dokumenterne og send mig de underskrevne dokumenter retur som PDF. Så snart jeg har de underskrevne dokumenter, indsender jeg registreringen til det relevante Finanzamt.
+
+Om fuldmagten: Hvis du underskriver fuldmagten, kan afgørelser og henvendelser fra Finanzamt sendes direkte til mig – det gør kommunikationen som regel hurtigere og nemmere. Fuldmagten er frivillig.
+
+Behandlingstid: Erfaringsmæssigt tager behandlingen hos Finanzamt ca. 2 til 6 uger, afhængigt af travlhed.
+
+Hvis der ikke gives fuldmagt, sender Finanzamt breve og afgørelser direkte til din virksomhed. Sørg i så fald for, at den angivne virksomhedsadresse kan modtage post, at der er en postkasse, og at virksomhedens navn fremgår tydeligt af postkassen.
+
+Hvis du ikke har hørt noget inden for ca. to uger efter ansøgningen, er du velkommen til at kontakte mig – så vurderer vi sammen, om det giver mening at rykke Finanzamt.
+
+Sig endelig til, hvis du har spørgsmål.
+
+Venlig hilsen`,
+    }
+  }
+  return {
+    subject: `Unterlagen zur umsatzsteuerlichen Registrierung in Deutschland${firma ? ' – ' + firma : ''}`,
+    body:
+`Hallo${vorname ? ' ' + vorname : ''},
+
+in der Anlage findest du die Unterlagen für die umsatzsteuerliche Registrierung in Deutschland.
+
+Beigefügt sind:
+• Antrag zur steuerlichen Registrierung
+• Vollmacht (Empfangsvollmacht)
+• Einwilligung zur Kommunikation mit dem Finanzamt per E-Mail
+
+Bitte prüfe die Unterlagen und sende mir die unterschriebenen Dokumente als PDF zurück. Sobald mir die unterschriebenen Unterlagen vorliegen, reiche ich die Registrierung beim zuständigen Finanzamt ein.
+
+Zur Vollmacht: Wenn du die Vollmacht unterschreibst, können Bescheide und Rückfragen des Finanzamts direkt an mich gehen – das macht die Kommunikation meist schneller und unkomplizierter. Die Vollmacht ist freiwillig.
+
+Bearbeitungsdauer: Erfahrungsgemäß dauert die Bearbeitung beim Finanzamt etwa 2 bis 6 Wochen, je nach Auslastung.
+
+Falls keine Vollmacht erteilt wird, sendet das Finanzamt Schreiben und Bescheide direkt an dein Unternehmen. Bitte stelle in diesem Fall sicher, dass die angegebene Firmenadresse erreichbar ist, ein Briefkasten vorhanden und der Firmenname am Briefkasten erkennbar ist.
+
+Solltest du innerhalb von etwa zwei Wochen nach Antragstellung keine Rückmeldung erhalten, melde dich gerne – dann prüfen wir gemeinsam, ob eine Nachfrage beim Finanzamt sinnvoll ist.
+
+Bei Fragen bin ich jederzeit für dich da.
+
+Viele Grüße`,
+  }
+}
+
+// PDFs nach Versand in OneDrive ablegen (best-effort, blockiert den Versand nicht)
+async function uploadPdfsToOneDrive(client, au, attachments, tokens, onUpdateTokens) {
+  if (!tokens?.accessToken || !attachments?.length) return
+  const { pathParts, folderPath } = getMandantPath(client)
+  await callApi('ensurePath', { pathParts }, tokens, onUpdateTokens)
+  for (const a of attachments) {
+    await callApi('uploadSmall', {
+      filePath: `${folderPath}/${a.name}`,
+      base64: a.data,
+      contentType: a.type || 'application/pdf',
+    }, tokens, onUpdateTokens)
+  }
+}
+
 function WorkflowVerlaufSection({ au, onUpdate, client, onUpdateClient, emailVorlagen = [], emailSignaturen = [], onedriveTokens = null, onUpdateOnedriveTokens }) {
   const verlauf = au.verlauf ?? []
   const [selectedTyp, setSelectedTyp] = useState(null)
   const [newNotiz,    setNewNotiz]    = useState('')
   const [newDatum,    setNewDatum]    = useState(todayISO)
   const [showCompose, setShowCompose] = useState(false)
+  const [sendMode, setSendMode] = useState(false)   // dedizierter "Unterlagen senden"-Modus
   const canCompose = !!(client && onUpdateClient)
+  const isUstReg = au.typ === 'ust_reg_de'
   const ustRegVorlagen = useMemo(
-    () => au.typ === 'ust_reg_de' ? buildUstRegVorlagen(client, au) : [],
-    [au.typ, au.erfassungsdaten, client]
+    () => isUstReg ? buildUstRegVorlagen(client, au) : [],
+    [isUstReg, au.erfassungsdaten, client]
   )
   const pdfAttachments = useMemo(
-    () => (showCompose && au.typ === 'ust_reg_de') ? buildPdfAttachments(client, au) : [],
-    [showCompose, au.dokumente, au.erfassungsdaten, client]
+    () => (showCompose && !sendMode && isUstReg) ? buildPdfAttachments(client, au) : [],
+    [showCompose, sendMode, au.dokumente, au.erfassungsdaten, client]
   )
+  // Vorbelegte Sende-Mail: Vorlage (DE/DK, Du-Form) + alle 3 frisch erzeugten Anhänge
+  const sendPreset = useMemo(() => {
+    if (!sendMode || !isUstReg) return null
+    const v = buildSendeVorlage(client, au)
+    return { subject: v.subject, body: v.body, attachments: buildAllPdfAttachments(client, au) }
+  }, [sendMode, isUstReg, au.erfassungsdaten, client])
+
+  // Verknüpfte E-Mails (global, mit auftragId) → in Timeline + Reiter Nachrichten sichtbar
+  const linkedEmails = (client?.kommunikation?.events ?? [])
+    .filter(ev => ev.auftragId === au.id)
+    .map(ev => ({
+      id: ev.id, _email: true,
+      typ: ev.typ === 'eingehend' ? 'rueckmeldung_erhalten' : 'email_gesendet',
+      datum: ev.gesendetAm ?? ev.erstelltAm ?? '',
+      text: `${ev.typ === 'eingehend' ? 'Empfangen' : 'Gesendet'}: ${ev.betreff ?? '(kein Betreff)'}${ev.empfaenger ? '  →  ' + ev.empfaenger : ''}`,
+    }))
 
   function handleQuickAction(typ) {
     if (selectedTyp === typ) { setSelectedTyp(null); return }
@@ -1554,7 +1665,27 @@ function WorkflowVerlaufSection({ au, onUpdate, client, onUpdateClient, emailVor
     onUpdate({ verlauf: verlauf.filter(v => v.id !== id) })
   }
 
-  const sorted = [...verlauf].sort((a, b) => new Date(b.datum) - new Date(a.datum))
+  function openCompose(send) {
+    setSendMode(send)
+    setShowCompose(true)
+    setSelectedTyp(null)
+  }
+  function closeCompose() { setShowCompose(false); setSendMode(false) }
+
+  // Nach erfolgreichem Versand (Sende-Modus): Status vorrücken + PDFs in OneDrive ablegen
+  function handleSent(info) {
+    const order = (WORKFLOW_CONFIGS[au.typ]?.steps ?? []).map(s => s.key)
+    const curIdx = order.indexOf(au.workflowStatus ?? order[0])
+    const targetIdx = order.indexOf('zur_unterschrift')
+    if (targetIdx >= 0 && curIdx < targetIdx) {
+      onUpdate({ workflowStatus: 'zur_unterschrift', workflowStatusDatum: todayISO() })
+    }
+    if (onedriveTokens?.accessToken) {
+      uploadPdfsToOneDrive(client, au, info?.attachments ?? sendPreset?.attachments, onedriveTokens, onUpdateOnedriveTokens).catch(() => {})
+    }
+  }
+
+  const sorted = [...verlauf, ...linkedEmails].sort((a, b) => new Date(b.datum) - new Date(a.datum))
   const iStyle = { padding: '6px 10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text)', fontSize: '12px', outline: 'none' }
 
   return (
@@ -1567,9 +1698,22 @@ function WorkflowVerlaufSection({ au, onUpdate, client, onUpdateClient, emailVor
           {sorted.length}
         </span>
         {canCompose && (
-          <div style={{ marginLeft: 'auto' }}>
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: '6px' }}>
+            {isUstReg && (
+              <button
+                onClick={() => showCompose ? closeCompose() : openCompose(true)}
+                style={{
+                  padding: '4px 12px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer', fontWeight: 700,
+                  border: '1px solid #2563eb',
+                  background: (showCompose && sendMode) ? 'rgba(37,99,235,0.15)' : '#2563eb',
+                  color: (showCompose && sendMode) ? '#2563eb' : '#fff',
+                }}
+              >
+                📨 Antragsunterlagen an Mandanten senden
+              </button>
+            )}
             <button
-              onClick={() => { setShowCompose(v => !v); if (!showCompose) setSelectedTyp(null) }}
+              onClick={() => showCompose ? closeCompose() : openCompose(false)}
               style={{
                 padding: '4px 12px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer', fontWeight: 600,
                 border: `1px solid ${showCompose ? 'var(--accent)' : 'rgba(8,145,178,0.3)'}`,
@@ -1583,20 +1727,28 @@ function WorkflowVerlaufSection({ au, onUpdate, client, onUpdateClient, emailVor
         )}
       </div>
 
-      {/* Compose-Panel (mit USt-Reg-Vorlagen + angehängten PDFs) */}
+      {/* Compose-Panel */}
       {canCompose && showCompose && (
         <div style={{ marginBottom: '14px' }}>
+          {sendMode && (
+            <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '6px' }}>
+              Vorbefüllte E-Mail ({/dänemark|danmark|denmark|\bdk\b/.test((au.erfassungsdaten?.adresse_land || '').toLowerCase()) ? '🇩🇰 Dänisch' : '🇩🇪 Deutsch'}) mit angehängtem Antrag, Vollmacht &amp; Einwilligung. Bitte prüfen, dann „Senden".
+            </div>
+          )}
           <JAComposePanel
             au={au}
             client={client}
             emailVorlagen={emailVorlagen}
             extraVorlagen={ustRegVorlagen}
             initialAttachments={pdfAttachments}
+            preset={sendMode ? sendPreset : null}
+            forcePreset={sendMode}
+            onSent={sendMode ? handleSent : undefined}
             emailSignaturen={emailSignaturen}
             onedriveTokens={onedriveTokens}
             onUpdateOnedriveTokens={onUpdateOnedriveTokens}
             onUpdateClient={onUpdateClient}
-            onClose={() => setShowCompose(false)}
+            onClose={closeCompose}
           />
         </div>
       )}
@@ -1710,10 +1862,13 @@ function WorkflowVerlaufSection({ au, onUpdate, client, onUpdateClient, emailVor
                     <span style={{ fontSize: '11px', color: 'var(--text-muted)', flex: 1 }}>
                       {fmtShortDate(item.datum)}
                     </span>
-                    <button onClick={() => deleteVerlauf(item.id)}
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '12px', padding: '0 2px', flexShrink: 0 }}
-                      onMouseEnter={e => e.currentTarget.style.color = '#ef4444'}
-                      onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}>✕</button>
+                    {item._email
+                      ? <span style={{ fontSize: '9px', color: 'var(--text-muted)', flexShrink: 0 }}>📧 Nachrichten</span>
+                      : <button onClick={() => deleteVerlauf(item.id)}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '12px', padding: '0 2px', flexShrink: 0 }}
+                          onMouseEnter={e => e.currentTarget.style.color = '#ef4444'}
+                          onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}>✕</button>
+                    }
                   </div>
                   {item.text && item.text !== cfg.label && (
                     <div style={{ padding: '5px 10px', fontSize: '11px', color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>

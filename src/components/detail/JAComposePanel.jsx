@@ -85,6 +85,9 @@ export default function JAComposePanel({
   emailVorlagen   = [],
   extraVorlagen   = [],
   initialAttachments = [],
+  preset          = null,    // { subject, body, attachments } — vorbelegte Mail
+  forcePreset     = false,   // wenn true: Entwurf ignorieren, preset verwenden
+  onSent,                    // Callback nach erfolgreichem Versand: ({ to, subject }) => void
   emailSignaturen = [],
   onedriveTokens  = null,
   onUpdateOnedriveTokens,
@@ -117,19 +120,24 @@ export default function JAComposePanel({
   // ── States ─────────────────────────────────────────────────────────────────
   const [to,           setTo]           = useState(_draft?.to ?? defaultTo)
   const [from,         setFrom]         = useState(_draft?.from ?? defaultFrom)
-  const [subject,      setSubject]      = useState(_draft?.subject ?? '')
+  const [subject,      setSubject]      = useState(
+    (forcePreset && preset) ? (preset.subject ?? '') : (_draft?.subject ?? '')
+  )
   const [body,         setBody]         = useState(() => {
-    if (_draft?.body) return _draft.body
     const sig = aktiveSig(defaultSigId)
+    if (forcePreset && preset) return (preset.body ?? '') + (sig ? SIG_SEP + sig.text : '')
+    if (_draft?.body) return _draft.body
     return sig ? SIG_SEP + sig.text : ''
   })
   const [sigId,        setSigId]        = useState(_draft?.sigId ?? defaultSigId)
-  const [attachments,  setAttachments]  = useState(initialAttachments)  // Dateien nicht persistiert
+  const [attachments,  setAttachments]  = useState(
+    (forcePreset && preset?.attachments) ? preset.attachments : initialAttachments
+  )  // Dateien nicht persistiert
   const [sending,      setSending]      = useState(false)
   const [sendMode,     setSendMode]     = useState(_draft?.sendMode ?? 'smtp')
   const [error,        setError]        = useState('')
   const [success,      setSuccess]      = useState(false)
-  const [draftRestored, setDraftRestored] = useState(!!(
+  const [draftRestored, setDraftRestored] = useState(!forcePreset && !!(
     _draft && (_draft.subject || _draft.body?.replace(SIG_SEP, '').trim() || _draft.to !== defaultTo)
   ))
 
@@ -316,6 +324,7 @@ export default function JAComposePanel({
       }
       onUpdateClient({ kommunikation: { ...komm, events: [newEvent, ...(komm.events ?? [])] } })
       clearJAComposeDraft(client.id, au.id)
+      try { onSent?.({ to, subject, attachments }) } catch {}
       setSuccess(true)
       setTimeout(onClose, 1800)
     } catch (err) {
