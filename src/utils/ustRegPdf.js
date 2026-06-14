@@ -1,16 +1,17 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// ustRegPdf.js — Erzeugt Anschreiben ans Finanzamt + Vollmacht für die
-// umsatzsteuerliche Registrierung (USt-Reg. DE) aus den Antragsdaten eines
-// Auftrags. Reine eigene Vorlagen (kein amtliches Formular), per jsPDF.
+// ustRegPdf.js — Erzeugt für die USt-Registrierung DE zwei Dokumente aus den
+// Antragsdaten eines Auftrags (auftrag.erfassungsdaten), per jsPDF:
+//   1) buildAntragFinanzamt() — den 15-Punkte-Fragebogen „Antrag umsatzsteuer-
+//      liche Registrierung", der ausgefüllt ans Finanzamt geht (eigene Vorlage,
+//      kein Briefkopf — nachgebildet aus der Kanzlei-Vorlage).
+//   2) buildVollmacht() — Vollmacht zur steuerlichen Vertretung.
 //
 // Verwendung:
-//   import { buildAnschreiben, buildVollmacht, downloadPdf, pdfToBase64, pdfFilename } from '...'
-//   const doc = buildAnschreiben(client, au)
-//   downloadPdf(doc, pdfFilename('anschreiben', au))
+//   const doc = buildAntragFinanzamt(client, au); downloadPdf(doc, pdfFilename('antrag', au))
 // ─────────────────────────────────────────────────────────────────────────────
 import { jsPDF } from 'jspdf'
 
-// Kanzlei-Briefkopf — kann später über Einstellungen (localStorage) gepflegt werden.
+// Kanzlei (nur für Vollmacht als Bevollmächtigter) — via Einstellungen pflegbar.
 const KANZLEI_FALLBACK = {
   name:    'Steuerkanzlei Jan Thomsen',
   strasse: '',
@@ -28,9 +29,7 @@ export function loadKanzlei() {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-function ed(au, key) {
-  return ((au && au.erfassungsdaten) || {})[key] || ''
-}
+function safe(s) { return (s == null ? '' : String(s)).trim() }
 
 function fmtDateDE(iso) {
   const d = iso ? new Date(iso) : new Date()
@@ -38,126 +37,111 @@ function fmtDateDE(iso) {
   return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`
 }
 
-function safe(s) {
-  return (s == null ? '' : String(s)).trim()
+// ISO-Datum (YYYY-MM-DD) → DD.MM.YYYY, sonst unverändert
+function deDate(s) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(safe(s))
+  return m ? `${m[3]}.${m[2]}.${m[1]}` : safe(s)
 }
 
-// ── Anschreiben ans Finanzamt ─────────────────────────────────────────────────
-export function buildAnschreiben(client, au) {
+// Fixe Standardvorgaben des Formulars (überschreibbar über erfassungsdaten)
+export const ANTRAG_DEFAULTS = {
+  fa_betriebsart:      'Website-Verkäufe',
+  fa_inland_besteht:   '-',
+  fa_finanzamt_ertrag: 'Flensburg',
+  fa_14:               'Ja',
+  fa_14_1:             'Für die Registrierung bei Onlinemarktplätzen',
+}
+
+// ── 1) Antrag umsatzsteuerliche Registrierung (Fragebogen ans Finanzamt) ──────
+export function buildAntragFinanzamt(client, au) {
   const doc = new jsPDF({ unit: 'mm', format: 'a4' })
-  const kanzlei = loadKanzlei()
-  const L = 25            // linker Rand
-  const R = 185          // rechter Rand (Textbreite ~160mm)
-  const W = R - L
-  let y = 22
+  const ed  = au?.erfassungsdaten ?? {}
+  const g   = (k, def = '') => safe(ed[k]) || def
 
-  // ── Briefkopf Kanzlei (klein, oben rechts) ──
-  doc.setFont('helvetica', 'normal').setFontSize(8).setTextColor(90)
-  const kopf = [kanzlei.name, kanzlei.strasse, kanzlei.plzOrt, kanzlei.telefon ? 'Tel. ' + kanzlei.telefon : '', kanzlei.email].filter(Boolean)
-  kopf.forEach((line, i) => doc.text(line, R, y + i * 4, { align: 'right' }))
-  doc.setTextColor(0)
+  const L = 18, R = 192
+  const qW = 104                 // Spalte „Frage"
+  const aW = (R - L) - qW        // Spalte „Antwort"
+  let y = 20
 
-  // ── Empfänger ──
-  y = 48
-  doc.setFontSize(11)
-  doc.text('Finanzamt', L, y)
-  doc.setFontSize(9).setTextColor(120)
-  doc.text('[zuständiges Finanzamt – bitte ergänzen]', L, y + 5)
-  doc.setTextColor(0).setFontSize(11)
+  doc.setFont('helvetica', 'bold').setFontSize(14)
+  doc.text('Antrag umsatzsteuerliche Registrierung', L, y)
+  y += 3
+  doc.setDrawColor(150); doc.setLineWidth(0.4); doc.line(L, y, R, y)
+  y += 7
 
-  // ── Datum ──
-  doc.setFontSize(10)
-  doc.text(`${safe(kanzlei.plzOrt).split(' ').slice(1).join(' ') || ''}${kanzlei.plzOrt ? ', den ' : 'Datum: '}${fmtDateDE()}`, R, y, { align: 'right' })
+  const gfZeile = [
+    g('geschaeftsfuehrer_name'),
+    g('geschaeftsfuehrer_adresse'),
+    g('geschaeftsfuehrer_geburtsdatum') ? 'geb. ' + deDate(g('geschaeftsfuehrer_geburtsdatum')) : '',
+  ].filter(Boolean).join(', ')
 
-  // ── Betreff ──
-  y = 76
-  doc.setFont('helvetica', 'bold').setFontSize(11)
-  const firma = safe(ed(au, 'firmenname')) || safe(client?.name) || '—'
-  const betreff = `Steuerliche Erfassung / Umsatzsteuerliche Registrierung in Deutschland`
-  doc.text(betreff, L, y)
-  doc.setFont('helvetica', 'normal').setFontSize(10)
-  doc.text(`Unternehmen: ${firma}${ed(au, 'cvr_nummer') ? '  ·  CVR/Reg.-Nr.: ' + safe(ed(au, 'cvr_nummer')) : ''}`, L, y + 6)
-
-  // ── Anrede + Einleitung ──
-  y += 18
-  doc.setFontSize(10.5)
-  const intro = `Sehr geehrte Damen und Herren,\n\nnamens und im Auftrag des oben genannten Unternehmens beantragen wir die steuerliche Erfassung sowie die Erteilung einer Steuernummer für umsatzsteuerliche Zwecke in Deutschland. Die maßgeblichen Angaben entnehmen Sie bitte der nachfolgenden Aufstellung.`
-  const introLines = doc.splitTextToSize(intro, W)
-  doc.text(introLines, L, y)
-  y += introLines.length * 5 + 4
-
-  // ── Datenblock ──
   const rows = [
-    ['Unternehmen', [
-      ['Firma', ed(au, 'firmenname')],
-      ['CVR-/Handelsregister-Nr.', ed(au, 'cvr_nummer')],
-      ['Anschrift', [ed(au, 'adresse_strasse'), ed(au, 'adresse_plz_ort'), ed(au, 'adresse_land')].filter(Boolean).join(', ')],
-    ]],
-    ['Geschäftsführer / Inhaber', [
-      ['Name', ed(au, 'geschaeftsfuehrer_name')],
-      ['Geburtsdatum', ed(au, 'geschaeftsfuehrer_geburtsdatum')],
-      ['Privatanschrift', ed(au, 'geschaeftsfuehrer_adresse')],
-    ]],
-    ['Geschäftstätigkeit in Deutschland', [
-      ['Tätigkeit', ed(au, 'taetigkeit_beschreibung')],
-      ['Beginn der Tätigkeit', ed(au, 'taetigkeit_beginn')],
-      ['Art der Umsätze', ed(au, 'umsatz_art')],
-      ['Geschätzter Umsatz (1. Jahr)', ed(au, 'umsatz_geschaetzt')],
-      ['Geschätzter Umsatz (Folgejahr)', ed(au, 'umsatz_folgejahr')],
-      ['Lager / Büro in Deutschland', ed(au, 'lager_in_deutschland')],
-      ['Bereits steuerlich registriert', ed(au, 'bereits_registriert')],
-    ]],
-    ['Bankverbindung', [
-      ['IBAN', ed(au, 'bankverbindung_iban')],
-    ]],
+    ['1. Name und Anschrift der Firma', [g('firmenname'), g('cvr_nummer') ? 'CVR/Reg.-Nr.: ' + g('cvr_nummer') : ''].filter(Boolean).join('\n')],
+    ['2. Unternehmens Adresse', [g('adresse_strasse'), g('adresse_plz_ort'), g('adresse_land')].filter(Boolean).join(', ')],
+    ['3. Name, Anschrift und Geburtsdatum des Geschäftsführers', gfZeile],
+    ['4. Telefon', g('ansprechpartner_telefon')],
+    ['5. E-Mail-Adresse', g('ansprechpartner_email')],
+    ['6. Art des Betriebes oder der beruflichen Tätigkeit', g('fa_betriebsart', ANTRAG_DEFAULTS.fa_betriebsart)],
+    ['7. Im Inland besteht ein/eine', g('fa_inland_besteht', ANTRAG_DEFAULTS.fa_inland_besteht)],
+    ['8. Finanzamt, wo die Firma ertragsteuerlich geführt wird (z. B. bei Geschäftssitz/Anlage)', g('fa_finanzamt_ertrag', ANTRAG_DEFAULTS.fa_finanzamt_ertrag)],
+    ['9. Beginn der unternehmerischen Betätigung in Deutschland', g('taetigkeit_beginn')],
+    ['10.1 Lieferung ohne Montage an Unternehmer mit ID-Nr.', g('fa_10_1')],
+    ['10.2 Lieferung ohne Montage an Kunden ohne ID-Nr.', g('fa_10_2')],
+    ['10.3 Ein- und Verkauf innerhalb Deutschlands', g('fa_10_3')],
+    ['10.4 Innergemeinschaftliche steuerfreie Lieferungen (Einfuhr aus Drittland, Ausfuhr in anderes EU-Land)', g('fa_10_4')],
+    ['11. Geht der Lieferung ein freiwilliges innergemeinschaftliches Verbringen voraus?', g('fa_11')],
+    ['12. Lieferung mit Montage (Werklieferungen) oder reine sonstige Leistungen (z. B. Dienstleistungen) an:', g('fa_12')],
+    ['13. Ausländische Subunternehmer beschäftigt, deren Steuer Sie nach § 13b (2) UStG schulden?', g('fa_13')],
+    ['14. Wird eine Umsatzsteuer-Identifikationsnummer benötigt?', g('fa_14', ANTRAG_DEFAULTS.fa_14)],
+    ['14.1 Wenn ja, wofür?', g('fa_14_1', ANTRAG_DEFAULTS.fa_14_1)],
+    ['15.1 Höhe des Umsatzes (geschätzt) in Deutschland im laufenden Jahr in EUR', g('umsatz_geschaetzt')],
+    ['15.2 Höhe des Umsatzes (geschätzt) in Deutschland im kommenden Jahr in EUR', g('umsatz_folgejahr')],
   ]
 
-  const labelW = 58
-  rows.forEach(([gruppe, felder]) => {
-    const eff = felder.filter(([, v]) => safe(v))
-    if (eff.length === 0) return
-    if (y > 260) { doc.addPage(); y = 22 }
-    doc.setFont('helvetica', 'bold').setFontSize(9.5).setTextColor(40)
-    doc.text(gruppe, L, y)
-    y += 5
-    doc.setFont('helvetica', 'normal').setFontSize(9.5).setTextColor(0)
-    eff.forEach(([label, val]) => {
-      const valLines = doc.splitTextToSize(safe(val), W - labelW)
-      if (y > 275) { doc.addPage(); y = 22 }
-      doc.setTextColor(110)
-      doc.text(label, L + 2, y)
-      doc.setTextColor(0)
-      doc.text(valLines, L + labelW, y)
-      y += valLines.length * 5 + 1
-    })
-    y += 3
+  const padX = 2.5, padY = 1.9, lh = 4.0
+  doc.setFontSize(8.5)
+  rows.forEach(([q, a]) => {
+    doc.setFont('helvetica', 'bold')
+    const qLines = doc.splitTextToSize(q, qW - 2 * padX)
+    doc.setFont('helvetica', 'normal')
+    const aLines = doc.splitTextToSize(String(a || ''), aW - 2 * padX)
+    const rowH = Math.max(qLines.length, aLines.length) * lh + 2 * padY
+
+    if (y + rowH > 284) { doc.addPage(); y = 20 }
+
+    doc.setDrawColor(205); doc.setLineWidth(0.2)
+    doc.rect(L, y, qW, rowH)
+    doc.rect(L + qW, y, aW, rowH)
+
+    doc.setFont('helvetica', 'bold').setTextColor(30)
+    doc.text(qLines, L + padX, y + padY + 3)
+    doc.setFont('helvetica', 'normal').setTextColor(0)
+    doc.text(aLines, L + qW + padX, y + padY + 3)
+
+    y += rowH
   })
 
-  // ── Anlagen + Schluss ──
-  if (y > 250) { doc.addPage(); y = 22 }
-  y += 2
-  doc.setFont('helvetica', 'normal').setFontSize(10.5).setTextColor(0)
-  const schluss = `Eine auf uns lautende Vollmacht sowie eine Passkopie des Geschäftsführers und ein aktueller Registerauszug sind beigefügt. Für Rückfragen stehen wir Ihnen gerne zur Verfügung.\n\nMit freundlichen Grüßen`
-  const schlussLines = doc.splitTextToSize(schluss, W)
-  doc.text(schlussLines, L, y)
-  y += schlussLines.length * 5 + 14
-  doc.text(kanzlei.name, L, y)
-
-  y += 10
+  // Unterschrift
+  y += 12
+  if (y > 285) { doc.addPage(); y = 30 }
+  doc.setDrawColor(120); doc.setLineWidth(0.3)
+  doc.line(L, y, R, y)
+  y += 5
   doc.setFontSize(9).setTextColor(110)
-  doc.text('Anlagen: Vollmacht · Passkopie Geschäftsführer · CVR-Registerauszug', L, y)
+  doc.text('Datum, Ort', L, y)
+  doc.text('Unterschrift', R, y, { align: 'right' })
   doc.setTextColor(0)
 
   return doc
 }
 
-// ── Vollmacht ─────────────────────────────────────────────────────────────────
+// ── 2) Vollmacht ──────────────────────────────────────────────────────────────
 export function buildVollmacht(client, au) {
   const doc = new jsPDF({ unit: 'mm', format: 'a4' })
   const kanzlei = loadKanzlei()
-  const L = 25
-  const R = 185
-  const W = R - L
+  const ed = au?.erfassungsdaten ?? {}
+  const g = (k, def = '') => safe(ed[k]) || def
+  const L = 25, R = 185, W = R - L
   let y = 30
 
   doc.setFont('helvetica', 'bold').setFontSize(18)
@@ -167,11 +151,10 @@ export function buildVollmacht(client, au) {
   doc.setTextColor(0)
   y += 22
 
-  // Vollmachtgeber
-  const firma   = safe(ed(au, 'firmenname')) || safe(client?.name) || '—'
-  const cvr     = safe(ed(au, 'cvr_nummer'))
-  const anschr  = [ed(au, 'adresse_strasse'), ed(au, 'adresse_plz_ort'), ed(au, 'adresse_land')].filter(Boolean).join(', ')
-  const gf      = safe(ed(au, 'geschaeftsfuehrer_name'))
+  const firma  = g('firmenname') || safe(client?.name) || '—'
+  const cvr    = g('cvr_nummer')
+  const anschr = [g('adresse_strasse'), g('adresse_plz_ort'), g('adresse_land')].filter(Boolean).join(', ')
+  const gf     = g('geschaeftsfuehrer_name')
 
   doc.setFont('helvetica', 'bold').setFontSize(10.5)
   doc.text('Vollmachtgeber', L, y); y += 6
@@ -182,7 +165,6 @@ export function buildVollmacht(client, au) {
   )
   doc.text(vgLines, L, y); y += vgLines.length * 5 + 8
 
-  // Bevollmächtigter
   doc.setFont('helvetica', 'bold').setFontSize(10.5)
   doc.text('Bevollmächtigter', L, y); y += 6
   doc.setFont('helvetica', 'normal').setFontSize(10.5)
@@ -192,12 +174,10 @@ export function buildVollmacht(client, au) {
   )
   doc.text(bvLines, L, y); y += bvLines.length * 5 + 10
 
-  // Vollmachtstext
   const text = `Der Bevollmächtigte wird hiermit bevollmächtigt, den Vollmachtgeber in allen steuerlichen Angelegenheiten gegenüber den Finanzbehörden zu vertreten. Die Vollmacht umfasst insbesondere die Beantragung der steuerlichen Erfassung und der umsatzsteuerlichen Registrierung in Deutschland, die Entgegennahme von Steuernummer und USt-IdNr., die Abgabe von Anträgen und Erklärungen sowie den gesamten damit verbundenen Schriftverkehr.`
   const tLines = doc.splitTextToSize(text, W)
   doc.text(tLines, L, y); y += tLines.length * 5 + 22
 
-  // Unterschrift
   doc.setDrawColor(120)
   doc.line(L, y, L + 70, y)
   doc.line(R - 70, y, R, y)
@@ -214,7 +194,7 @@ export function buildVollmacht(client, au) {
 export function pdfFilename(art, au) {
   const firma = (((au && au.erfassungsdaten) || {}).firmenname || 'Mandant')
     .replace(/[^\wäöüÄÖÜß \-]/g, '').trim().replace(/\s+/g, '_')
-  const label = art === 'vollmacht' ? 'Vollmacht' : 'Anschreiben_Finanzamt'
+  const label = art === 'vollmacht' ? 'Vollmacht' : 'Antrag_USt-Registrierung'
   return `${label}_${firma}.pdf`
 }
 

@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import JAComposePanel from './JAComposePanel.jsx'
-import { buildAnschreiben, buildVollmacht, downloadPdf, pdfFilename, pdfToBase64 } from '../../utils/ustRegPdf.js'
+import { buildAntragFinanzamt, buildVollmacht, downloadPdf, pdfFilename, pdfToBase64 } from '../../utils/ustRegPdf.js'
 
 // ── Konfiguration (auch von AuftragKontextPanel genutzt) ──────────────────────
 export const AUFTRAGS_TYP_CFG = {
@@ -1508,7 +1508,7 @@ function buildUstRegVorlagen(client, au) {
 function buildPdfAttachments(client, au) {
   const docs = au.dokumente ?? []
   return docs.map(d => {
-    const doc = d.art === 'vollmacht' ? buildVollmacht(client, au) : buildAnschreiben(client, au)
+    const doc = d.art === 'vollmacht' ? buildVollmacht(client, au) : buildAntragFinanzamt(client, au)
     return { name: pdfFilename(d.art, au), data: pdfToBase64(doc), type: 'application/pdf', size: 0 }
   })
 }
@@ -1763,6 +1763,20 @@ const ERFASSUNG_FELDER = [
     { key: 'bankverbindung_iban', label: 'IBAN' },
     { key: 'bemerkungen',         label: 'Bemerkungen', textarea: true, wide: true },
   ]},
+  { gruppe: 'Finanzamt-Antrag – Zusatzangaben', felder: [
+    { key: 'fa_betriebsart',      label: '6. Art des Betriebes', placeholder: 'Website-Verkäufe' },
+    { key: 'fa_inland_besteht',   label: '7. Im Inland besteht ein/eine', placeholder: '-' },
+    { key: 'fa_finanzamt_ertrag', label: '8. FA (ertragsteuerlich)', placeholder: 'Flensburg' },
+    { key: 'fa_10_1',             label: '10.1 Lieferung an Unternehmer mit ID-Nr.', placeholder: 'z. B. Ja / Nein' },
+    { key: 'fa_10_2',             label: '10.2 Lieferung an Kunden ohne ID-Nr.', placeholder: 'z. B. Ja / Nein' },
+    { key: 'fa_10_3',             label: '10.3 Ein-/Verkauf innerhalb DE', placeholder: 'z. B. Ja / Nein' },
+    { key: 'fa_10_4',             label: '10.4 Innergem. steuerfreie Lieferungen', placeholder: 'z. B. Ja / Nein' },
+    { key: 'fa_11',               label: '11. Freiwilliges innergem. Verbringen?', placeholder: 'z. B. Ja / Nein' },
+    { key: 'fa_12',               label: '12. Lieferung mit Montage / sonstige Leistungen an', placeholder: '' },
+    { key: 'fa_13',               label: '13. Ausländische Subunternehmer (§13b)?', placeholder: 'z. B. Nein' },
+    { key: 'fa_14',               label: '14. USt-IdNr. benötigt?', placeholder: 'Ja' },
+    { key: 'fa_14_1',             label: '14.1 Wenn ja, wofür?', placeholder: 'Für die Registrierung bei Onlinemarktplätzen', wide: true },
+  ]},
 ]
 
 function AntragsdatenSection({ au, client, onUpdate }) {
@@ -1775,7 +1789,7 @@ function AntragsdatenSection({ au, client, onUpdate }) {
   }
 
   function handleGeneratePdf(art) {
-    const doc = art === 'vollmacht' ? buildVollmacht(client, au) : buildAnschreiben(client, au)
+    const doc = art === 'vollmacht' ? buildVollmacht(client, au) : buildAntragFinanzamt(client, au)
     const filename = pdfFilename(art, au)
     downloadPdf(doc, filename)
 
@@ -1790,7 +1804,7 @@ function AntragsdatenSection({ au, client, onUpdate }) {
       id: genVerlaufId(),
       typ: 'dokument_erstellt',
       datum: todayISO(),
-      text: (art === 'vollmacht' ? 'Vollmacht' : 'Anschreiben ans Finanzamt') + ' erzeugt: ' + filename,
+      text: (art === 'vollmacht' ? 'Vollmacht' : 'Antrag ans Finanzamt') + ' erzeugt: ' + filename,
       erstelltAm: new Date().toISOString(),
     }
     const patch = {
@@ -1812,11 +1826,12 @@ function AntragsdatenSection({ au, client, onUpdate }) {
     <textarea
       value={ed[f.key] ?? ''}
       onChange={e => setFeld(f.key, e.target.value)}
+      placeholder={f.placeholder ?? ''}
       rows={2}
       style={{ ...inputStyle, resize: 'vertical', whiteSpace: 'pre-wrap', minHeight: '44px' }}
     />
   ) : (
-    <input value={ed[f.key] ?? ''} onChange={e => setFeld(f.key, e.target.value)} style={inputStyle} />
+    <input value={ed[f.key] ?? ''} onChange={e => setFeld(f.key, e.target.value)} placeholder={f.placeholder ?? ''} style={inputStyle} />
   )
 
   return (
@@ -1834,9 +1849,9 @@ function AntragsdatenSection({ au, client, onUpdate }) {
         <div style={{ padding: '14px' }}>
           {/* PDF-Buttons */}
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '14px' }}>
-            <button onClick={() => handleGeneratePdf('anschreiben')}
+            <button onClick={() => handleGeneratePdf('antrag')}
               style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', borderRadius: '8px', border: 'none', background: '#2563eb', color: '#fff', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
-              📝 Anschreiben erzeugen (PDF)
+              📝 Antrag ans Finanzamt (PDF)
             </button>
             <button onClick={() => handleGeneratePdf('vollmacht')}
               style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', borderRadius: '8px', border: '1px solid #2563eb', background: 'transparent', color: '#2563eb', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
