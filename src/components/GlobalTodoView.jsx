@@ -213,8 +213,9 @@ function MonthTable({ gefiltert, alleAuftraege, onSelectClient, onCycleStatus, o
             </tr>
           </thead>
           <tbody>
-            {gefiltert.map((au, idx) => (
-              <AuftragRow key={au.id} au={au} idx={idx} onSelectClient={onSelectClient} onCycleStatus={onCycleStatus} onNavigateToAuftrag={onNavigateToAuftrag} />
+            {[...gefiltert].sort((a, b) => (b._carryForward ? 1 : 0) - (a._carryForward ? 1 : 0)).map((au, idx) => (
+              <AuftragRow key={au.id} au={au} idx={idx} onSelectClient={onSelectClient} onCycleStatus={onCycleStatus} onNavigateToAuftrag={onNavigateToAuftrag}
+                overdueDays={au._carryForward ? au._carryDays : undefined} />
             ))}
           </tbody>
         </table>
@@ -543,32 +544,55 @@ export default function GlobalTodoView({ clients, onUpdateClient, onSelectClient
     return passesStatus(au)
   }, [filterTyp, filterMandatstyp, passesStatus])
 
-  // ── Monatssicht: gefilterte Aufträge ──────────────────────────────────────
+  // ── Monatssicht: gefilterte Aufträge (inkl. mitgenommene überfällige) ─────
   const gefiltert = useMemo(() => {
     if (viewMode !== 'monat') return []
-    return alleAuftraege.filter(au => {
+    const curVal = CUR_JAHR * 12 + CUR_MONAT
+    const selVal = filterMonat !== null ? filterJahr * 12 + filterMonat : null
+    const result = []
+    for (const au of alleAuftraege) {
+      if (!passesCommon(au)) continue
       const dp = getDisplayPeriod(au)
-      if (dp.jahr !== filterJahr) return false
-      if (filterMonat !== null && dp.monat !== null && dp.monat !== filterMonat) return false
-      return passesCommon(au)
-    })
+      const inSelected = dp.jahr === filterJahr && (filterMonat === null || dp.monat === null || dp.monat === filterMonat)
+      if (inSelected) { result.push(au); continue }
+      // Carry-forward: nicht erledigte, heute überfällige Aufgaben bleiben im aktuellen/zukünftigen Monat sichtbar
+      if (selVal !== null && selVal >= curVal && au.status !== 'erledigt' && dp.monat != null && dp.jahr != null) {
+        const itemVal = dp.jahr * 12 + dp.monat
+        if (itemVal < curVal) {
+          const ref = au.frist ? new Date(au.frist + 'T12:00:00') : new Date(dp.jahr, dp.monat, 0, 12)
+          const carryDays = Math.max(0, Math.floor((Date.now() - ref.getTime()) / 86400000))
+          result.push({ ...au, _carryForward: true, _carryDays: carryDays, _carryFromDate: au.frist ?? null })
+        }
+      }
+    }
+    return result
   }, [alleAuftraege, viewMode, filterJahr, filterMonat, passesCommon])
 
   // ── Wochensicht: 7 Tage mit Items ─────────────────────────────────────────
   const weekDays = useMemo(() => {
     if (viewMode !== 'woche') return null
     const ws = getWeekStart(navDate)
+    const we = new Date(ws); we.setDate(ws.getDate() + 6); we.setHours(0,0,0,0)
+    const heute = new Date(); heute.setHours(0,0,0,0)
+    const weekCurrentOrFuture = we >= heute
     const days = Array.from({ length: 7 }, (_, i) => {
       const d = new Date(ws); d.setDate(ws.getDate() + i)
       return { date: d, items: [] }
     })
+    // Mitgenommene Überfällige landen am heutigen Tag (falls in dieser Woche), sonst am Wochenanfang
+    let carryIdx = days.findIndex(d => isSameDay(d.date, heute))
+    if (carryIdx < 0) carryIdx = 0
     for (const au of alleAuftraege) {
       if (!passesCommon(au)) continue
       const exact = getExactDate(au)
       if (!exact) continue
       const exactDate = new Date(exact + 'T00:00:00')
       const idx = days.findIndex(d => isSameDay(d.date, exactDate))
-      if (idx >= 0) days[idx].items.push(au)
+      if (idx >= 0) { days[idx].items.push(au); continue }
+      // Carry-forward: nicht erledigte, heute überfällige Aufgaben in aktueller/zukünftiger Woche zeigen
+      if (weekCurrentOrFuture && exactDate < heute && au.status !== 'erledigt') {
+        days[carryIdx].items.push({ ...au, _carryForward: true, _carryDays: Math.floor((heute - exactDate) / 86400000), _carryFromDate: exact })
+      }
     }
     return days
   }, [alleAuftraege, viewMode, navDate, passesCommon])
