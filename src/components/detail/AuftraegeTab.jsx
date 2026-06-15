@@ -1540,26 +1540,33 @@ function buildSendeVorlage(client, au) {
     return {
       subject: `Dokumenter til momsregistrering i Tyskland${firma ? ' – ' + firma : ''}`,
       body:
-`Hej${vorname ? ' ' + vorname : ''},
+`Hej${vorname ? ' ' + vorname : ''}
 
-vedhæftet finder du dokumenterne til momsregistreringen i Tyskland.
+Vedhæftet finder du dokumenterne til momsregistreringen i Tyskland.
 
-Vedhæftet er:
-• Ansøgning om skattemæssig registrering
-• Fuldmagt (modtagelsesfuldmagt)
+Jeg vil bede dig om at gennemgå dokumenterne, underskrive dem og sende dem retur til mig som PDF-filer.
+
+Vedlagt finder du:
+
+• Ansøgning om momsregistrering i Tyskland
+• Fuldmagt
 • Samtykke til kommunikation med Finanzamt via e-mail
 
-Gennemgå venligst dokumenterne og send mig de underskrevne dokumenter retur som PDF. Så snart jeg har de underskrevne dokumenter, indsender jeg registreringen til det relevante Finanzamt.
+Når jeg har modtaget de underskrevne dokumenter, sender jeg registreringen videre til det relevante Finanzamt.
 
-Om fuldmagten: Hvis du underskriver fuldmagten, kan afgørelser og henvendelser fra Finanzamt sendes direkte til mig – det gør kommunikationen som regel hurtigere og nemmere. Fuldmagten er frivillig.
+Fuldmagt
 
-Behandlingstid: Erfaringsmæssigt tager behandlingen hos Finanzamt ca. 2 til 6 uger, afhængigt af travlhed.
+Hvis du vælger at underskrive fuldmagten, kan Finanzamt sende breve, afgørelser og henvendelser direkte til mig. Det gør som regel sagsbehandlingen hurtigere og mere smidig. Fuldmagten er frivillig.
 
-Hvis der ikke gives fuldmagt, sender Finanzamt breve og afgørelser direkte til din virksomhed. Sørg i så fald for, at den angivne virksomhedsadresse kan modtage post, at der er en postkasse, og at virksomhedens navn fremgår tydeligt af postkassen.
+Behandlingstid
 
-Hvis du ikke har hørt noget inden for ca. to uger efter ansøgningen, er du velkommen til at kontakte mig – så vurderer vi sammen, om det giver mening at rykke Finanzamt.
+Behandlingstiden hos Finanzamt er typisk mellem 2 og 6 uger afhængigt af myndighedens aktuelle sagsmængde.
 
-Sig endelig til, hvis du har spørgsmål.
+Hvis der ikke gives fuldmagt, vil breve og afgørelser blive sendt direkte til virksomheden. Sørg derfor for, at virksomhedsadressen kan modtage post, og at virksomhedens navn fremgår tydeligt af postkassen.
+
+Hvis der ikke er kommet nogen tilbagemelding inden for cirka 4–6 uger, er du meget velkommen til at kontakte mig, så følger vi op på sagen sammen.
+
+Du er naturligvis også velkommen til at kontakte mig, hvis du har spørgsmål til dokumenterne eller processen.
 
 Venlig hilsen`,
     }
@@ -1567,26 +1574,33 @@ Venlig hilsen`,
   return {
     subject: `Unterlagen zur umsatzsteuerlichen Registrierung in Deutschland${firma ? ' – ' + firma : ''}`,
     body:
-`Hallo${vorname ? ' ' + vorname : ''},
+`Hallo${vorname ? ' ' + vorname : ''}
 
-in der Anlage findest du die Unterlagen für die umsatzsteuerliche Registrierung in Deutschland.
+im Anhang findest du die Unterlagen zur umsatzsteuerlichen Registrierung in Deutschland.
 
-Beigefügt sind:
-• Antrag zur steuerlichen Registrierung
-• Vollmacht (Empfangsvollmacht)
+Bitte prüfe die Dokumente, unterschreibe sie und sende sie mir anschließend als PDF-Dateien zurück.
+
+Beigefügt findest du:
+
+• Antrag auf umsatzsteuerliche Registrierung in Deutschland
+• Vollmacht
 • Einwilligung zur Kommunikation mit dem Finanzamt per E-Mail
 
-Bitte prüfe die Unterlagen und sende mir die unterschriebenen Dokumente als PDF zurück. Sobald mir die unterschriebenen Unterlagen vorliegen, reiche ich die Registrierung beim zuständigen Finanzamt ein.
+Sobald mir die unterschriebenen Dokumente vorliegen, reiche ich die Registrierung beim zuständigen Finanzamt ein.
 
-Zur Vollmacht: Wenn du die Vollmacht unterschreibst, können Bescheide und Rückfragen des Finanzamts direkt an mich gehen – das macht die Kommunikation meist schneller und unkomplizierter. Die Vollmacht ist freiwillig.
+Vollmacht
 
-Bearbeitungsdauer: Erfahrungsgemäß dauert die Bearbeitung beim Finanzamt etwa 2 bis 6 Wochen, je nach Auslastung.
+Wenn du die Vollmacht unterschreibst, kann das Finanzamt Briefe, Bescheide und Rückfragen direkt an mich senden. Das macht die Bearbeitung in der Regel schneller und unkomplizierter. Die Vollmacht ist freiwillig.
 
-Falls keine Vollmacht erteilt wird, sendet das Finanzamt Schreiben und Bescheide direkt an dein Unternehmen. Bitte stelle in diesem Fall sicher, dass die angegebene Firmenadresse erreichbar ist, ein Briefkasten vorhanden und der Firmenname am Briefkasten erkennbar ist.
+Bearbeitungszeit
 
-Solltest du innerhalb von etwa zwei Wochen nach Antragstellung keine Rückmeldung erhalten, melde dich gerne – dann prüfen wir gemeinsam, ob eine Nachfrage beim Finanzamt sinnvoll ist.
+Die Bearbeitungszeit beim Finanzamt beträgt üblicherweise zwischen 2 und 6 Wochen, je nach aktueller Auslastung der Behörde.
 
-Bei Fragen bin ich jederzeit für dich da.
+Wird keine Vollmacht erteilt, werden Briefe und Bescheide direkt an das Unternehmen gesendet. Sorge daher dafür, dass die Unternehmensadresse Post empfangen kann und der Firmenname am Briefkasten klar erkennbar ist.
+
+Falls innerhalb von etwa 4–6 Wochen keine Rückmeldung kommt, melde dich gerne bei mir, dann gehen wir der Sache gemeinsam nach.
+
+Du kannst dich natürlich auch jederzeit melden, wenn du Fragen zu den Dokumenten oder zum Ablauf hast.
 
 Viele Grüße`,
   }
