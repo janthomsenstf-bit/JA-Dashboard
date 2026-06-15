@@ -2,6 +2,7 @@ import { useState, useMemo, useRef, useEffect } from 'react'
 import JAComposePanel from './JAComposePanel.jsx'
 import { buildDoc, downloadPdf, pdfFilename, pdfToBase64 } from '../../utils/ustRegPdf.js'
 import { buildVertragGeschaeftsadresse, gaVertragFilename } from '../../utils/geschaeftsadressePdf.js'
+import { buildAngebotVorratsgesell, vgAngebotFilename } from '../../utils/vorratsgesellPdf.js'
 import { callApi, getMandantPath, openAuthPopup } from '../../utils/onedriveClient.js'
 
 // ── Konfiguration (auch von AuftragKontextPanel genutzt) ──────────────────────
@@ -2597,6 +2598,241 @@ function GeschaeftsadresseSection({ au, client, onUpdate, emailVorlagen = [], em
   )
 }
 
+// ── Vorratsgesellschaft: Daten + Angebot-PDF + Versand ────────────────────────
+const VG_FELDER = [
+  { gruppe: 'Mantelgesellschaft', felder: [
+    { key: 'vg_firmenname',     label: 'Firmenname der Vorratsgesellschaft', wide: true },
+    { key: 'vg_rechtsform',     label: 'Rechtsform', options: [
+      { value: 'ug',   label: 'UG' }, { value: 'gmbh', label: 'GmbH' } ]},
+    { key: 'vg_hrb',            label: 'Handelsregisternummer' },
+    { key: 'vg_sitz',           label: 'Sitz' },
+    { key: 'vg_gruendungsdatum',label: 'Gründungsdatum', date: true },
+    { key: 'vg_stammkapital',   label: 'Stammkapital' },
+    { key: 'vg_status',         label: 'Status', options: [
+      { value: 'frei', label: 'frei' }, { value: 'reserviert', label: 'reserviert' }, { value: 'verkauft', label: 'verkauft' } ]},
+  ]},
+  { gruppe: 'Erwerber', felder: [
+    { key: 'erwerber_name',          label: 'Name / Firma Erwerber' },
+    { key: 'erwerber_ansprechpartner',label: 'Ansprechpartner' },
+    { key: 'erwerber_email',         label: 'E-Mail Ansprechpartner' },
+    { key: 'erwerber_adresse',       label: 'Adresse Erwerber', textarea: true, wide: true },
+  ]},
+  { gruppe: 'Umfirmierung & Übernahme', felder: [
+    { key: 'neuer_firmenname', label: 'Gewünschter neuer Firmenname' },
+    { key: 'neuer_sitz',       label: 'Neuer Sitz' },
+    { key: 'neuer_gegenstand', label: 'Neuer Unternehmensgegenstand', textarea: true, wide: true },
+    { key: 'kuenftiger_gf',    label: 'Künftiger Geschäftsführer' },
+    { key: 'kaufpreis',        label: 'Kaufpreis / Entgelt', placeholder: 'z. B. 12.900 €' },
+    { key: 'notar',            label: 'Notar' },
+    { key: 'notartermin',      label: 'Notartermin', date: true },
+    { key: 'uebergabedatum',   label: 'Geplantes Übergabedatum', date: true },
+  ]},
+]
+
+const VG_RECHTSFORM_LABEL = { ug: 'UG (haftungsbeschränkt)', gmbh: 'GmbH' }
+
+// 4 Vorlagen (DE/DK nach Land, Du-Form; Signatur hängt der Composer an)
+function buildVgVorlagen(client, au) {
+  const ed = au.erfassungsdaten || {}
+  const isDK = /dänemark|danmark|denmark|\bdk\b/.test((ed.erwerber_land || client?.land || '').toLowerCase())
+  const erwName = (ed.erwerber_name || client?.name || '').trim()
+  const ap = (ed.erwerber_ansprechpartner || (client?.kontakte || [])[0]?.name || '').trim()
+  const vorname = ap.split(/\s+/)[0] || ''
+  const mantel = (ed.vg_firmenname || '').trim()
+  const rechtsform = VG_RECHTSFORM_LABEL[ed.vg_rechtsform] || ed.vg_rechtsform || ''
+  const neuerName = (ed.neuer_firmenname || '').trim()
+  const kp = (ed.kaufpreis || '').trim()
+  const kpTxt = kp ? kp + (/€|eur|kr/i.test(kp) ? '' : ' €') : ''
+  const notar = (ed.notar || '').trim()
+  const notartermin = (ed.notartermin || '').trim()
+  const ntDE = /^(\d{4})-(\d{2})-(\d{2})$/.test(notartermin) ? notartermin.replace(/^(\d{4})-(\d{2})-(\d{2})$/, '$3.$2.$1') : notartermin
+
+  const sfx = mantel ? ' – ' + mantel : (neuerName ? ' – ' + neuerName : '')
+  if (isDK) {
+    return [
+      { id: '_vg_angebot', name: '📤 Angebot senden 🇩🇰', betreff: `Tilbud skuffeselskab${sfx}`,
+        text: `Hej${vorname ? ' ' + vorname : ''}\n\njeg sender dig hermed et tilbud på et tysk skuffeselskab (Vorratsgesellschaft).\n\n• Selskab: ${mantel || '—'}${rechtsform ? ' (' + rechtsform + ')' : ''}\n• Ønsket nyt navn: ${neuerName || '—'}\n• Pris: ${kpTxt || '—'} plus moms\n\nVedhæftet finder du det fulde tilbud. Den notarielle overdragelse sker separat hos notaren. Sig endelig til, hvis du har spørgsmål.\n\nVenlig hilsen` },
+      { id: '_vg_reservierung', name: '✅ Reservierungsbestätigung 🇩🇰', betreff: `Bekræftelse på reservation${sfx}`,
+        text: `Hej${vorname ? ' ' + vorname : ''}\n\ntak — jeg bekræfter hermed, at vi reserverer selskabet ${mantel || ''} til dig. Jeg forbereder nu den notarielle aftale og vender tilbage med en tid hos notaren.\n\nVenlig hilsen` },
+      { id: '_vg_notar', name: '📅 Notartermin-Info 🇩🇰', betreff: `Notartermin${sfx}`,
+        text: `Hej${vorname ? ' ' + vorname : ''}\n\nher er informationerne om den notarielle overdragelse:\n\n• Notar: ${notar || '—'}\n• Tidspunkt: ${ntDE || '—'}\n\nSelve overdragelsen af selskabet sker ved den notarielle beurkundelse. Sig endelig til, hvis tidspunktet skal ændres.\n\nVenlig hilsen` },
+      { id: '_vg_uebernahme', name: '🏛 Übernahme / nächste Schritte 🇩🇰', betreff: `Næste skridt overdragelse${sfx}`,
+        text: `Hej${vorname ? ' ' + vorname : ''}\n\nselskabet er nu overdraget til dig. De næste skridt er omdøbning til ${neuerName || '—'}, ny hjemsted og registrering i handelsregistret. Jeg holder dig opdateret.\n\nVenlig hilsen` },
+    ]
+  }
+  return [
+    { id: '_vg_angebot', name: '📤 Angebot senden 🇩🇪', betreff: `Angebot Vorratsgesellschaft${sfx}`,
+      text: `Hallo${vorname ? ' ' + vorname : ''}\n\ngerne unterbreite ich dir ein Angebot für eine deutsche Vorratsgesellschaft.\n\n• Gesellschaft: ${mantel || '—'}${rechtsform ? ' (' + rechtsform + ')' : ''}\n• Gewünschter neuer Name: ${neuerName || '—'}\n• Kaufpreis: ${kpTxt || '—'} zzgl. USt.\n\nDas vollständige Angebot findest du im Anhang. Die notarielle Übertragung erfolgt separat beim Notar. Bei Fragen melde dich gerne.\n\nViele Grüße` },
+    { id: '_vg_reservierung', name: '✅ Reservierungsbestätigung 🇩🇪', betreff: `Reservierungsbestätigung${sfx}`,
+      text: `Hallo${vorname ? ' ' + vorname : ''}\n\nvielen Dank — hiermit bestätige ich, dass wir die Gesellschaft ${mantel || ''} für dich reservieren. Ich bereite nun den notariellen Vertrag vor und melde mich mit einem Notartermin.\n\nViele Grüße` },
+    { id: '_vg_notar', name: '📅 Notartermin-Info 🇩🇪', betreff: `Notartermin${sfx}`,
+      text: `Hallo${vorname ? ' ' + vorname : ''}\n\nhier die Informationen zur notariellen Übertragung:\n\n• Notar: ${notar || '—'}\n• Termin: ${ntDE || '—'}\n\nDie eigentliche Übertragung der Gesellschaft erfolgt mit der notariellen Beurkundung. Falls der Termin nicht passt, sag gerne Bescheid.\n\nViele Grüße` },
+    { id: '_vg_uebernahme', name: '🏛 Übernahme / nächste Schritte 🇩🇪', betreff: `Nächste Schritte Übernahme${sfx}`,
+      text: `Hallo${vorname ? ' ' + vorname : ''}\n\ndie Gesellschaft ist nun auf dich übertragen. Die nächsten Schritte sind die Umfirmierung in ${neuerName || '—'}, der neue Sitz und die Eintragung im Handelsregister. Ich halte dich auf dem Laufenden.\n\nViele Grüße` },
+  ]
+}
+
+function VorratsgesellSection({ au, client, onUpdate, emailVorlagen = [], emailSignaturen = [], onedriveTokens = null, onUpdateOnedriveTokens, onUpdateClient }) {
+  const [open, setOpen] = useState(true)
+  const [preview, setPreview] = useState(null)         // { url }
+  const [showCompose, setShowCompose] = useState(false)
+  const [composeMode, setComposeMode] = useState(null) // 'angebot' | 'notar' | null
+  const ed = au.erfassungsdaten ?? {}
+  const dokumente = au.dokumente ?? []
+  const canCompose = !!(client && onUpdateClient)
+
+  useEffect(() => () => { if (preview?.url) URL.revokeObjectURL(preview.url) }, [preview])
+
+  function setFeld(key, val) {
+    onUpdate({ erfassungsdaten: { ...ed, [key]: val }, erfassungsdatenBearbeitetAm: new Date().toISOString() })
+  }
+
+  const vgVorlagen = useMemo(() => buildVgVorlagen(client, au), [au.erfassungsdaten, client])
+
+  const composePreset = useMemo(() => {
+    if (!showCompose || !composeMode) return null
+    const v = vgVorlagen.find(t => t.id === (composeMode === 'notar' ? '_vg_notar' : '_vg_angebot'))
+    const attachments = composeMode === 'angebot'
+      ? [{ name: vgAngebotFilename(au), data: pdfToBase64(buildAngebotVorratsgesell(client, au)), type: 'application/pdf', size: 0 }]
+      : []
+    return v ? { subject: v.betreff, body: v.text, attachments } : null
+  }, [showCompose, composeMode, au.erfassungsdaten, client])
+
+  function openPreview() {
+    const url = URL.createObjectURL(buildAngebotVorratsgesell(client, au).output('blob'))
+    setPreview({ url })
+  }
+  function confirmDownload() {
+    const doc = buildAngebotVorratsgesell(client, au)
+    const filename = vgAngebotFilename(au)
+    downloadPdf(doc, filename)
+    onUpdate({
+      dokumente: [{ id: 'dok_' + Date.now().toString(36), art: 'vg_angebot', name: filename, contentType: 'application/pdf', erstelltAm: new Date().toISOString() }, ...dokumente.filter(d => d.art !== 'vg_angebot')],
+      verlauf: [{ id: genVerlaufId(), typ: 'dokument_erstellt', datum: todayISO(), text: 'Angebot Vorratsgesellschaft erzeugt: ' + filename, erstelltAm: new Date().toISOString() }, ...(au.verlauf ?? [])],
+    })
+    if (preview?.url) URL.revokeObjectURL(preview.url)
+    setPreview(null)
+  }
+  function startSend(mode) { setComposeMode(mode); setShowCompose(true) }
+  function closeCompose() { setShowCompose(false); setComposeMode(null) }
+  function handleSent() {
+    const order = (WORKFLOW_CONFIGS[au.typ]?.steps ?? []).map(s => s.key)
+    const target = composeMode === 'notar' ? 'notar_termin' : 'angebot_gesendet'
+    const curIdx = order.indexOf(au.workflowStatus ?? order[0])
+    const tIdx = order.indexOf(target)
+    if (tIdx >= 0 && curIdx < tIdx) onUpdate({ workflowStatus: target, workflowStatusDatum: todayISO() })
+  }
+
+  const fieldInput = (f) => f.options ? (
+    <select value={ed[f.key] ?? ''} onChange={e => setFeld(f.key, e.target.value)} style={inputStyle}>
+      {(ed[f.key] ?? '') === '' && <option value="">— bitte wählen —</option>}
+      {f.options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+    </select>
+  ) : f.textarea ? (
+    <textarea value={ed[f.key] ?? ''} onChange={e => setFeld(f.key, e.target.value)} placeholder={f.placeholder ?? ''} rows={2}
+      style={{ ...inputStyle, resize: 'vertical', whiteSpace: 'pre-wrap', minHeight: '44px' }} />
+  ) : (
+    <input type={f.date ? 'date' : 'text'} value={ed[f.key] ?? ''} onChange={e => setFeld(f.key, e.target.value)} placeholder={f.placeholder ?? ''} style={inputStyle} />
+  )
+
+  return (
+    <div style={{ marginBottom: '16px', border: '1px solid rgba(217,119,6,0.3)', borderRadius: '10px', overflow: 'hidden', background: 'rgba(217,119,6,0.03)' }}>
+      <button onClick={() => setOpen(o => !o)}
+        style={{ width: '100%', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(217,119,6,0.06)', border: 'none', cursor: 'pointer', textAlign: 'left', borderBottom: open ? '1px solid rgba(217,119,6,0.2)' : 'none' }}>
+        <span style={{ fontSize: '15px' }}>📦</span>
+        <span style={{ fontWeight: 700, fontSize: '13px', color: 'var(--text)', flex: 1 }}>Daten Vorratsgesellschaft</span>
+        <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{open ? '▲' : '▼'}</span>
+      </button>
+
+      {open && (
+        <div style={{ padding: '14px' }}>
+          {/* Buttons */}
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '14px' }}>
+            <button onClick={openPreview}
+              style={{ padding: '8px 14px', borderRadius: '8px', border: '1px solid #d97706', background: 'transparent', color: '#d97706', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
+              📄 Angebot – Vorschau
+            </button>
+            {canCompose && (
+              <>
+                <button onClick={() => (showCompose && composeMode === 'angebot') ? closeCompose() : startSend('angebot')}
+                  style={{ padding: '8px 14px', borderRadius: '8px', border: 'none', background: (showCompose && composeMode === 'angebot') ? 'rgba(217,119,6,0.15)' : '#d97706', color: (showCompose && composeMode === 'angebot') ? '#d97706' : '#fff', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
+                  {(showCompose && composeMode === 'angebot') ? '✕ Schließen' : '📨 Angebot senden'}
+                </button>
+                <button onClick={() => (showCompose && composeMode === 'notar') ? closeCompose() : startSend('notar')}
+                  style={{ padding: '8px 14px', borderRadius: '8px', border: '1px solid #d97706', background: (showCompose && composeMode === 'notar') ? 'rgba(217,119,6,0.15)' : 'transparent', color: '#d97706', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
+                  {(showCompose && composeMode === 'notar') ? '✕ Schließen' : '📨 Notartermin-Info senden'}
+                </button>
+              </>
+            )}
+          </div>
+
+          {/* Compose-Panel */}
+          {canCompose && showCompose && (
+            <div style={{ marginBottom: '14px' }}>
+              <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '6px' }}>
+                {composeMode === 'angebot' ? 'Angebots-Mail (mit Angebot-PDF im Anhang)' : 'Notartermin-Info (ohne Anhang)'} – {/dänemark|danmark|denmark|\bdk\b/.test((au.erfassungsdaten?.erwerber_land || client?.land || '').toLowerCase()) ? '🇩🇰 Dänisch' : '🇩🇪 Deutsch'} – vorbefüllt. Prüfen, dann „Senden".
+              </div>
+              <JAComposePanel au={au} client={client}
+                emailVorlagen={emailVorlagen} extraVorlagen={vgVorlagen}
+                preset={composePreset} forcePreset={true} onSent={handleSent}
+                emailSignaturen={emailSignaturen} onedriveTokens={onedriveTokens}
+                onUpdateOnedriveTokens={onUpdateOnedriveTokens} onUpdateClient={onUpdateClient}
+                onClose={closeCompose} />
+            </div>
+          )}
+
+          {dokumente.some(d => d.art === 'vg_angebot') && (
+            <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '12px' }}>
+              📄 Angebot zuletzt erzeugt {fmtShortDate((dokumente.find(d => d.art === 'vg_angebot') || {}).erstelltAm)}
+            </div>
+          )}
+
+          {/* Felder */}
+          {VG_FELDER.map(grp => (
+            <div key={grp.gruppe} style={{ marginBottom: '12px' }}>
+              <div style={{ ...labelStyle, marginBottom: '6px', color: '#d97706' }}>{grp.gruppe}</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '8px' }}>
+                {grp.felder.map(f => (
+                  <label key={f.key} style={{ display: 'flex', flexDirection: 'column', gap: '3px', gridColumn: f.wide ? '1 / -1' : 'auto' }}>
+                    <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{f.label}</span>
+                    {fieldInput(f)}
+                  </label>
+                ))}
+              </div>
+            </div>
+          ))}
+
+          {/* Hinweis: notarieller Vertrag bleibt beim Notar */}
+          <div style={{ marginTop: '4px', fontSize: '10px', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+            Hinweis: Das erzeugte PDF ist nur ein Angebot/Reservierung. Der notarielle Geschäftsanteilskaufvertrag bleibt beim Notar.
+          </div>
+        </div>
+      )}
+
+      {/* PDF-Vorschau-Modal */}
+      {preview && (
+        <div onClick={() => { if (preview.url) URL.revokeObjectURL(preview.url); setPreview(null) }}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: 'var(--surface)', borderRadius: '12px', width: 'min(900px, 95vw)', height: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 10px 40px rgba(0,0,0,0.45)' }}>
+            <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '10px', borderBottom: '1px solid var(--border)' }}>
+              <span style={{ fontSize: '15px' }}>📦</span>
+              <span style={{ fontWeight: 700, fontSize: '14px', color: 'var(--text)', flex: 1 }}>Vorschau – Angebot Vorratsgesellschaft</span>
+              <button onClick={() => { if (preview.url) URL.revokeObjectURL(preview.url); setPreview(null) }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '18px', lineHeight: 1 }}>✕</button>
+            </div>
+            <iframe title="Angebot-Vorschau" src={preview.url} style={{ flex: 1, width: '100%', border: 'none', background: '#fff' }} />
+            <div style={{ padding: '12px 16px', display: 'flex', gap: '8px', justifyContent: 'flex-end', borderTop: '1px solid var(--border)' }}>
+              <button onClick={() => { if (preview.url) URL.revokeObjectURL(preview.url); setPreview(null) }}
+                style={{ padding: '8px 16px', borderRadius: '8px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text)', fontSize: '13px', cursor: 'pointer' }}>Abbrechen</button>
+              <button onClick={confirmDownload}
+                style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: '#d97706', color: '#fff', fontSize: '13px', fontWeight: 700, cursor: 'pointer' }}>⬇️ Herunterladen</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete, client, onOpenEmail, onUpdateClient, emailVorlagen, emailSignaturen, onedriveTokens, onUpdateOnedriveTokens }) {
   const typCfg    = AUFTRAGS_TYP_CFG[au.typ]      ?? AUFTRAGS_TYP_CFG.freitext
   const statusCfg = AUFTRAGS_STATUS_CFG[au.status] ?? AUFTRAGS_STATUS_CFG.offen
@@ -2708,13 +2944,21 @@ function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete, client, onOpe
           )}
 
           {/* ── USt-Reg. DE: Antragsdaten + PDF-Erzeugung ── */}
-          {(au.typ === 'ust_reg_de' || (au.erfassungsdaten && au.typ !== 'geschaeftsadresse')) && (
+          {(au.typ === 'ust_reg_de' || (au.erfassungsdaten && au.typ !== 'geschaeftsadresse' && au.typ !== 'vorratsgesell')) && (
             <AntragsdatenSection au={au} client={client} onUpdate={onUpdate} />
           )}
 
           {/* ── Geschäftsadresse: Vertragsdaten + Vertrag-PDF + Versand ── */}
           {au.typ === 'geschaeftsadresse' && (
             <GeschaeftsadresseSection au={au} client={client} onUpdate={onUpdate}
+              emailVorlagen={emailVorlagen} emailSignaturen={emailSignaturen}
+              onedriveTokens={onedriveTokens} onUpdateOnedriveTokens={onUpdateOnedriveTokens}
+              onUpdateClient={onUpdateClient} />
+          )}
+
+          {/* ── Vorratsgesellschaft: Daten + Angebot-PDF + Versand ── */}
+          {au.typ === 'vorratsgesell' && (
+            <VorratsgesellSection au={au} client={client} onUpdate={onUpdate}
               emailVorlagen={emailVorlagen} emailSignaturen={emailSignaturen}
               onedriveTokens={onedriveTokens} onUpdateOnedriveTokens={onUpdateOnedriveTokens}
               onUpdateClient={onUpdateClient} />
