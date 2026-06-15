@@ -1728,6 +1728,7 @@ function WorkflowVerlaufSection({ au, onUpdate, client, onUpdateClient, emailVor
   const [sendMode, setSendMode] = useState(false)     // dedizierter "Unterlagen senden"-Modus
   const [sendSelect, setSendSelect] = useState(null)  // Anlagen-Auswahl offen (Objekt mit booleans)
   const [sendArts, setSendArts] = useState([])        // gewählte Dokument-Arten für die Mail
+  const [infoMode, setInfoMode] = useState(false)     // "Antrag eingereicht"-Info an Mandant
   const canCompose = !!(client && onUpdateClient)
   const isUstReg = au.typ === 'ust_reg_de'
   const ustRegVorlagen = useMemo(
@@ -1750,6 +1751,13 @@ function WorkflowVerlaufSection({ au, onUpdate, client, onUpdateClient, emailVor
     }))
     return { subject: v.subject, body: v.body, attachments }
   }, [sendMode, sendArts, isUstReg, au.erfassungsdaten, client])
+
+  // Vorbelegte "Antrag eingereicht"-Mail (Rechnung manuell anhängen)
+  const infoPreset = useMemo(() => {
+    if (!infoMode || !isUstReg) return null
+    const v = buildUstRegVorlagen(client, au).find(t => t.id === '_ustreg_eingereicht')
+    return v ? { subject: v.betreff, body: v.text, attachments: [] } : null
+  }, [infoMode, isUstReg, au.erfassungsdaten, client])
 
   // Auswählbare Dokumente (Reihenfolge wie in der E-Mail)
   const SEND_DOKS = [
@@ -1805,15 +1813,29 @@ function WorkflowVerlaufSection({ au, onUpdate, client, onUpdateClient, emailVor
 
   function openCompose(send) {
     setSendMode(send)
+    setInfoMode(false)
     setShowCompose(true)
     setSelectedTyp(null)
   }
-  function closeCompose() { setShowCompose(false); setSendMode(false); setSendSelect(null) }
+  function closeCompose() { setShowCompose(false); setSendMode(false); setSendSelect(null); setInfoMode(false) }
 
   // Schritt 1: Anlagen-Auswahl öffnen
   function startSend() {
     setSendSelect(defaultSendSel())
-    setShowCompose(false); setSendMode(false); setSelectedTyp(null)
+    setShowCompose(false); setSendMode(false); setInfoMode(false); setSelectedTyp(null)
+  }
+  // "Antrag eingereicht"-Info an Mandant: Composer direkt mit Vorlage öffnen
+  function startInfo() {
+    setInfoMode(true); setSendMode(false); setSendSelect(null); setShowCompose(true); setSelectedTyp(null)
+  }
+  // Nach Versand der Info-Mail: Status auf "An Finanzamt gesendet" vorrücken
+  function handleSentInfo() {
+    const order = (WORKFLOW_CONFIGS[au.typ]?.steps ?? []).map(s => s.key)
+    const curIdx = order.indexOf(au.workflowStatus ?? order[0])
+    const targetIdx = order.indexOf('an_fa')
+    if (targetIdx >= 0 && curIdx < targetIdx) {
+      onUpdate({ workflowStatus: 'an_fa', workflowStatusDatum: todayISO() })
+    }
   }
   // Schritt 2: ausgewählte Anlagen übernehmen → E-Mail-Entwurf öffnen
   function prepareSend() {
@@ -1862,6 +1884,19 @@ function WorkflowVerlaufSection({ au, onUpdate, client, onUpdateClient, emailVor
                 }}
               >
                 {(sendSelect || (showCompose && sendMode)) ? '✕ Schließen' : '📨 Antragsunterlagen an Mandanten senden'}
+              </button>
+            )}
+            {isUstReg && (
+              <button
+                onClick={() => (showCompose && infoMode) ? closeCompose() : startInfo()}
+                style={{
+                  padding: '4px 12px', borderRadius: '6px', fontSize: '11px', cursor: 'pointer', fontWeight: 700,
+                  border: '1px solid #0f766e',
+                  background: (showCompose && infoMode) ? 'rgba(15,118,110,0.15)' : '#0f766e',
+                  color: (showCompose && infoMode) ? '#0f766e' : '#fff',
+                }}
+              >
+                {(showCompose && infoMode) ? '✕ Schließen' : '🏛 Mandant: Antrag eingereicht'}
               </button>
             )}
             <button
@@ -1917,15 +1952,20 @@ function WorkflowVerlaufSection({ au, onUpdate, client, onUpdateClient, emailVor
               Vorbefüllte E-Mail ({/dänemark|danmark|denmark|\bdk\b/.test((au.erfassungsdaten?.adresse_land || '').toLowerCase()) ? '🇩🇰 Dänisch' : '🇩🇪 Deutsch'}) mit {sendArts.length} {sendArts.length === 1 ? 'Anlage' : 'Anlagen'}. Bitte prüfen, dann „Senden".
             </div>
           )}
+          {infoMode && (
+            <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '6px' }}>
+              Info-Mail „Antrag eingereicht" ({/dänemark|danmark|denmark|\bdk\b/.test((au.erfassungsdaten?.adresse_land || '').toLowerCase()) ? '🇩🇰 Dänisch' : '🇩🇪 Deutsch'}) vorbefüllt. Bei Bedarf die Rechnung anhängen (📎), prüfen, dann „Senden".
+            </div>
+          )}
           <JAComposePanel
             au={au}
             client={client}
             emailVorlagen={emailVorlagen}
             extraVorlagen={ustRegVorlagen}
             initialAttachments={pdfAttachments}
-            preset={sendMode ? sendPreset : null}
-            forcePreset={sendMode}
-            onSent={sendMode ? handleSent : undefined}
+            preset={sendMode ? sendPreset : infoMode ? infoPreset : null}
+            forcePreset={sendMode || infoMode}
+            onSent={sendMode ? handleSent : infoMode ? handleSentInfo : undefined}
             emailSignaturen={emailSignaturen}
             onedriveTokens={onedriveTokens}
             onUpdateOnedriveTokens={onUpdateOnedriveTokens}
