@@ -1,6 +1,7 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import JAComposePanel from './JAComposePanel.jsx'
 import { buildDoc, downloadPdf, pdfFilename, pdfToBase64 } from '../../utils/ustRegPdf.js'
+import { buildVertragGeschaeftsadresse, gaVertragFilename } from '../../utils/geschaeftsadressePdf.js'
 import { callApi, getMandantPath, openAuthPopup } from '../../utils/onedriveClient.js'
 
 // ── Konfiguration (auch von AuftragKontextPanel genutzt) ──────────────────────
@@ -2366,6 +2367,236 @@ function AntragsdatenSection({ au, client, onUpdate }) {
   )
 }
 
+// ── Geschäftsadresse: Vertragsdaten + Vertrag-PDF + Versand ───────────────────
+const GA_FELDER = [
+  { gruppe: 'Vertragspartner', felder: [
+    { key: 'unternehmensname',     label: 'Unternehmensname' },
+    { key: 'ansprechpartner',      label: 'Ansprechpartner' },
+    { key: 'ansprechpartner_email',label: 'E-Mail Ansprechpartner' },
+    { key: 'rechnungsadresse',     label: 'Rechnungsadresse (optional)', textarea: true, wide: true },
+  ]},
+  { gruppe: 'Adresse & Vertrag', felder: [
+    { key: 'gewuenschte_adresse',  label: 'Gewünschte Geschäftsadresse', textarea: true, wide: true },
+    { key: 'vertragsbeginn',       label: 'Vertragsbeginn', date: true },
+    { key: 'laufzeit',             label: 'Laufzeit', placeholder: 'z. B. 12 Monate / unbefristet' },
+    { key: 'kuendigungsfrist',     label: 'Kündigungsfrist', placeholder: 'z. B. 3 Monate zum Laufzeitende' },
+    { key: 'monatliches_entgelt',  label: 'Monatliches Entgelt (€)', placeholder: 'z. B. 49' },
+  ]},
+  { gruppe: 'Leistungsumfang', felder: [
+    { key: 'leistungsumfang', label: 'Leistungsumfang', options: [
+      { value: 'nur_adresse',   label: 'Nur Adresse' },
+      { value: 'postannahme',   label: 'Postannahme' },
+      { value: 'postweiterltg', label: 'Postweiterleitung' },
+      { value: 'digital',       label: 'Digitale Postweiterleitung' },
+    ]},
+    { key: 'postweiterleitung', label: 'Postweiterleitung?', options: [
+      { value: 'ja', label: 'Ja' }, { value: 'nein', label: 'Nein' } ]},
+    { key: 'postweiterleitung_intervall', label: 'Intervall Postweiterleitung', placeholder: 'z. B. wöchentlich' },
+    { key: 'digitale_postweiterleitung', label: 'Digitale Postweiterleitung?', options: [
+      { value: 'ja', label: 'Ja' }, { value: 'nein', label: 'Nein' } ]},
+  ]},
+]
+
+const GA_LEISTUNG_LABEL = {
+  nur_adresse: 'Nutzung der Geschäftsadresse', postannahme: 'Geschäftsadresse + Postannahme',
+  postweiterltg: 'Geschäftsadresse + Postweiterleitung', digital: 'Geschäftsadresse + digitale Postweiterleitung',
+}
+
+// 4 Vorlagen (DE/DK nach Land, Du-Form; Signatur hängt der Composer an)
+function buildGaVorlagen(client, au) {
+  const ed = au.erfassungsdaten || {}
+  const isDK = /dänemark|danmark|denmark|\bdk\b/.test((ed.adresse_land || client?.land || '').toLowerCase())
+  const firma = (ed.unternehmensname || client?.name || '').trim()
+  const ap = (ed.ansprechpartner || (client?.kontakte || [])[0]?.name || '').trim()
+  const vorname = ap.split(/\s+/)[0] || ''
+  const adresse = (ed.gewuenschte_adresse || '').trim()
+  const leistung = GA_LEISTUNG_LABEL[ed.leistungsumfang] || ed.leistungsumfang || 'Nutzung der Geschäftsadresse'
+  const laufzeit = (ed.laufzeit || '').trim()
+  const entgelt = (ed.monatliches_entgelt || '').trim()
+  const entgeltTxt = entgelt ? entgelt + (/€|eur|kr/i.test(entgelt) ? '' : ' €') : ''
+  const postJa = ed.postweiterleitung === 'ja'
+
+  const sfx = firma ? ' – ' + firma : ''
+  if (isDK) {
+    return [
+      { id: '_ga_angebot', name: '📤 Angebot senden 🇩🇰', betreff: `Tilbud forretningsadresse${sfx}`,
+        text: `Hej${vorname ? ' ' + vorname : ''}\n\njeg sender dig hermed et tilbud på en forretningsadresse i Tyskland.\n\n• Adresse: ${adresse || '—'}\n• Ydelser: ${leistung}\n• Løbetid: ${laufzeit || '—'}\n• Månedligt gebyr: ${entgeltTxt || '—'} plus moms\n\nHvis det passer dig, sender jeg kontrakten til underskrift. Sig endelig til, hvis du har spørgsmål.\n\nVenlig hilsen` },
+      { id: '_ga_vertrag', name: '✍️ Vertrag zur Unterschrift 🇩🇰', betreff: `Kontrakt forretningsadresse til underskrift${sfx}`,
+        text: `Hej${vorname ? ' ' + vorname : ''}\n\nvedhæftet finder du kontrakten for forretningsadressen.\n\nGennemgå venligst kontrakten, underskriv den og send den retur til mig som PDF. Så snart jeg har den underskrevne kontrakt, aktiverer jeg adressen for dig.\n\nSig endelig til, hvis du har spørgsmål.\n\nVenlig hilsen` },
+      { id: '_ga_erinnerung', name: '🔔 Erinnerung Unterschrift 🇩🇰', betreff: `Påmindelse: kontrakt forretningsadresse${sfx}`,
+        text: `Hej${vorname ? ' ' + vorname : ''}\n\njeg vender lige tilbage vedrørende kontrakten for forretningsadressen. Vil du sende den underskrevet retur, når du har tid? Så kan jeg aktivere adressen.\n\nMange tak og venlig hilsen` },
+      { id: '_ga_aktiv', name: '📍 Adresse aktiv bestätigen 🇩🇰', betreff: `Forretningsadresse aktiv${sfx}`,
+        text: `Hej${vorname ? ' ' + vorname : ''}\n\ndin forretningsadresse er nu aktiv:\n\n${adresse || '—'}\n\nDu kan bruge denne adresse erhvervsmæssigt med det samme.${postJa ? ' Indgående post videresender vi som aftalt.' : ''}\n\nSig endelig til, hvis du har spørgsmål.\n\nVenlig hilsen` },
+    ]
+  }
+  return [
+    { id: '_ga_angebot', name: '📤 Angebot senden 🇩🇪', betreff: `Angebot Geschäftsadresse${sfx}`,
+      text: `Hallo${vorname ? ' ' + vorname : ''}\n\ngerne unterbreite ich dir ein Angebot für eine Geschäftsadresse in Deutschland.\n\n• Adresse: ${adresse || '—'}\n• Leistungsumfang: ${leistung}\n• Laufzeit: ${laufzeit || '—'}\n• Monatliches Entgelt: ${entgeltTxt || '—'} zzgl. USt.\n\nWenn das für dich passt, sende ich dir den Vertrag zur Unterschrift. Bei Fragen melde dich gerne.\n\nViele Grüße` },
+    { id: '_ga_vertrag', name: '✍️ Vertrag zur Unterschrift 🇩🇪', betreff: `Vertrag Geschäftsadresse zur Unterschrift${sfx}`,
+      text: `Hallo${vorname ? ' ' + vorname : ''}\n\nanbei findest du den Vertrag für die Geschäftsadresse.\n\nBitte prüfe den Vertrag, unterschreibe ihn und sende ihn mir als PDF zurück. Sobald mir der unterschriebene Vertrag vorliegt, aktiviere ich die Adresse für dich.\n\nBei Fragen bin ich gerne für dich da.\n\nViele Grüße` },
+    { id: '_ga_erinnerung', name: '🔔 Erinnerung Unterschrift 🇩🇪', betreff: `Erinnerung: Vertrag Geschäftsadresse${sfx}`,
+      text: `Hallo${vorname ? ' ' + vorname : ''}\n\nich komme kurz auf den Vertrag für die Geschäftsadresse zurück. Magst du ihn bei Gelegenheit unterschrieben zurücksenden? Dann kann ich die Adresse aktivieren.\n\nVielen Dank und viele Grüße` },
+    { id: '_ga_aktiv', name: '📍 Adresse aktiv bestätigen 🇩🇪', betreff: `Geschäftsadresse aktiv${sfx}`,
+      text: `Hallo${vorname ? ' ' + vorname : ''}\n\ndeine Geschäftsadresse ist jetzt aktiv:\n\n${adresse || '—'}\n\nDu kannst diese Adresse ab sofort geschäftlich nutzen.${postJa ? ' Eingehende Post leiten wir wie vereinbart weiter.' : ''}\n\nBei Fragen melde dich jederzeit.\n\nViele Grüße` },
+  ]
+}
+
+function GeschaeftsadresseSection({ au, client, onUpdate, emailVorlagen = [], emailSignaturen = [], onedriveTokens = null, onUpdateOnedriveTokens, onUpdateClient }) {
+  const [open, setOpen] = useState(true)
+  const [preview, setPreview] = useState(null)        // { url }
+  const [showCompose, setShowCompose] = useState(false)
+  const [composeMode, setComposeMode] = useState(null) // 'vertrag' | 'angebot' | null
+  const ed = au.erfassungsdaten ?? {}
+  const dokumente = au.dokumente ?? []
+  const canCompose = !!(client && onUpdateClient)
+
+  useEffect(() => () => { if (preview?.url) URL.revokeObjectURL(preview.url) }, [preview])
+
+  function setFeld(key, val) {
+    onUpdate({ erfassungsdaten: { ...ed, [key]: val }, erfassungsdatenBearbeitetAm: new Date().toISOString() })
+  }
+
+  const gaVorlagen = useMemo(() => buildGaVorlagen(client, au), [au.erfassungsdaten, client])
+
+  const composePreset = useMemo(() => {
+    if (!showCompose || !composeMode) return null
+    const v = gaVorlagen.find(t => t.id === (composeMode === 'vertrag' ? '_ga_vertrag' : '_ga_angebot'))
+    const attachments = composeMode === 'vertrag'
+      ? [{ name: gaVertragFilename(au), data: pdfToBase64(buildVertragGeschaeftsadresse(client, au)), type: 'application/pdf', size: 0 }]
+      : []
+    return v ? { subject: v.betreff, body: v.text, attachments } : null
+  }, [showCompose, composeMode, au.erfassungsdaten, client])
+
+  function openPreview() {
+    const url = URL.createObjectURL(buildVertragGeschaeftsadresse(client, au).output('blob'))
+    setPreview({ url })
+  }
+  function confirmDownload() {
+    const doc = buildVertragGeschaeftsadresse(client, au)
+    const filename = gaVertragFilename(au)
+    downloadPdf(doc, filename)
+    onUpdate({
+      dokumente: [{ id: 'dok_' + Date.now().toString(36), art: 'ga_vertrag', name: filename, contentType: 'application/pdf', erstelltAm: new Date().toISOString() }, ...dokumente.filter(d => d.art !== 'ga_vertrag')],
+      verlauf: [{ id: genVerlaufId(), typ: 'dokument_erstellt', datum: todayISO(), text: 'Vertrag Geschäftsadresse erzeugt: ' + filename, erstelltAm: new Date().toISOString() }, ...(au.verlauf ?? [])],
+    })
+    if (preview?.url) URL.revokeObjectURL(preview.url)
+    setPreview(null)
+  }
+  function startSend(mode) { setComposeMode(mode); setShowCompose(true) }
+  function closeCompose() { setShowCompose(false); setComposeMode(null) }
+  function handleSent() {
+    const order = (WORKFLOW_CONFIGS[au.typ]?.steps ?? []).map(s => s.key)
+    const target = composeMode === 'vertrag' ? 'vertrag_gesendet' : 'angebot_gesendet'
+    const curIdx = order.indexOf(au.workflowStatus ?? order[0])
+    const tIdx = order.indexOf(target)
+    if (tIdx >= 0 && curIdx < tIdx) onUpdate({ workflowStatus: target, workflowStatusDatum: todayISO() })
+  }
+
+  const fieldInput = (f) => f.options ? (
+    <select value={ed[f.key] ?? ''} onChange={e => setFeld(f.key, e.target.value)} style={inputStyle}>
+      {(ed[f.key] ?? '') === '' && <option value="">— bitte wählen —</option>}
+      {f.options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+    </select>
+  ) : f.textarea ? (
+    <textarea value={ed[f.key] ?? ''} onChange={e => setFeld(f.key, e.target.value)} placeholder={f.placeholder ?? ''} rows={2}
+      style={{ ...inputStyle, resize: 'vertical', whiteSpace: 'pre-wrap', minHeight: '44px' }} />
+  ) : (
+    <input type={f.date ? 'date' : 'text'} value={ed[f.key] ?? ''} onChange={e => setFeld(f.key, e.target.value)} placeholder={f.placeholder ?? ''} style={inputStyle} />
+  )
+
+  return (
+    <div style={{ marginBottom: '16px', border: '1px solid rgba(15,118,110,0.3)', borderRadius: '10px', overflow: 'hidden', background: 'rgba(15,118,110,0.03)' }}>
+      <button onClick={() => setOpen(o => !o)}
+        style={{ width: '100%', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(15,118,110,0.06)', border: 'none', cursor: 'pointer', textAlign: 'left', borderBottom: open ? '1px solid rgba(15,118,110,0.2)' : 'none' }}>
+        <span style={{ fontSize: '15px' }}>📍</span>
+        <span style={{ fontWeight: 700, fontSize: '13px', color: 'var(--text)', flex: 1 }}>Vertragsdaten Geschäftsadresse</span>
+        <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{open ? '▲' : '▼'}</span>
+      </button>
+
+      {open && (
+        <div style={{ padding: '14px' }}>
+          {/* Buttons */}
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '14px' }}>
+            <button onClick={openPreview}
+              style={{ padding: '8px 14px', borderRadius: '8px', border: '1px solid #0f766e', background: 'transparent', color: '#0f766e', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
+              📄 Vertrag – Vorschau
+            </button>
+            {canCompose && (
+              <>
+                <button onClick={() => (showCompose && composeMode === 'vertrag') ? closeCompose() : startSend('vertrag')}
+                  style={{ padding: '8px 14px', borderRadius: '8px', border: 'none', background: (showCompose && composeMode === 'vertrag') ? 'rgba(15,118,110,0.15)' : '#0f766e', color: (showCompose && composeMode === 'vertrag') ? '#0f766e' : '#fff', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
+                  {(showCompose && composeMode === 'vertrag') ? '✕ Schließen' : '📨 Vertrag senden'}
+                </button>
+                <button onClick={() => (showCompose && composeMode === 'angebot') ? closeCompose() : startSend('angebot')}
+                  style={{ padding: '8px 14px', borderRadius: '8px', border: '1px solid #0f766e', background: (showCompose && composeMode === 'angebot') ? 'rgba(15,118,110,0.15)' : 'transparent', color: '#0f766e', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
+                  {(showCompose && composeMode === 'angebot') ? '✕ Schließen' : '📨 Angebot senden'}
+                </button>
+              </>
+            )}
+          </div>
+
+          {/* Compose-Panel */}
+          {canCompose && showCompose && (
+            <div style={{ marginBottom: '14px' }}>
+              <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '6px' }}>
+                {composeMode === 'vertrag' ? 'Vertrag-Mail (mit Vertrag-PDF im Anhang)' : 'Angebots-Mail'} – {/dänemark|danmark|denmark|\bdk\b/.test((au.erfassungsdaten?.adresse_land || client?.land || '').toLowerCase()) ? '🇩🇰 Dänisch' : '🇩🇪 Deutsch'} – vorbefüllt. Prüfen, dann „Senden".
+              </div>
+              <JAComposePanel au={au} client={client}
+                emailVorlagen={emailVorlagen} extraVorlagen={gaVorlagen}
+                preset={composePreset} forcePreset={true} onSent={handleSent}
+                emailSignaturen={emailSignaturen} onedriveTokens={onedriveTokens}
+                onUpdateOnedriveTokens={onUpdateOnedriveTokens} onUpdateClient={onUpdateClient}
+                onClose={closeCompose} />
+            </div>
+          )}
+
+          {dokumente.some(d => d.art === 'ga_vertrag') && (
+            <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '12px' }}>
+              📄 Vertrag zuletzt erzeugt {fmtShortDate((dokumente.find(d => d.art === 'ga_vertrag') || {}).erstelltAm)}
+            </div>
+          )}
+
+          {/* Felder */}
+          {GA_FELDER.map(grp => (
+            <div key={grp.gruppe} style={{ marginBottom: '12px' }}>
+              <div style={{ ...labelStyle, marginBottom: '6px', color: '#0f766e' }}>{grp.gruppe}</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '8px' }}>
+                {grp.felder.map(f => (
+                  <label key={f.key} style={{ display: 'flex', flexDirection: 'column', gap: '3px', gridColumn: f.wide ? '1 / -1' : 'auto' }}>
+                    <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{f.label}</span>
+                    {fieldInput(f)}
+                  </label>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* PDF-Vorschau-Modal */}
+      {preview && (
+        <div onClick={() => { if (preview.url) URL.revokeObjectURL(preview.url); setPreview(null) }}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: 'var(--surface)', borderRadius: '12px', width: 'min(900px, 95vw)', height: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 10px 40px rgba(0,0,0,0.45)' }}>
+            <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '10px', borderBottom: '1px solid var(--border)' }}>
+              <span style={{ fontSize: '15px' }}>📄</span>
+              <span style={{ fontWeight: 700, fontSize: '14px', color: 'var(--text)', flex: 1 }}>Vorschau – Vertrag Geschäftsadresse</span>
+              <button onClick={() => { if (preview.url) URL.revokeObjectURL(preview.url); setPreview(null) }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '18px', lineHeight: 1 }}>✕</button>
+            </div>
+            <iframe title="Vertrag-Vorschau" src={preview.url} style={{ flex: 1, width: '100%', border: 'none', background: '#fff' }} />
+            <div style={{ padding: '12px 16px', display: 'flex', gap: '8px', justifyContent: 'flex-end', borderTop: '1px solid var(--border)' }}>
+              <button onClick={() => { if (preview.url) URL.revokeObjectURL(preview.url); setPreview(null) }}
+                style={{ padding: '8px 16px', borderRadius: '8px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text)', fontSize: '13px', cursor: 'pointer' }}>Abbrechen</button>
+              <button onClick={confirmDownload}
+                style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: '#0f766e', color: '#fff', fontSize: '13px', fontWeight: 700, cursor: 'pointer' }}>⬇️ Herunterladen</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete, client, onOpenEmail, onUpdateClient, emailVorlagen, emailSignaturen, onedriveTokens, onUpdateOnedriveTokens }) {
   const typCfg    = AUFTRAGS_TYP_CFG[au.typ]      ?? AUFTRAGS_TYP_CFG.freitext
   const statusCfg = AUFTRAGS_STATUS_CFG[au.status] ?? AUFTRAGS_STATUS_CFG.offen
@@ -2477,8 +2708,16 @@ function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete, client, onOpe
           )}
 
           {/* ── USt-Reg. DE: Antragsdaten + PDF-Erzeugung ── */}
-          {(au.typ === 'ust_reg_de' || au.erfassungsdaten) && (
+          {(au.typ === 'ust_reg_de' || (au.erfassungsdaten && au.typ !== 'geschaeftsadresse')) && (
             <AntragsdatenSection au={au} client={client} onUpdate={onUpdate} />
+          )}
+
+          {/* ── Geschäftsadresse: Vertragsdaten + Vertrag-PDF + Versand ── */}
+          {au.typ === 'geschaeftsadresse' && (
+            <GeschaeftsadresseSection au={au} client={client} onUpdate={onUpdate}
+              emailVorlagen={emailVorlagen} emailSignaturen={emailSignaturen}
+              onedriveTokens={onedriveTokens} onUpdateOnedriveTokens={onUpdateOnedriveTokens}
+              onUpdateClient={onUpdateClient} />
           )}
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: '10px', marginBottom: '12px' }}>
