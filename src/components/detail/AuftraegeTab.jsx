@@ -1487,7 +1487,106 @@ function buildUstRegVorlagen(client, au) {
   const firma  = ed.firmenname || client?.name || 'das Unternehmen'
   const ap     = ed.ansprechpartner_name || (client?.kontakte ?? [])[0]?.name || ''
   const anrede = ap ? `Sehr geehrte/r ${ap},` : 'Sehr geehrte Damen und Herren,'
+  const vorname = (ap || ed.geschaeftsfuehrer_name || '').split(/\s+/)[0] || ''
+  const isDK = /dänemark|danmark|denmark|\bdk\b/.test((ed.adresse_land || client?.land || '').toLowerCase())
+
+  // Bestätigung an Mandant nach Einreichung beim Finanzamt (DK/DE, Du-Form; Rechnung manuell anhängen)
+  const eingereicht = isDK ? {
+    id: '_ustreg_eingereicht',
+    name: '📨 Bestätigung: Antrag eingereicht (an Mandant) 🇩🇰',
+    betreff: `Momsregistrering indsendt${firma ? ' – ' + firma : ''}`,
+    text:
+`Hej${vorname ? ' ' + vorname : ''}
+
+Jeg har i dag sendt ansøgningen om momsregistrering til det tyske skattekontor (Finanzamt).
+
+Normalt tager sagsbehandlingen omkring 2–6 uger.
+
+Du vil først modtage et brev fra Finanzamt Flensburg med dit tyske skattenummer.
+
+Skattenummeret har typisk følgende format:
+
+15/xxx/xxxxx
+
+Dette nummer bruges blandt andet til indsendelse af momsangivelser til de tyske myndigheder.
+
+Kort tid efter modtager du normalt endnu et brev med dit tyske momsnummer (USt-IdNr.).
+
+Nummeret har følgende format:
+
+DEXXXXXXXXXX
+
+Dette nummer skal blandt andet bruges ved registrering hos platforme som Amazon, Zalando og andre markedspladser.
+
+Hvis du har underskrevet en fuldmagt
+
+Hvis du har underskrevet fuldmagten, vil breve og meddelelser fra Finanzamt som udgangspunkt blive sendt til mig i stedet for direkte til virksomheden.
+
+I så fald videresender jeg naturligvis alle relevante breve, skattenumre og momsnumre til dig, så snart jeg modtager dem.
+
+Hvis du ikke har underskrevet en fuldmagt, vil Finanzamt sende brevene direkte til virksomheden. Sørg derfor for, at virksomhedsadressen kan modtage post, og at virksomhedens navn fremgår tydeligt af postkassen.
+
+Hvis momsnummeret ikke kommer inden for rimelig tid efter modtagelsen af skattenummeret, må du meget gerne kontakte mig. Så følger jeg op på sagen hos myndighederne.
+
+Du finder min faktura vedhæftet denne e-mail.
+
+Bemærk
+
+Hvis du ønsker, at jeg fremover skal hjælpe med de løbende tyske momsangivelser, er du meget velkommen til at kontakte mig.
+
+Har du spørgsmål til processen eller de breve, du modtager fra Finanzamt, hjælper jeg naturligvis også gerne.
+
+Venlig hilsen`,
+  } : {
+    id: '_ustreg_eingereicht',
+    name: '📨 Bestätigung: Antrag eingereicht (an Mandant) 🇩🇪',
+    betreff: `Antrag auf umsatzsteuerliche Registrierung eingereicht${firma ? ' – ' + firma : ''}`,
+    text:
+`Hallo${vorname ? ' ' + vorname : ''}
+
+ich habe heute den Antrag auf umsatzsteuerliche Registrierung beim deutschen Finanzamt eingereicht.
+
+Die Bearbeitung dauert in der Regel etwa 2–6 Wochen.
+
+Du erhältst zunächst ein Schreiben vom Finanzamt Flensburg mit deiner deutschen Steuernummer.
+
+Die Steuernummer hat üblicherweise folgendes Format:
+
+15/xxx/xxxxx
+
+Diese Nummer wird unter anderem für die Abgabe der Umsatzsteuer-Voranmeldungen verwendet.
+
+Kurz darauf erhältst du in der Regel ein weiteres Schreiben mit deiner deutschen Umsatzsteuer-Identifikationsnummer (USt-IdNr.).
+
+Die Nummer hat folgendes Format:
+
+DEXXXXXXXXXX
+
+Diese Nummer benötigst du unter anderem für die Registrierung bei Plattformen wie Amazon, Zalando und anderen Marktplätzen.
+
+Wenn du eine Vollmacht unterschrieben hast
+
+Wenn du die Vollmacht unterschrieben hast, werden Schreiben und Mitteilungen des Finanzamts grundsätzlich an mich statt direkt an das Unternehmen gesendet.
+
+In diesem Fall leite ich dir selbstverständlich alle relevanten Schreiben, Steuernummern und USt-IdNr. weiter, sobald ich sie erhalte.
+
+Wenn du keine Vollmacht unterschrieben hast, sendet das Finanzamt die Schreiben direkt an das Unternehmen. Stelle daher sicher, dass die Unternehmensadresse Post empfangen kann und der Firmenname am Briefkasten klar erkennbar ist.
+
+Falls die USt-IdNr. nicht innerhalb einer angemessenen Frist nach Erhalt der Steuernummer eintrifft, melde dich gerne bei mir. Dann gehe ich der Sache bei der Behörde nach.
+
+Meine Rechnung findest du im Anhang dieser E-Mail.
+
+Hinweis
+
+Wenn du möchtest, dass ich dich künftig bei den laufenden deutschen Umsatzsteuer-Voranmeldungen unterstütze, melde dich gerne.
+
+Bei Fragen zum Ablauf oder zu den Schreiben des Finanzamts helfe ich dir natürlich ebenfalls gerne weiter.
+
+Viele Grüße`,
+  }
+
   return [
+    eingereicht,
     {
       id: '_ustreg_unterschrift',
       name: '✍️ Antrag zur Unterschrift (an Mandant)',
