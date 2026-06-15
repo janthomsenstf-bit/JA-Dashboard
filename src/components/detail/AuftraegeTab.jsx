@@ -3,6 +3,7 @@ import JAComposePanel from './JAComposePanel.jsx'
 import { buildDoc, downloadPdf, pdfFilename, pdfToBase64 } from '../../utils/ustRegPdf.js'
 import { buildVertragGeschaeftsadresse, gaVertragFilename } from '../../utils/geschaeftsadressePdf.js'
 import { buildAngebotVorratsgesell, vgAngebotFilename } from '../../utils/vorratsgesellPdf.js'
+import { buildGruendungsdatenblatt, gruendungFilename, gruendungRechtsform } from '../../utils/gruendungPdf.js'
 import { callApi, getMandantPath, openAuthPopup } from '../../utils/onedriveClient.js'
 
 // ── Konfiguration (auch von AuftragKontextPanel genutzt) ──────────────────────
@@ -2833,6 +2834,264 @@ function VorratsgesellSection({ au, client, onUpdate, emailVorlagen = [], emailS
   )
 }
 
+// ── UG-/GmbH-Gründung: gemeinsame Gründungsdaten + Datenblatt-PDF + Versand ────
+const GRUENDUNG_FELDER = [
+  { gruppe: 'Gesellschaft', felder: [
+    { key: 'g_firmenname',   label: 'Gewünschter Firmenname', wide: true },
+    { key: 'g_rechtsform',   label: 'Rechtsform', options: [
+      { value: 'ug', label: 'UG (haftungsbeschränkt)' }, { value: 'gmbh', label: 'GmbH' } ]},
+    { key: 'g_sitz',         label: 'Sitz' },
+    { key: 'g_geschaeftsadresse', label: 'Geschäftsadresse', textarea: true, wide: true },
+    { key: 'g_gegenstand',   label: 'Unternehmensgegenstand', textarea: true, wide: true },
+    { key: 'g_geschaeftsjahr',label: 'Geschäftsjahr', placeholder: 'z. B. Kalenderjahr' },
+  ]},
+  { gruppe: 'Gesellschafter', felder: [
+    { key: 'gs_name',        label: 'Name / Firma' },
+    { key: 'gs_beteiligung', label: 'Beteiligung %' },
+    { key: 'gs_kapitalanteil',label: 'Kapitalanteil €' },
+    { key: 'gs_email',       label: 'E-Mail' },
+    { key: 'gs_adresse',     label: 'Adresse', textarea: true, wide: true },
+    { key: 'gs_weitere',     label: 'Weitere Gesellschafter (Freitext)', textarea: true, wide: true },
+  ]},
+  { gruppe: 'Geschäftsführer', felder: [
+    { key: 'gf_name',        label: 'Name' },
+    { key: 'gf_geburtsdatum',label: 'Geburtsdatum', date: true },
+    { key: 'gf_email',       label: 'E-Mail' },
+    { key: 'gf_staat',       label: 'Staatsangehörigkeit' },
+    { key: 'gf_einzelvertretung', label: 'Einzelvertretungsberechtigt', options: [
+      { value: 'ja', label: 'Ja' }, { value: 'nein', label: 'Nein' } ]},
+    { key: 'gf_adresse',     label: 'Adresse', textarea: true, wide: true },
+    { key: 'gf_weitere',     label: 'Weitere Geschäftsführer (Freitext)', textarea: true, wide: true },
+  ]},
+  { gruppe: 'Kapital', felder: [
+    { key: 'k_stammkapital', label: 'Stammkapital' },
+    { key: 'k_einzahlung',   label: 'Einzahlung' },
+    { key: 'k_bankkonto',    label: 'Bankkonto', options: [
+      { value: 'geplant', label: 'geplant' }, { value: 'vorhanden', label: 'vorhanden' } ]},
+  ]},
+  { gruppe: 'Notar / Ablauf', felder: [
+    { key: 'n_notar',          label: 'Notar' },
+    { key: 'n_notartermin',    label: 'Notartermin', date: true },
+    { key: 'n_handelsregister',label: 'Handelsregister (Amtsgericht)' },
+    { key: 'n_steuerl_erfassung', label: 'Steuerliche Erfassung' },
+    { key: 'n_geschaeftskonto',label: 'Geschäftskonto' },
+  ]},
+]
+
+// 5 Vorlagen (DE/DK nach Land, Du-Form; Signatur hängt der Composer an)
+function buildGruendungVorlagen(client, au) {
+  const ed = au.erfassungsdaten || {}
+  const isDK = /dänemark|danmark|denmark|\bdk\b/.test((ed.gs_land || client?.land || '').toLowerCase())
+  const rfLabel = gruendungRechtsform(au) === 'gmbh' ? 'GmbH' : 'UG (haftungsbeschränkt)'
+  const firma = (ed.g_firmenname || '').trim()
+  const ap = (ed.gf_name || ed.gs_name || (client?.kontakte || [])[0]?.name || '').trim()
+  const vorname = ap.split(/\s+/)[0] || ''
+  const notar = (ed.n_notar || '').trim()
+  const nt = (ed.n_notartermin || '').trim()
+  const ntDE = /^(\d{4})-(\d{2})-(\d{2})$/.test(nt) ? nt.replace(/^(\d{4})-(\d{2})-(\d{2})$/, '$3.$2.$1') : nt
+
+  const sfx = firma ? ' – ' + firma : ` – ${rfLabel}`
+  if (isDK) {
+    return [
+      { id: '_gr_anfordern', name: '📨 Gründungsdaten anfordern 🇩🇰', betreff: `Oplysninger til stiftelse${sfx}`,
+        text: `Hej${vorname ? ' ' + vorname : ''}\n\nfor at stifte dit tyske selskab (${rfLabel}) har jeg brug for et par oplysninger:\n\n• Ønsket firmanavn og hjemsted\n• Selskabets formål\n• Anpartshavere (navn, adresse, andel)\n• Direktør (navn, adresse, fødselsdato, statsborgerskab)\n• Stamkapital og indbetaling\n\nSig endelig til, hvis du har spørgsmål.\n\nVenlig hilsen` },
+      { id: '_gr_pruefung', name: '✅ Daten erhalten / Prüfung 🇩🇰', betreff: `Tak – vi gennemgår dine oplysninger${sfx}`,
+        text: `Hej${vorname ? ' ' + vorname : ''}\n\ntak for oplysningerne. Jeg gennemgår dem nu og vender tilbage, hvis der mangler noget. Derefter forbereder jeg stiftelsen og notarmødet.\n\nVenlig hilsen` },
+      { id: '_gr_notar', name: '📅 Notartermin / Datenblatt 🇩🇰', betreff: `Forberedelse notarmøde${sfx}`,
+        text: `Hej${vorname ? ' ' + vorname : ''}\n\nvedhæftet finder du et datablad med alle stiftelsesoplysninger til forberedelse af notarmødet.\n\n• Notar: ${notar || '—'}\n• Tidspunkt: ${ntDE || '—'}\n\nSelve stiftelsen beurkundes hos notaren. Tjek venligst oplysningerne og giv besked ved rettelser.\n\nVenlig hilsen` },
+      { id: '_gr_nachgruendung', name: '🏛 Nach Gründung: nächste Schritte 🇩🇰', betreff: `Næste skridt efter stiftelsen${sfx}`,
+        text: `Hej${vorname ? ' ' + vorname : ''}\n\nselskabet er stiftet. De næste skridt er registrering i handelsregistret, den skattemæssige registrering og åbning af erhvervskontoen. Jeg holder dig opdateret.\n\nVenlig hilsen` },
+      { id: '_gr_erinnerung', name: '🔔 Erinnerung fehlende Angaben 🇩🇰', betreff: `Påmindelse: manglende oplysninger${sfx}`,
+        text: `Hej${vorname ? ' ' + vorname : ''}\n\njeg mangler stadig nogle oplysninger til stiftelsen. Vil du sende dem, når du har tid? Så kan vi gå videre.\n\nMange tak og venlig hilsen` },
+    ]
+  }
+  return [
+    { id: '_gr_anfordern', name: '📨 Gründungsdaten anfordern 🇩🇪', betreff: `Gründungsdaten${sfx}`,
+      text: `Hallo${vorname ? ' ' + vorname : ''}\n\nfür die Gründung deiner ${rfLabel} brauche ich noch ein paar Angaben:\n\n• Gewünschter Firmenname und Sitz\n• Unternehmensgegenstand\n• Gesellschafter (Name, Adresse, Beteiligung)\n• Geschäftsführer (Name, Adresse, Geburtsdatum, Staatsangehörigkeit)\n• Stammkapital und Einzahlung\n\nBei Fragen melde dich gerne.\n\nViele Grüße` },
+    { id: '_gr_pruefung', name: '✅ Daten erhalten / Prüfung 🇩🇪', betreff: `Danke – ich prüfe deine Angaben${sfx}`,
+      text: `Hallo${vorname ? ' ' + vorname : ''}\n\nvielen Dank für die Angaben. Ich prüfe sie jetzt und melde mich, falls etwas fehlt. Anschließend bereite ich die Gründung und den Notartermin vor.\n\nViele Grüße` },
+    { id: '_gr_notar', name: '📅 Notartermin / Datenblatt 🇩🇪', betreff: `Vorbereitung Notartermin${sfx}`,
+      text: `Hallo${vorname ? ' ' + vorname : ''}\n\nanbei findest du ein Datenblatt mit allen Gründungsangaben zur Vorbereitung des Notartermins.\n\n• Notar: ${notar || '—'}\n• Termin: ${ntDE || '—'}\n\nDie eigentliche Gründung wird beim Notar beurkundet. Bitte prüfe die Angaben und sag bei Korrekturen Bescheid.\n\nViele Grüße` },
+    { id: '_gr_nachgruendung', name: '🏛 Nach Gründung: nächste Schritte 🇩🇪', betreff: `Nächste Schritte nach der Gründung${sfx}`,
+      text: `Hallo${vorname ? ' ' + vorname : ''}\n\ndie Gesellschaft ist gegründet. Die nächsten Schritte sind die Eintragung im Handelsregister, die steuerliche Erfassung und die Eröffnung des Geschäftskontos. Ich halte dich auf dem Laufenden.\n\nViele Grüße` },
+    { id: '_gr_erinnerung', name: '🔔 Erinnerung fehlende Angaben 🇩🇪', betreff: `Erinnerung: fehlende Gründungsangaben${sfx}`,
+      text: `Hallo${vorname ? ' ' + vorname : ''}\n\nmir fehlen noch einige Angaben für die Gründung. Magst du sie bei Gelegenheit nachreichen? Dann können wir weitermachen.\n\nVielen Dank und viele Grüße` },
+  ]
+}
+
+function GruendungSection({ au, client, onUpdate, emailVorlagen = [], emailSignaturen = [], onedriveTokens = null, onUpdateOnedriveTokens, onUpdateClient }) {
+  const [open, setOpen] = useState(true)
+  const [preview, setPreview] = useState(null)          // { url }
+  const [showCompose, setShowCompose] = useState(false)
+  const [composeMode, setComposeMode] = useState(null)  // 'anfordern' | 'notar' | null
+  const ed = au.erfassungsdaten ?? {}
+  const dokumente = au.dokumente ?? []
+  const canCompose = !!(client && onUpdateClient)
+  const isGmbH = au.typ === 'gmbh_gruendung'
+  const TH = isGmbH
+    ? { c: '#2563eb', soft: 'rgba(37,99,235,0.06)', soft2: 'rgba(37,99,235,0.03)', b: 'rgba(37,99,235,0.3)', b2: 'rgba(37,99,235,0.2)', sel: 'rgba(37,99,235,0.15)' }
+    : { c: '#7c3aed', soft: 'rgba(124,58,237,0.06)', soft2: 'rgba(124,58,237,0.03)', b: 'rgba(124,58,237,0.3)', b2: 'rgba(124,58,237,0.2)', sel: 'rgba(124,58,237,0.15)' }
+
+  useEffect(() => () => { if (preview?.url) URL.revokeObjectURL(preview.url) }, [preview])
+
+  function setFeld(key, val) {
+    onUpdate({ erfassungsdaten: { ...ed, [key]: val }, erfassungsdatenBearbeitetAm: new Date().toISOString() })
+  }
+
+  const grVorlagen = useMemo(() => buildGruendungVorlagen(client, au), [au.erfassungsdaten, client])
+
+  const composePreset = useMemo(() => {
+    if (!showCompose || !composeMode) return null
+    const v = grVorlagen.find(t => t.id === (composeMode === 'notar' ? '_gr_notar' : '_gr_anfordern'))
+    const attachments = composeMode === 'notar'
+      ? [{ name: gruendungFilename(au), data: pdfToBase64(buildGruendungsdatenblatt(client, au)), type: 'application/pdf', size: 0 }]
+      : []
+    return v ? { subject: v.betreff, body: v.text, attachments } : null
+  }, [showCompose, composeMode, au.erfassungsdaten, client])
+
+  function openPreview() {
+    const url = URL.createObjectURL(buildGruendungsdatenblatt(client, au).output('blob'))
+    setPreview({ url })
+  }
+  function confirmDownload() {
+    const doc = buildGruendungsdatenblatt(client, au)
+    const filename = gruendungFilename(au)
+    downloadPdf(doc, filename)
+    onUpdate({
+      dokumente: [{ id: 'dok_' + Date.now().toString(36), art: 'gruendung_datenblatt', name: filename, contentType: 'application/pdf', erstelltAm: new Date().toISOString() }, ...dokumente.filter(d => d.art !== 'gruendung_datenblatt')],
+      verlauf: [{ id: genVerlaufId(), typ: 'dokument_erstellt', datum: todayISO(), text: 'Gründungsdatenblatt erzeugt: ' + filename, erstelltAm: new Date().toISOString() }, ...(au.verlauf ?? [])],
+    })
+    if (preview?.url) URL.revokeObjectURL(preview.url)
+    setPreview(null)
+  }
+  function startSend(mode) { setComposeMode(mode); setShowCompose(true) }
+  function closeCompose() { setShowCompose(false); setComposeMode(null) }
+  function handleSent() {
+    const order = (WORKFLOW_CONFIGS[au.typ]?.steps ?? []).map(s => s.key)
+    const target = composeMode === 'notar' ? 'notar_termin' : 'formular_gesendet'
+    const curIdx = order.indexOf(au.workflowStatus ?? order[0])
+    const tIdx = order.indexOf(target)
+    if (tIdx >= 0 && curIdx < tIdx) onUpdate({ workflowStatus: target, workflowStatusDatum: todayISO() })
+  }
+
+  const fieldInput = (f) => f.options ? (
+    <select value={ed[f.key] ?? ''} onChange={e => setFeld(f.key, e.target.value)} style={inputStyle}>
+      {(ed[f.key] ?? '') === '' && <option value="">— bitte wählen —</option>}
+      {f.options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+    </select>
+  ) : f.textarea ? (
+    <textarea value={ed[f.key] ?? ''} onChange={e => setFeld(f.key, e.target.value)} placeholder={f.placeholder ?? ''} rows={2}
+      style={{ ...inputStyle, resize: 'vertical', whiteSpace: 'pre-wrap', minHeight: '44px' }} />
+  ) : (
+    <input type={f.date ? 'date' : 'text'} value={ed[f.key] ?? ''} onChange={e => setFeld(f.key, e.target.value)} placeholder={f.placeholder ?? ''} style={inputStyle} />
+  )
+
+  return (
+    <div style={{ marginBottom: '16px', border: `1px solid ${TH.b}`, borderRadius: '10px', overflow: 'hidden', background: TH.soft2 }}>
+      <button onClick={() => setOpen(o => !o)}
+        style={{ width: '100%', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: '8px', background: TH.soft, border: 'none', cursor: 'pointer', textAlign: 'left', borderBottom: open ? `1px solid ${TH.b2}` : 'none' }}>
+        <span style={{ fontSize: '15px' }}>🏢</span>
+        <span style={{ fontWeight: 700, fontSize: '13px', color: 'var(--text)', flex: 1 }}>Gründungsdaten ({isGmbH ? 'GmbH' : 'UG'})</span>
+        <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{open ? '▲' : '▼'}</span>
+      </button>
+
+      {open && (
+        <div style={{ padding: '14px' }}>
+          {/* Buttons */}
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '14px' }}>
+            <button onClick={openPreview}
+              style={{ padding: '8px 14px', borderRadius: '8px', border: `1px solid ${TH.c}`, background: 'transparent', color: TH.c, fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
+              📄 Gründungsdatenblatt – Vorschau
+            </button>
+            {canCompose && (
+              <>
+                <button onClick={() => (showCompose && composeMode === 'anfordern') ? closeCompose() : startSend('anfordern')}
+                  style={{ padding: '8px 14px', borderRadius: '8px', border: 'none', background: (showCompose && composeMode === 'anfordern') ? TH.sel : TH.c, color: (showCompose && composeMode === 'anfordern') ? TH.c : '#fff', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
+                  {(showCompose && composeMode === 'anfordern') ? '✕ Schließen' : '📨 Gründungsdaten anfordern'}
+                </button>
+                <button onClick={() => (showCompose && composeMode === 'notar') ? closeCompose() : startSend('notar')}
+                  style={{ padding: '8px 14px', borderRadius: '8px', border: `1px solid ${TH.c}`, background: (showCompose && composeMode === 'notar') ? TH.sel : 'transparent', color: TH.c, fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
+                  {(showCompose && composeMode === 'notar') ? '✕ Schließen' : '📨 Datenblatt / Notartermin senden'}
+                </button>
+              </>
+            )}
+          </div>
+
+          {/* Compose-Panel */}
+          {canCompose && showCompose && (
+            <div style={{ marginBottom: '14px' }}>
+              <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '6px' }}>
+                {composeMode === 'notar' ? 'Notartermin-Mail (mit Gründungsdatenblatt im Anhang)' : 'Anforderungs-Mail (ohne Anhang)'} – {/dänemark|danmark|denmark|\bdk\b/.test((au.erfassungsdaten?.gs_land || client?.land || '').toLowerCase()) ? '🇩🇰 Dänisch' : '🇩🇪 Deutsch'} – vorbefüllt. Prüfen, dann „Senden".
+              </div>
+              <JAComposePanel au={au} client={client}
+                emailVorlagen={emailVorlagen} extraVorlagen={grVorlagen}
+                preset={composePreset} forcePreset={true} onSent={handleSent}
+                emailSignaturen={emailSignaturen} onedriveTokens={onedriveTokens}
+                onUpdateOnedriveTokens={onUpdateOnedriveTokens} onUpdateClient={onUpdateClient}
+                onClose={closeCompose} />
+            </div>
+          )}
+
+          {dokumente.some(d => d.art === 'gruendung_datenblatt') && (
+            <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '12px' }}>
+              📄 Datenblatt zuletzt erzeugt {fmtShortDate((dokumente.find(d => d.art === 'gruendung_datenblatt') || {}).erstelltAm)}
+            </div>
+          )}
+
+          {/* Felder */}
+          {GRUENDUNG_FELDER.map(grp => (
+            <div key={grp.gruppe} style={{ marginBottom: '12px' }}>
+              <div style={{ ...labelStyle, marginBottom: '6px', color: TH.c }}>{grp.gruppe}</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '8px' }}>
+                {grp.felder.map(f => (
+                  <label key={f.key} style={{ display: 'flex', flexDirection: 'column', gap: '3px', gridColumn: f.wide ? '1 / -1' : 'auto' }}>
+                    <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{f.label}</span>
+                    {fieldInput(f)}
+                  </label>
+                ))}
+              </div>
+              {/* Kapital-Hinweis je nach Rechtsform */}
+              {grp.gruppe === 'Kapital' && (
+                <div style={{ marginTop: '6px', fontSize: '10px', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                  {isGmbH
+                    ? 'GmbH: Stammkapital 25.000 €, mind. 12.500 € bei der HR-Anmeldung einzuzahlen.'
+                    : 'UG: freies Stammkapital ab 1 €, nur Bareinlage; gesetzliche Thesaurierungspflicht (25 % bis 25.000 €).'}
+                </div>
+              )}
+            </div>
+          ))}
+
+          {/* Hinweis: Datenblatt ersetzt keine Beurkundung */}
+          <div style={{ marginTop: '4px', fontSize: '10px', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+            Hinweis: Das Gründungsdatenblatt dient nur der Vorbereitung und ersetzt keine notarielle Beurkundung. Satzung/Beurkundung erfolgen beim Notar.
+          </div>
+        </div>
+      )}
+
+      {/* PDF-Vorschau-Modal */}
+      {preview && (
+        <div onClick={() => { if (preview.url) URL.revokeObjectURL(preview.url); setPreview(null) }}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: 'var(--surface)', borderRadius: '12px', width: 'min(900px, 95vw)', height: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 10px 40px rgba(0,0,0,0.45)' }}>
+            <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '10px', borderBottom: '1px solid var(--border)' }}>
+              <span style={{ fontSize: '15px' }}>🏢</span>
+              <span style={{ fontWeight: 700, fontSize: '14px', color: 'var(--text)', flex: 1 }}>Vorschau – Gründungsdatenblatt</span>
+              <button onClick={() => { if (preview.url) URL.revokeObjectURL(preview.url); setPreview(null) }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '18px', lineHeight: 1 }}>✕</button>
+            </div>
+            <iframe title="Datenblatt-Vorschau" src={preview.url} style={{ flex: 1, width: '100%', border: 'none', background: '#fff' }} />
+            <div style={{ padding: '12px 16px', display: 'flex', gap: '8px', justifyContent: 'flex-end', borderTop: '1px solid var(--border)' }}>
+              <button onClick={() => { if (preview.url) URL.revokeObjectURL(preview.url); setPreview(null) }}
+                style={{ padding: '8px 16px', borderRadius: '8px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text)', fontSize: '13px', cursor: 'pointer' }}>Abbrechen</button>
+              <button onClick={confirmDownload}
+                style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: TH.c, color: '#fff', fontSize: '13px', fontWeight: 700, cursor: 'pointer' }}>⬇️ Herunterladen</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete, client, onOpenEmail, onUpdateClient, emailVorlagen, emailSignaturen, onedriveTokens, onUpdateOnedriveTokens }) {
   const typCfg    = AUFTRAGS_TYP_CFG[au.typ]      ?? AUFTRAGS_TYP_CFG.freitext
   const statusCfg = AUFTRAGS_STATUS_CFG[au.status] ?? AUFTRAGS_STATUS_CFG.offen
@@ -2944,7 +3203,7 @@ function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete, client, onOpe
           )}
 
           {/* ── USt-Reg. DE: Antragsdaten + PDF-Erzeugung ── */}
-          {(au.typ === 'ust_reg_de' || (au.erfassungsdaten && au.typ !== 'geschaeftsadresse' && au.typ !== 'vorratsgesell')) && (
+          {(au.typ === 'ust_reg_de' || (au.erfassungsdaten && au.typ !== 'geschaeftsadresse' && au.typ !== 'vorratsgesell' && au.typ !== 'ug_gruendung' && au.typ !== 'gmbh_gruendung')) && (
             <AntragsdatenSection au={au} client={client} onUpdate={onUpdate} />
           )}
 
@@ -2959,6 +3218,14 @@ function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete, client, onOpe
           {/* ── Vorratsgesellschaft: Daten + Angebot-PDF + Versand ── */}
           {au.typ === 'vorratsgesell' && (
             <VorratsgesellSection au={au} client={client} onUpdate={onUpdate}
+              emailVorlagen={emailVorlagen} emailSignaturen={emailSignaturen}
+              onedriveTokens={onedriveTokens} onUpdateOnedriveTokens={onUpdateOnedriveTokens}
+              onUpdateClient={onUpdateClient} />
+          )}
+
+          {/* ── UG-/GmbH-Gründung: Gründungsdaten + Datenblatt-PDF + Versand ── */}
+          {(au.typ === 'ug_gruendung' || au.typ === 'gmbh_gruendung') && (
+            <GruendungSection au={au} client={client} onUpdate={onUpdate}
               emailVorlagen={emailVorlagen} emailSignaturen={emailSignaturen}
               onedriveTokens={onedriveTokens} onUpdateOnedriveTokens={onUpdateOnedriveTokens}
               onUpdateClient={onUpdateClient} />
