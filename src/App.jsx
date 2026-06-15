@@ -23,6 +23,7 @@ import FormularPage from './components/formular/FormularPage.jsx'
 import BudgetView   from './components/BudgetView.jsx'
 import BotInbox, { BotInboxBadge } from './components/BotInbox.jsx'
 import WebsiteAnfragen from './components/WebsiteAnfragen.jsx'
+import { AUFTRAGS_TYP_CFG, WORKFLOW_CONFIGS } from './components/detail/AuftraegeTab.jsx'
 
 const BACKUP_INTERVAL_MS = 30 * 60 * 1000  // 30 Minuten
 
@@ -1332,16 +1333,32 @@ export default function App() {
                   }
 
                   // Interesse → Auftragstyp (Etablering-Workflows)
-                  const TYP_MAP = { 'USt-Registrierung DE': 'ust_reg_de' }
+                  const TYP_MAP = {
+                    'USt-Registrierung DE': 'ust_reg_de',
+                    'Geschäftsadresse':     'geschaeftsadresse',
+                    'UG-Gründung':          'ug_gruendung',
+                    'GmbH-Gründung':        'gmbh_gruendung',
+                    'Vorratsgesellschaft':  'vorratsgesell',
+                  }
                   const auftragTyp = TYP_MAP[data.interesse] || null
 
+                  const today  = new Date().toISOString().slice(0, 10)
+                  const newId  = () => 'au_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5)
+                  const leadVerlauf = () => ([{
+                    id: 'v_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+                    typ: 'unterlagen_erhalten',
+                    datum: data.erstelltAm ? String(data.erstelltAm).slice(0, 10) : today,
+                    text: 'Anfrage über Homepage-Formular eingegangen',
+                    erstelltAm: new Date().toISOString(),
+                  }])
+
                   let auftraege
-                  if (auftragTyp) {
-                    const today = new Date().toISOString().slice(0, 10)
+                  if (auftragTyp === 'ust_reg_de') {
+                    // USt-Registrierung DE – unverändertes Verhalten
                     const fd = data.formularDaten || {}
-                    const auftrag = {
-                      id: 'au_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
-                      typ: auftragTyp,
+                    auftraege = [{
+                      id: newId(),
+                      typ: 'ust_reg_de',
                       bezeichnung: 'USt-Registrierung DE' + (data.name ? ' – ' + data.name : ''),
                       jahr: new Date().getFullYear(),
                       monat: null,
@@ -1349,13 +1366,7 @@ export default function App() {
                       status: 'in_bearbeitung',
                       notiz: '',
                       hinweise: [],
-                      verlauf: [{
-                        id: 'v_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
-                        typ: 'unterlagen_erhalten',
-                        datum: data.erstelltAm ? String(data.erstelltAm).slice(0, 10) : today,
-                        text: 'Anfrage über Homepage-Formular eingegangen',
-                        erstelltAm: new Date().toISOString(),
-                      }],
+                      verlauf: leadVerlauf(),
                       erstelltAm: new Date().toISOString(),
                       erledigtAm: null,
                       workflowStatus: data.formularDaten ? 'formular_ausgefuellt' : 'anfrage',
@@ -1363,12 +1374,47 @@ export default function App() {
                       erfassungsdaten: { ...fd },
                       erfassungsdatenOriginal: { ...fd },   // Snapshot der ursprünglichen Webformular-Daten
                       dokumente: [],
-                    }
-                    auftraege = [auftrag]
+                    }]
+                  } else if (auftragTyp) {
+                    // Geschäftsadresse / UG / GmbH / Vorratsgesellschaft – generisch aus den Configs
+                    const typLabel   = AUFTRAGS_TYP_CFG[auftragTyp]?.label || data.interesse || auftragTyp
+                    const ersterStep = WORKFLOW_CONFIGS[auftragTyp]?.steps?.[0]?.key || 'anfrage'
+                    // Einfache Lead-Vorbefüllung (Firma → Unternehmensname, Name → Ansprechpartner, E-Mail)
+                    const PREFILL = {
+                      geschaeftsadresse: { firma: 'unternehmensname', name: 'ansprechpartner',          email: 'ansprechpartner_email' },
+                      vorratsgesell:     { firma: 'erwerber_name',    name: 'erwerber_ansprechpartner', email: 'erwerber_email' },
+                      ug_gruendung:      { firma: 'g_firmenname',     name: 'gs_name',                  email: 'gs_email' },
+                      gmbh_gruendung:    { firma: 'g_firmenname',     name: 'gs_name',                  email: 'gs_email' },
+                    }[auftragTyp] || {}
+                    const ed = {}
+                    if (PREFILL.firma && data.name)            ed[PREFILL.firma] = data.name
+                    if (PREFILL.name  && data.ansprechpartner) ed[PREFILL.name]  = data.ansprechpartner
+                    if (PREFILL.email && data.email)           ed[PREFILL.email] = data.email
+                    auftraege = [{
+                      id: newId(),
+                      typ: auftragTyp,
+                      bezeichnung: typLabel + (data.name ? ' – ' + data.name : ''),
+                      jahr: new Date().getFullYear(),
+                      monat: null,
+                      frist: '',
+                      status: 'in_bearbeitung',
+                      notiz: '',
+                      hinweise: [],
+                      verlauf: leadVerlauf(),
+                      erstelltAm: new Date().toISOString(),
+                      erledigtAm: null,
+                      workflowStatus: ersterStep,
+                      workflowStatusDatum: today,
+                      erfassungsdaten: ed,
+                      dokumente: [],
+                    }]
                   }
 
+                  const auftragLabel = auftragTyp === 'ust_reg_de'
+                    ? 'USt-Registrierung DE'
+                    : (AUFTRAGS_TYP_CFG[auftragTyp]?.label || data.interesse)
                   const confirmMsg = auftragTyp
-                    ? `Mandant „${data.name}" anlegen und Auftrag „USt-Registrierung DE" automatisch erstellen?`
+                    ? `Mandant „${data.name}" anlegen und Auftrag „${auftragLabel}" automatisch erstellen?`
                     : `Mandant „${data.name}" anlegen?`
                   if (!window.confirm(confirmMsg)) return
 
