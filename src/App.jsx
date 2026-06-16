@@ -85,10 +85,11 @@ function buildAuftragFromLead(data) {
     ug_gruendung:      { firma: 'g_firmenname',     name: 'gs_name',                  email: 'gs_email' },
     gmbh_gruendung:    { firma: 'g_firmenname',     name: 'gs_name',                  email: 'gs_email' },
   }[auftragTyp] || {}
-  const ed = {}
-  if (PREFILL.firma && data.name)            ed[PREFILL.firma] = data.name
-  if (PREFILL.name  && data.ansprechpartner) ed[PREFILL.name]  = data.ansprechpartner
-  if (PREFILL.email && data.email)           ed[PREFILL.email] = data.email
+  // formular_daten aus dem Webformular als Basis übernehmen; Firma/Name/E-Mail nur als Fallback
+  const ed = { ...(data.formularDaten || {}) }
+  if (PREFILL.firma && data.name            && !ed[PREFILL.firma]) ed[PREFILL.firma] = data.name
+  if (PREFILL.name  && data.ansprechpartner && !ed[PREFILL.name])  ed[PREFILL.name]  = data.ansprechpartner
+  if (PREFILL.email && data.email           && !ed[PREFILL.email]) ed[PREFILL.email] = data.email
   return {
     ...base,
     bezeichnung: typLabel + (data.name ? ' – ' + data.name : ''),
