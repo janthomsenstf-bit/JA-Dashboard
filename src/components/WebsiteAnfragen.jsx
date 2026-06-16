@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase } from '../utils/supabaseClient.js'
+import { searchAll, filterByCategory } from '../utils/search.js'
 
 const STATUS_CFG = {
   neu:             { label: 'Neu',             color: '#2563eb', bg: '#2563eb18' },
@@ -33,12 +34,57 @@ function formatDate(iso) {
     + ', ' + d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
 }
 
-export default function WebsiteAnfragen({ onCreateMandant }) {
+export default function WebsiteAnfragen({ onCreateMandant, onAddAuftragToMandant, clients = [] }) {
   const [anfragen, setAnfragen] = useState([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
   const [search, setSearch] = useState('')
   const [expanded, setExpanded] = useState(null)
+  const [pickerFor, setPickerFor] = useState(null)   // Anfrage-ID, für die der Mandanten-Picker offen ist
+  const [pickerQuery, setPickerQuery] = useState('')
+
+  // Lead-Daten aus einer Anfrage (geteilt von „Mandant anlegen" + „Auftrag zu Mandant")
+  const leadDataFor = useCallback((a) => ({
+    name: a.firma || a.name,
+    ansprechpartner: a.name,
+    email: a.email,
+    telefon: a.telefon || '',
+    land: a.land || '',
+    interesse: a.interesse || '',
+    formularDaten: a.formular_daten || null,
+    websiteAnfrageId: a.id,
+    erstelltAm: a.erstellt_am || null,
+    notizen: `── Website-Anfrage ──\nEingegangen: ${formatDate(a.erstellt_am)}\nGewünschte Leistung: ${a.interesse}\n\n${a.nachricht || ''}`,
+  }), [])
+
+  // Mandanten-Picker: vorhandene Suchlogik (utils/search.js, dieselbe wie GlobalSearch)
+  const pickerClients = useMemo(() => {
+    const active = (clients || []).filter(c => !c.archiviert)
+    const q = pickerQuery.trim()
+    if (q.length < 2) {
+      return [...active].sort((x, y) => (x.name || '').localeCompare(y.name || '')).slice(0, 30)
+    }
+    return filterByCategory(searchAll(active, q).results, 'mandanten').map(r => r.client).slice(0, 30)
+  }, [clients, pickerQuery])
+
+  async function attachToMandant(a, clientId) {
+    const result = onAddAuftragToMandant?.(clientId, leadDataFor(a))
+    if (!result) return
+    const linkNote = [
+      a.notiz || '',
+      `── Verknüpft ${formatDate(new Date().toISOString())} ──`,
+      `Mandant: ${result.clientName} (${clientId})`,
+      result.auftragId
+        ? `Auftrag: ${result.auftragLabel} (${result.auftragId})`
+        : 'Kein passender Auftragstyp – nur mit Mandant verknüpft',
+    ].filter(Boolean).join('\n')
+    await supabase.from('website_anfragen')
+      .update({ mandant_id: clientId, notiz: linkNote, status: 'erledigt' })
+      .eq('id', a.id)
+    setAnfragen(prev => prev.map(x => x.id === a.id ? { ...x, mandant_id: clientId, notiz: linkNote, status: 'erledigt' } : x))
+    setPickerFor(null)
+    setPickerQuery('')
+  }
 
   const fetchAnfragen = useCallback(async () => {
     setLoading(true)
@@ -297,23 +343,18 @@ export default function WebsiteAnfragen({ onCreateMandant }) {
                       )}
                       <button
                         onClick={() => {
-                          const ok = onCreateMandant({
-                            name: a.firma || a.name,
-                            ansprechpartner: a.name,
-                            email: a.email,
-                            telefon: a.telefon || '',
-                            land: a.land || '',
-                            interesse: a.interesse || '',
-                            formularDaten: a.formular_daten || null,
-                            websiteAnfrageId: a.id,
-                            erstelltAm: a.erstellt_am || null,
-                            notizen: `── Website-Anfrage ──\nEingegangen: ${formatDate(a.erstellt_am)}\nGewünschte Leistung: ${a.interesse}\n\n${a.nachricht || ''}`,
-                          })
+                          const ok = onCreateMandant(leadDataFor(a))
                           if (ok) updateStatus(a.id, 'erledigt')
                         }}
                         style={actionBtn('#7c3aed')}
                       >
                         Mandant anlegen
+                      </button>
+                      <button
+                        onClick={() => { setPickerFor(pickerFor === a.id ? null : a.id); setPickerQuery('') }}
+                        style={actionBtn('#0891b2')}
+                      >
+                        {pickerFor === a.id ? '✕ Auswahl schließen' : 'Auftrag zu bestehendem Mandanten'}
                       </button>
                       <button onClick={() => deleteAnfrage(a.id)} style={{
                         ...actionBtn('#dc2626'), marginLeft: 'auto',
@@ -321,6 +362,56 @@ export default function WebsiteAnfragen({ onCreateMandant }) {
                         Löschen
                       </button>
                     </div>
+
+                    {/* Mandanten-Picker für „Auftrag zu bestehendem Mandanten" */}
+                    {pickerFor === a.id && (
+                      <div style={{ marginTop: 12, border: '1px solid var(--border)', borderRadius: 8, padding: 12, background: 'var(--surface)' }}>
+                        <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8, color: 'var(--text)' }}>
+                          Mandant wählen — Auftrag „{a.interesse || '—'}" wird angelegt und die Anfrage verknüpft
+                        </div>
+                        <input
+                          autoFocus
+                          type="text"
+                          value={pickerQuery}
+                          onChange={e => setPickerQuery(e.target.value)}
+                          placeholder="Mandant suchen (Name, Nummer …)"
+                          style={{
+                            width: '100%', padding: '8px 12px', borderRadius: 8,
+                            border: '1px solid var(--border)', background: 'var(--surface2)',
+                            color: 'var(--text)', fontSize: 13,
+                          }}
+                        />
+                        <div style={{ maxHeight: 240, overflowY: 'auto', marginTop: 8, border: '1px solid var(--border)', borderRadius: 8 }}>
+                          {pickerClients.length === 0 ? (
+                            <div style={{ padding: 14, textAlign: 'center', color: 'var(--text-muted)', fontSize: 12 }}>
+                              Keine Mandanten gefunden.
+                            </div>
+                          ) : (
+                            pickerClients.map(c => (
+                              <div
+                                key={c.id}
+                                onClick={() => {
+                                  if (window.confirm(`Auftrag „${a.interesse || '—'}" zu Mandant „${c.name}" anlegen und die Anfrage als erledigt verknüpfen?`)) {
+                                    attachToMandant(a, c.id)
+                                  }
+                                }}
+                                style={{
+                                  padding: '8px 12px', cursor: 'pointer',
+                                  borderBottom: '1px solid var(--border)',
+                                }}
+                                onMouseEnter={e => e.currentTarget.style.background = 'var(--surface2)'}
+                                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                              >
+                                <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text)' }}>{c.name}</div>
+                                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                                  {[c.mandantennummer, c.land, (c.kontakte || [])[0]?.email].filter(Boolean).join(' · ') || '—'}
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
