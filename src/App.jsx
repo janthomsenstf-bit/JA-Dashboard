@@ -28,6 +28,7 @@ import { AUFTRAGS_TYP_CFG, WORKFLOW_CONFIGS } from './components/detail/Auftraeg
 // ── Website-Lead → Auftrag (geteilt von "Mandant anlegen" + "Auftrag zu Mandant") ──
 const LEAD_TYP_MAP = {
   'USt-Registrierung DE': 'ust_reg_de',
+  'Umsatzsteuerregistrierung': 'ust_reg_de',   // Alias: Wert des allgemeinen Kontaktformulars
   'Geschäftsadresse':     'geschaeftsadresse',
   'UG-Gründung':          'ug_gruendung',
   'GmbH-Gründung':        'gmbh_gruendung',
