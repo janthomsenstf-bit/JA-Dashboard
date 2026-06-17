@@ -433,6 +433,26 @@ export default function BudgetView({ clients, onSelectClient }) {
   // Mandanten ohne Honorare
   const ohneHonorare = clients.filter(c => !c.archiviert && (!c.honorare || c.honorare.length === 0))
 
+  // Offene abrechenbare Zeiten (Zeiterfassung, mandantenübergreifend)
+  const offeneZeiten = useMemo(() => {
+    const rows = []
+    let totalBetrag = 0, totalMin = 0
+    clients.filter(c => !c.archiviert).forEach(c => {
+      const offen = (c.zeiteintraege ?? []).filter(z => z.status !== 'abgerechnet')
+      if (offen.length === 0) return
+      const satz = c.stundensatz ?? 90
+      let min = 0, betrag = 0, pausch = 0
+      offen.forEach(z => {
+        if (z.art === 'pauschale') { betrag += (z.pauschalBetrag || 0); pausch++ }
+        else { min += (z.dauerMin || 0); betrag += ((z.dauerMin || 0) / 60) * satz }
+      })
+      rows.push({ id: c.id, name: c.name, min, betrag, pausch, anzahl: offen.length })
+      totalBetrag += betrag; totalMin += min
+    })
+    rows.sort((a, b) => b.betrag - a.betrag)
+    return { rows, totalBetrag, totalMin }
+  }, [clients])
+
   return (
     <div style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
@@ -489,6 +509,62 @@ export default function BudgetView({ clients, onSelectClient }) {
           </div>
         )}
       </div>
+
+      {/* ── Offene abrechenbare Zeiten (Zeiterfassung) ── */}
+      {offeneZeiten.rows.length > 0 && (
+        <div style={{ border: '1px solid var(--border)', borderRadius: '10px', overflow: 'hidden' }}>
+          <div style={{ padding: '10px 14px', background: 'var(--surface)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', flex: 1 }}>
+              ⏱ Wer hat offene abrechenbare Zeiten?
+            </span>
+            <span style={{ fontSize: '13px', fontWeight: 700, color: '#0891b2' }}>{fmtEuro(offeneZeiten.totalBetrag)}</span>
+            <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>offen gesamt</span>
+          </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+              <thead>
+                <tr style={{ background: 'var(--surface2)', borderBottom: '1px solid var(--border)' }}>
+                  <Th>Mandant</Th>
+                  <Th align="right">Offene Stunden</Th>
+                  <Th align="right">Offener Betrag</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {offeneZeiten.rows.map((r, i) => (
+                  <tr key={r.id} style={{ borderBottom: '1px solid var(--border)', background: i % 2 === 0 ? 'transparent' : 'rgba(0,0,0,0.02)' }}>
+                    <td style={{ padding: '8px 12px' }}>
+                      <button onClick={() => onSelectClient(r.id)}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent)', fontWeight: 600, fontSize: '12px', textDecoration: 'underline', padding: 0 }}>
+                        {r.name}
+                      </button>
+                    </td>
+                    <td style={{ padding: '8px 12px', textAlign: 'right', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                      {r.min > 0 ? (r.min / 60).toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) + ' Std' : '–'}
+                      {r.pausch > 0 && <span style={{ marginLeft: '6px', fontSize: '10px', color: '#7c3aed' }}>+{r.pausch} Pausch.</span>}
+                    </td>
+                    <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 700, color: '#0891b2', whiteSpace: 'nowrap' }}>
+                      {fmtEuro(r.betrag, 2)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr style={{ borderTop: '2px solid var(--border)', background: 'var(--surface)' }}>
+                  <td style={{ padding: '8px 12px', fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)' }}>
+                    Σ {offeneZeiten.rows.length} Mandant{offeneZeiten.rows.length !== 1 ? 'en' : ''}
+                  </td>
+                  <td style={{ padding: '8px 12px', textAlign: 'right', fontSize: '11px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                    {(offeneZeiten.totalMin / 60).toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 2 })} Std
+                  </td>
+                  <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 700, fontSize: '14px', color: '#0891b2', whiteSpace: 'nowrap' }}>
+                    {fmtEuro(offeneZeiten.totalBetrag)}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* ── Warnung: einmalige ohne Jahr ── */}
       {einmaligOhneJahr > 0 && yearFilter !== null && (
