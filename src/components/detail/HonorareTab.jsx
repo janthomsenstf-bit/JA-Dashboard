@@ -400,7 +400,20 @@ function todayISO()      { return new Date().toISOString().slice(0, 10) }
 function deDateShort(s)  { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s || '')); return m ? `${m[3]}.${m[2]}.${m[1]}` : String(s || '') }
 function fmtStunden(min) { return ((min || 0) / 60).toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) }
 function mkZeit() {
-  return { id: 'z' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), datum: todayISO(), dauerMin: 0, beschreibung: '', status: 'offen', erstelltAm: new Date().toISOString() }
+  return { id: 'z' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), datum: todayISO(), art: 'stunden', dauerMin: 0, pauschalBetrag: 0, beschreibung: '', status: 'offen', erstelltAm: new Date().toISOString() }
+}
+function eintragBetrag(z, satz) {
+  return z.art === 'pauschale' ? (z.pauschalBetrag || 0) : ((z.dauerMin || 0) / 60) * (satz || 0)
+}
+const RE_EURO = /(\d+(?:[.,]\d+)?)\s*(?:€|eur\b|euro\b)/i
+function stripPauschale(text) {
+  let t = (text || '')
+    .replace(RE_EURO, ' ')
+    .replace(/pauschal\w*/gi, ' ')
+    .replace(/\beinmal(ig)?\b/gi, ' ')
+    .replace(/\s{2,}/g, ' ').trim().replace(/^[,\-–·\s]+/, '').trim()
+  t = t.replace(/^f[üu]r\s+(die\s+|das\s+|den\s+|der\s+)?/i, '')
+  return t.trim()
 }
 
 // ── Diktat-Parser (lokaler Fallback ohne KI) ──────────────────────────────────────
@@ -428,19 +441,32 @@ function stripDauer(text) {
     .replace(/\s{2,}/g, ' ').trim().replace(/^[,\-–·\s]+/, '').trim()
 }
 function parseDiktatLocal(text) {
-  return { datum: todayISO(), dauerMin: parseDauerMin(text), beschreibung: stripDauer(text) || (text || '').trim() }
+  if (/\bpauschal/i.test(text)) {
+    const m = text.match(RE_EURO) || text.match(/pauschal\w*\s+(\d+(?:[.,]\d+)?)/i) || text.match(/(\d+(?:[.,]\d+)?)/)
+    const betrag = m ? parseFloat(String(m[1] || '0').replace(',', '.')) : 0
+    return { datum: todayISO(), art: 'pauschale', pauschalBetrag: betrag, dauerMin: 0, beschreibung: stripPauschale(text) || (text || '').trim() }
+  }
+  return { datum: todayISO(), art: 'stunden', dauerMin: parseDauerMin(text), pauschalBetrag: 0, beschreibung: stripDauer(text) || (text || '').trim() }
 }
 async function parseDiktat(text) {
   if (hasAiKey()) {
     try {
-      const sys = `Du wandelst eine kurze deutsche Sprachnotiz eines Steuerberaters über eine erbrachte Leistung in einen strukturierten Zeiteintrag um. Heutiges Datum: ${todayISO()}. Antworte ausschließlich mit JSON: {"dauerMin": <Dauer in Minuten als Ganzzahl>, "beschreibung": "<knappe sachliche Tätigkeit ohne die Dauerangabe>", "datum": "YYYY-MM-DD"}. Beispiele: "zwei Stunden" -> 120, "eine halbe Stunde" -> 30, "1,5 Stunden" -> 90, "30 Minuten" -> 30. Ohne Datumsangabe nimm das heutige Datum.`
+      const sys = `Du wandelst eine kurze deutsche Sprachnotiz eines Steuerberaters über eine erbrachte Leistung in einen strukturierten Eintrag um. Heutiges Datum: ${todayISO()}. Antworte ausschließlich mit JSON: {"art": "stunden" oder "pauschale", "dauerMin": <Minuten als Ganzzahl, 0 bei Pauschale>, "pauschalBetrag": <Euro-Betrag als Zahl, 0 bei Stunden>, "beschreibung": "<knappe sachliche Tätigkeit ohne Dauer-/Betragsangabe>", "datum": "YYYY-MM-DD"}. Kommt das Wort "pauschal" vor: art=pauschale und pauschalBetrag = der genannte Euro-Betrag. Sonst art=stunden mit dauerMin. Beispiele: "zwei Stunden Telefonat" -> {"art":"stunden","dauerMin":120,"beschreibung":"Telefonat"}; "einmal pauschal 100 Euro für die Anlage der Firma und der Mitarbeiter" -> {"art":"pauschale","pauschalBetrag":100,"beschreibung":"Anlage der Firma und der Mitarbeiter"}. Ohne Datumsangabe nimm das heutige Datum.`
       const r = await callAI(sys, text)
       const datum = /^\d{4}-\d{2}-\d{2}$/.test(r?.datum || '') ? r.datum : todayISO()
-      let dauerMin = Math.max(0, Math.round(Number(r?.dauerMin) || 0))
-      let beschreibung = String(r?.beschreibung || '').trim()
-      if (!dauerMin) dauerMin = parseDauerMin(text)
-      if (!beschreibung) beschreibung = stripDauer(text)
-      if (dauerMin || beschreibung) return { datum, dauerMin, beschreibung }
+      if (r?.art === 'pauschale') {
+        let betrag = Math.max(0, Number(r?.pauschalBetrag) || 0)
+        let beschreibung = String(r?.beschreibung || '').trim()
+        if (!betrag) betrag = parseDiktatLocal(text).pauschalBetrag
+        if (!beschreibung) beschreibung = stripPauschale(text)
+        if (betrag || beschreibung) return { datum, art: 'pauschale', pauschalBetrag: betrag, dauerMin: 0, beschreibung }
+      } else {
+        let dauerMin = Math.max(0, Math.round(Number(r?.dauerMin) || 0))
+        let beschreibung = String(r?.beschreibung || '').trim()
+        if (!dauerMin) dauerMin = parseDauerMin(text)
+        if (!beschreibung) beschreibung = stripDauer(text)
+        if (dauerMin || beschreibung) return { datum, art: 'stunden', dauerMin, pauschalBetrag: 0, beschreibung }
+      }
     } catch { /* fällt auf lokalen Parser zurück */ }
   }
   return parseDiktatLocal(text)
@@ -510,21 +536,36 @@ function ZeitVoiceBlock({ onParsed }) {
 // ── Manuelles Formular ────────────────────────────────────────────────────────────
 function ZeitForm({ initial, onSave, onCancel }) {
   const [datum, setDatum] = useState(initial.datum || todayISO())
+  const [art, setArt] = useState(initial.art || 'stunden')
   const [stdVal, setStdVal] = useState(initial.dauerMin ? String(initial.dauerMin / 60).replace('.', ',') : '')
+  const [pausVal, setPausVal] = useState(initial.pauschalBetrag ? String(initial.pauschalBetrag).replace('.', ',') : '')
   const [besch, setBesch] = useState(initial.beschreibung || '')
   const dauerMin = Math.round((parseFloat(String(stdVal).replace(',', '.')) || 0) * 60)
-  const canSave = dauerMin > 0 && besch.trim()
+  const pauschalBetrag = Math.max(0, parseFloat(String(pausVal).replace(',', '.')) || 0)
+  const canSave = !!besch.trim() && (art === 'pauschale' ? pauschalBetrag > 0 : dauerMin > 0)
   return (
     <div style={{ border: `2px solid ${ZEIT_ACCENT}44`, borderRadius: '8px', padding: '12px', background: 'var(--surface)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: '150px 120px', gap: '10px' }}>
-        <div><FieldLabel>Datum</FieldLabel><input type="date" value={datum} onChange={e => setDatum(e.target.value)} style={inputBase} /></div>
-        <div><FieldLabel>Dauer (Std.) *</FieldLabel><input type="text" inputMode="decimal" value={stdVal} onChange={e => setStdVal(e.target.value)} placeholder="z. B. 1,5" style={inputBase} /></div>
+      <div>
+        <FieldLabel>Abrechnungsart</FieldLabel>
+        <div style={{ display: 'flex', gap: '6px' }}>
+          {[['stunden', '⏱ Stunden'], ['pauschale', '💶 Pauschale']].map(([k, l]) => (
+            <button key={k} onClick={() => setArt(k)}
+              style={{ flex: 1, padding: '7px', borderRadius: '6px', border: `1px solid ${art === k ? ZEIT_ACCENT : 'var(--border)'}`, background: art === k ? `${ZEIT_ACCENT}14` : 'transparent', color: art === k ? ZEIT_ACCENT : 'var(--text-secondary)', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>{l}</button>
+          ))}
+        </div>
       </div>
-      <div><FieldLabel>Tätigkeit *</FieldLabel><input value={besch} onChange={e => setBesch(e.target.value)} placeholder="z. B. Vorbereitung Buchhaltung Juni 2026" style={inputBase} /></div>
-      {dauerMin > 0 && <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>= {fmtStunden(dauerMin)} Std</div>}
+      <div style={{ display: 'grid', gridTemplateColumns: '150px 130px', gap: '10px' }}>
+        <div><FieldLabel>Datum</FieldLabel><input type="date" value={datum} onChange={e => setDatum(e.target.value)} style={inputBase} /></div>
+        {art === 'pauschale'
+          ? <div><FieldLabel>Pauschalbetrag (€) *</FieldLabel><input type="text" inputMode="decimal" value={pausVal} onChange={e => setPausVal(e.target.value)} placeholder="z. B. 100" style={inputBase} /></div>
+          : <div><FieldLabel>Dauer (Std.) *</FieldLabel><input type="text" inputMode="decimal" value={stdVal} onChange={e => setStdVal(e.target.value)} placeholder="z. B. 1,5" style={inputBase} /></div>}
+      </div>
+      <div><FieldLabel>Tätigkeit *</FieldLabel><input value={besch} onChange={e => setBesch(e.target.value)} placeholder="z. B. Anlage Firma und Mitarbeiter" style={inputBase} /></div>
+      {art === 'stunden' && dauerMin > 0 && <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>= {fmtStunden(dauerMin)} Std</div>}
+      {art === 'pauschale' && pauschalBetrag > 0 && <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>= {fmtEuro(pauschalBetrag, 2)} pauschal</div>}
       <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
         <button onClick={onCancel} style={btnGhost}>Abbrechen</button>
-        <button onClick={() => canSave && onSave({ datum, dauerMin, beschreibung: besch.trim() })} disabled={!canSave}
+        <button onClick={() => canSave && onSave({ datum, art, dauerMin: art === 'stunden' ? dauerMin : 0, pauschalBetrag: art === 'pauschale' ? pauschalBetrag : 0, beschreibung: besch.trim() })} disabled={!canSave}
           style={{ ...btnPrimary, padding: '6px 18px', fontSize: '12px', opacity: canSave ? 1 : 0.5, cursor: canSave ? 'pointer' : 'not-allowed' }}>Speichern</button>
       </div>
     </div>
@@ -534,11 +575,16 @@ function ZeitForm({ initial, onSave, onCancel }) {
 // ── Zeile ─────────────────────────────────────────────────────────────────────────
 function ZeitRow({ z, satz, onEdit, onDelete, onStatus }) {
   const abger = z.status === 'abgerechnet'
-  const betrag = (z.dauerMin / 60) * satz
+  const isPaus = z.art === 'pauschale'
+  const betrag = eintragBetrag(z, satz)
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: '7px', background: abger ? 'var(--surface2)' : 'var(--surface)', opacity: abger ? 0.7 : 1 }}>
       <div style={{ fontSize: '11px', color: 'var(--text-muted)', width: '62px', flexShrink: 0 }}>{deDateShort(z.datum)}</div>
-      <div style={{ fontSize: '12px', fontWeight: 700, color: ZEIT_ACCENT, width: '58px', flexShrink: 0, whiteSpace: 'nowrap' }}>{fmtStunden(z.dauerMin)} Std</div>
+      <div style={{ width: '66px', flexShrink: 0, whiteSpace: 'nowrap' }}>
+        {isPaus
+          ? <span style={{ fontSize: '10px', fontWeight: 700, color: '#7c3aed', background: 'rgba(124,58,237,0.1)', padding: '2px 7px', borderRadius: '8px' }}>Pauschale</span>
+          : <span style={{ fontSize: '12px', fontWeight: 700, color: ZEIT_ACCENT }}>{fmtStunden(z.dauerMin)} Std</span>}
+      </div>
       <div style={{ flex: 1, minWidth: 0, fontSize: '12px', color: 'var(--text)' }}>{z.beschreibung}</div>
       <div style={{ fontSize: '11px', color: 'var(--text-muted)', whiteSpace: 'nowrap', flexShrink: 0 }}>{fmtEuro(betrag, 2)}</div>
       {abger
@@ -565,8 +611,9 @@ function ZeiterfassungBlock({ client, onUpdate }) {
 
   const offen = eintraege.filter(z => z.status !== 'abgerechnet')
   const abger = eintraege.filter(z => z.status === 'abgerechnet')
-  const offenMin = offen.reduce((s, z) => s + (z.dauerMin || 0), 0)
-  const offenBetrag = (offenMin / 60) * satz
+  const offenMin = offen.filter(z => z.art !== 'pauschale').reduce((s, z) => s + (z.dauerMin || 0), 0)
+  const offenPauschalen = offen.filter(z => z.art === 'pauschale')
+  const offenBetrag = offen.reduce((s, z) => s + eintragBetrag(z, satz), 0)
   const byDateDesc = (a, b) => String(b.datum).localeCompare(String(a.datum))
 
   function saveEntry(entry) {
@@ -611,9 +658,10 @@ function ZeiterfassungBlock({ client, onUpdate }) {
         {/* Offene Stunden + Leistungsnachweis */}
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'stretch' }}>
           <div style={{ flex: 1, minWidth: '170px', border: `1px solid ${ZEIT_ACCENT}33`, borderRadius: '10px', padding: '10px 14px', background: `${ZEIT_ACCENT}0a` }}>
-            <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: ZEIT_ACCENT, marginBottom: '4px' }}>Offene Stunden</div>
-            <div style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text)' }}>
-              {fmtStunden(offenMin)} Std <span style={{ fontSize: '13px', color: 'var(--text-muted)', fontWeight: 400 }}>= {fmtEuro(offenBetrag, 2)}</span>
+            <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: ZEIT_ACCENT, marginBottom: '4px' }}>Offen gesamt</div>
+            <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text)' }}>{fmtEuro(offenBetrag, 2)}</div>
+            <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
+              {fmtStunden(offenMin)} Std{offenPauschalen.length > 0 ? ` + ${offenPauschalen.length} Pauschale${offenPauschalen.length !== 1 ? 'n' : ''}` : ''}
             </div>
           </div>
           <button onClick={pdf} disabled={!offen.length} title="Leistungsnachweis der offenen Zeiten als PDF"

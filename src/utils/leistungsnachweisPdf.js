@@ -63,36 +63,47 @@ export function buildLeistungsnachweis(client, eintraege, { satz = 0 } = {}) {
   if (mandant) { doc.text('Mandant: ' + mandant, M, y); y += 6 }
 
   // Tabellenkopf
-  const cDat = M, cDau = M + 28, cTxt = M + 52
+  const cDat = M, cArt = M + 24, cTxt = M + 46
+  const xStd = 158, xBet = pageW - M
+  const txtW = xStd - 12 - cTxt
   y += 4
   doc.setFont('helvetica', 'bold'); doc.setFontSize(9)
-  doc.text('Datum', cDat, y); doc.text('Dauer', cDau, y); doc.text('Tätigkeit', cTxt, y)
+  doc.text('Datum', cDat, y); doc.text('Art', cArt, y); doc.text('Leistung', cTxt, y)
+  doc.text('Std', xStd, y, { align: 'right' }); doc.text('Betrag', xBet, y, { align: 'right' })
   y += 2; doc.setLineWidth(0.2); doc.line(M, y, pageW - M, y); y += 5
   doc.setFont('helvetica', 'normal')
 
   const rows = [...eintraege].sort((a, b) => String(a.datum).localeCompare(String(b.datum)))
-  let totalMin = 0
+  let totalMin = 0, totalBetrag = 0
   rows.forEach(e => {
-    totalMin += e.dauerMin || 0
-    const txt = doc.splitTextToSize(String(e.beschreibung || ''), pageW - M - cTxt)
+    const isP = e.art === 'pauschale'
+    const betr = isP ? (e.pauschalBetrag || 0) : ((e.dauerMin || 0) / 60) * satz
+    totalBetrag += betr
+    if (!isP) totalMin += e.dauerMin || 0
+    const txt = doc.splitTextToSize(String(e.beschreibung || ''), txtW)
     if (y > 270) { doc.addPage(); y = M }
     doc.text(deDate(e.datum), cDat, y)
-    doc.text(std(e.dauerMin) + ' Std', cDau, y)
+    doc.text(isP ? 'Pauschale' : 'Stunden', cArt, y)
     doc.text(txt, cTxt, y)
+    doc.text(isP ? '–' : std(e.dauerMin), xStd, y, { align: 'right' })
+    doc.text(eur(betr), xBet, y, { align: 'right' })
     y += Math.max(5, txt.length * 4.6)
   })
 
   // Summe
   y += 2; doc.line(M, y, pageW - M, y); y += 7
   doc.setFont('helvetica', 'bold'); doc.setFontSize(10)
-  doc.text('Gesamt: ' + std(totalMin) + ' Std', cDat, y)
+  doc.text('Gesamt', cDat, y)
+  doc.text(std(totalMin), xStd, y, { align: 'right' })
+  doc.text(eur(totalBetrag), xBet, y, { align: 'right' })
   if (satz > 0) {
-    doc.setFont('helvetica', 'normal')
-    doc.text('Stundensatz: ' + eur(satz), cTxt, y)
-    y += 7
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(12)
-    doc.text('Summe (netto): ' + eur((totalMin / 60) * satz), cTxt, y)
+    y += 6
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9)
+    doc.text('Stundensatz für Zeithonorare: ' + eur(satz), cTxt, y)
   }
+  y += 8
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(12)
+  doc.text('Summe (netto): ' + eur(totalBetrag), xBet, y, { align: 'right' })
 
   // Fuß
   y += 14
