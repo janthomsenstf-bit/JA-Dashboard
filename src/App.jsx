@@ -214,6 +214,8 @@ function migrateClient(c) {
       return { verlauf: au.verlauf ?? [], ...au }
     }) : [],
     honorare:                    Array.isArray(c.honorare)       ? c.honorare  : [],
+    zeiteintraege:               Array.isArray(c.zeiteintraege)  ? c.zeiteintraege : [],
+    stundensatz:                 c.stundensatz                   ?? null,
     ust:                         c.ust                           ?? {},
     struktur:                    c.struktur                      ?? null,
     lohnSerie:                   c.lohnSerie ?? { aktiv: false, startDatum: '', frequenz: 'monatlich', faelligTag: 22, endDatum: '', intervallTyp: 'monate', intervallWert: 1 },
