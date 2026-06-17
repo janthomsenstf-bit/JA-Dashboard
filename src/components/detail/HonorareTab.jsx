@@ -2,7 +2,9 @@
  * HonorareTab – Preisvereinbarungen & Honorarübersicht pro Mandant.
  * Rein intern / Planungstool – keine Buchhaltung, keine Rechnungen.
  */
-import { useState } from 'react'
+import { useState, useRef } from 'react'
+import { callAI, hasAiKey } from '../../utils/aiClient.js'
+import { buildLeistungsnachweis, downloadPdf, leistungsnachweisFilename } from '../../utils/leistungsnachweisPdf.js'
 
 // ── Jahresliste ───────────────────────────────────────────────────────────────────
 const CURRENT_YEAR = new Date().getFullYear()
@@ -386,6 +388,277 @@ function InaktiveSection({ honorare, onUpdate, onDelete }) {
   )
 }
 
+// ══ Zeiterfassung / Leistungen & Zeiten ════════════════════════════════════════════
+const DEFAULT_STUNDENSATZ = 90
+const ZEIT_ACCENT = '#0891b2'
+
+const btnGhost   = { padding: '5px 12px', borderRadius: '6px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-secondary)', fontSize: '11px', cursor: 'pointer' }
+const btnPrimary = { padding: '5px 14px', borderRadius: '6px', border: 'none', background: ZEIT_ACCENT, color: '#fff', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }
+const iconBtn    = { background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '13px', padding: '2px 3px', flexShrink: 0 }
+
+function todayISO()      { return new Date().toISOString().slice(0, 10) }
+function deDateShort(s)  { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s || '')); return m ? `${m[3]}.${m[2]}.${m[1]}` : String(s || '') }
+function fmtStunden(min) { return ((min || 0) / 60).toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) }
+function mkZeit() {
+  return { id: 'z' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), datum: todayISO(), dauerMin: 0, beschreibung: '', status: 'offen', erstelltAm: new Date().toISOString() }
+}
+
+// ── Diktat-Parser (lokaler Fallback ohne KI) ──────────────────────────────────────
+function parseGermanNum(tok) {
+  if (tok == null) return null
+  const s = String(tok).toLowerCase()
+  if (/^\d+([.,]\d+)?$/.test(s)) return parseFloat(s.replace(',', '.'))
+  const map = { ein: 1, eine: 1, einen: 1, einer: 1, zwei: 2, drei: 3, vier: 4, 'fünf': 5, fuenf: 5, sechs: 6, sieben: 7, acht: 8, neun: 9, zehn: 10, elf: 11, 'zwölf': 12, zwoelf: 12, halbe: 0.5, anderthalb: 1.5, eineinhalb: 1.5, zweieinhalb: 2.5, dreiviertel: 0.75, 'fünfzehn': 15, fuenfzehn: 15, zwanzig: 20, 'dreißig': 30, dreissig: 30, 'fünfundvierzig': 45, fuenfundvierzig: 45 }
+  return map[s] ?? null
+}
+const RE_STD = /(\d+(?:[.,]\d+)?|eineinhalb|anderthalb|zweieinhalb|dreiviertel|halbe|eine|einen|einer|ein|zwei|drei|vier|fünf|fuenf|sechs|sieben|acht|neun|zehn|elf|zwölf|zwoelf)\s*(?:stunden|stunde|std\.?|h)\b/i
+const RE_MIN = /(\d+|fünfundvierzig|fuenfundvierzig|fünfzehn|fuenfzehn|dreißig|dreissig|zwanzig|zehn)\s*(?:minuten|minute|min\.?)\b/i
+function parseDauerMin(text) {
+  const t = ' ' + (text || '') + ' '
+  let min = 0
+  const hm = t.match(RE_STD); if (hm) { const v = parseGermanNum(hm[1]); if (v != null) min += Math.round(v * 60) }
+  const mm = t.match(RE_MIN); if (mm) { const v = parseGermanNum(mm[1]); if (v != null) min += Math.round(v) }
+  return min
+}
+function stripDauer(text) {
+  return (text || '')
+    .replace(new RegExp(RE_STD.source, 'gi'), '')
+    .replace(new RegExp(RE_MIN.source, 'gi'), '')
+    .replace(/\b(und|ca\.?|circa|etwa|ungefähr|ungefaehr)\b/gi, ' ')
+    .replace(/\s{2,}/g, ' ').trim().replace(/^[,\-–·\s]+/, '').trim()
+}
+function parseDiktatLocal(text) {
+  return { datum: todayISO(), dauerMin: parseDauerMin(text), beschreibung: stripDauer(text) || (text || '').trim() }
+}
+async function parseDiktat(text) {
+  if (hasAiKey()) {
+    try {
+      const sys = `Du wandelst eine kurze deutsche Sprachnotiz eines Steuerberaters über eine erbrachte Leistung in einen strukturierten Zeiteintrag um. Heutiges Datum: ${todayISO()}. Antworte ausschließlich mit JSON: {"dauerMin": <Dauer in Minuten als Ganzzahl>, "beschreibung": "<knappe sachliche Tätigkeit ohne die Dauerangabe>", "datum": "YYYY-MM-DD"}. Beispiele: "zwei Stunden" -> 120, "eine halbe Stunde" -> 30, "1,5 Stunden" -> 90, "30 Minuten" -> 30. Ohne Datumsangabe nimm das heutige Datum.`
+      const r = await callAI(sys, text)
+      const datum = /^\d{4}-\d{2}-\d{2}$/.test(r?.datum || '') ? r.datum : todayISO()
+      let dauerMin = Math.max(0, Math.round(Number(r?.dauerMin) || 0))
+      let beschreibung = String(r?.beschreibung || '').trim()
+      if (!dauerMin) dauerMin = parseDauerMin(text)
+      if (!beschreibung) beschreibung = stripDauer(text)
+      if (dauerMin || beschreibung) return { datum, dauerMin, beschreibung }
+    } catch { /* fällt auf lokalen Parser zurück */ }
+  }
+  return parseDiktatLocal(text)
+}
+
+// ── Spracheingabe ─────────────────────────────────────────────────────────────────
+function ZeitVoiceBlock({ onParsed }) {
+  const [transcript, setTranscript] = useState('')
+  const [isRecording, setIsRecording] = useState(false)
+  const [interim, setInterim] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const recRef = useRef(null)
+  const textRef = useRef('')
+  const SR = typeof window !== 'undefined' && (window.SpeechRecognition || window.webkitSpeechRecognition)
+
+  function set(val) { const v = typeof val === 'function' ? val(textRef.current) : val; textRef.current = v; setTranscript(v) }
+  function toggle() {
+    if (isRecording) { recRef.current?.stop(); setIsRecording(false); setInterim(''); return }
+    if (!SR) return
+    const r = new SR(); r.lang = 'de-DE'; r.continuous = true; r.interimResults = true
+    r.onresult = e => {
+      let fin = '', int = ''
+      for (let i = e.resultIndex; i < e.results.length; i++) e.results[i].isFinal ? fin += e.results[i][0].transcript : int += e.results[i][0].transcript
+      if (fin) set(t => t.trimEnd() ? t.trimEnd() + ' ' + fin : fin)
+      setInterim(int)
+    }
+    r.onend = () => { setIsRecording(false); setInterim('') }
+    r.onerror = () => { setIsRecording(false); setInterim(''); setError('Mikrofon-Fehler – Berechtigung prüfen.') }
+    r.start(); recRef.current = r; setIsRecording(true); setError('')
+  }
+  async function process() {
+    const text = transcript.trim(); if (!text) return
+    setBusy(true); setError('')
+    try { const parsed = await parseDiktat(text); onParsed(parsed); set('') }
+    catch (e) { setError(e.message || 'Fehler bei der Aufbereitung.') }
+    finally { setBusy(false) }
+  }
+  return (
+    <div style={{ border: `1px dashed ${ZEIT_ACCENT}55`, borderRadius: '8px', padding: '10px 12px', background: `${ZEIT_ACCENT}08` }}>
+      <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: ZEIT_ACCENT, marginBottom: '8px' }}>
+        🎤 Zeit per Sprache erfassen{!hasAiKey() && ' · ohne KI-Schlüssel: einfache Erkennung'}
+      </div>
+      <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+        <button onClick={toggle} disabled={!SR} title={!SR ? 'Browser unterstützt keine Spracheingabe' : (isRecording ? 'Aufnahme stoppen' : 'Aufnahme starten')}
+          style={{ width: '34px', height: '34px', borderRadius: '50%', border: 'none', flexShrink: 0, cursor: SR ? 'pointer' : 'not-allowed', background: isRecording ? '#ef4444' : ZEIT_ACCENT, color: '#fff', fontSize: '15px' }}>
+          {isRecording ? '⏹' : '🎙'}
+        </button>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <textarea value={transcript} onChange={e => set(e.target.value)} rows={2}
+            placeholder={isRecording ? '🎤 Aufnahme läuft…' : 'z. B. „Zwei Stunden Belege einscannen und Buchhaltung Juni vorbereitet"'}
+            style={{ ...inputBase, resize: 'none', lineHeight: 1.5 }} />
+          {interim && <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontStyle: 'italic', marginTop: '2px' }}>{interim}</div>}
+          {error && <div style={{ fontSize: '11px', color: '#ef4444', marginTop: '4px' }}>⚠ {error}</div>}
+          <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end', marginTop: '6px' }}>
+            {transcript && <button onClick={() => set('')} style={btnGhost}>✕ Löschen</button>}
+            <button onClick={process} disabled={!transcript.trim() || busy} style={{ ...btnPrimary, opacity: (!transcript.trim() || busy) ? 0.5 : 1 }}>
+              {busy ? '⏳ …' : '✨ Aufbereiten'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Manuelles Formular ────────────────────────────────────────────────────────────
+function ZeitForm({ initial, onSave, onCancel }) {
+  const [datum, setDatum] = useState(initial.datum || todayISO())
+  const [stdVal, setStdVal] = useState(initial.dauerMin ? String(initial.dauerMin / 60).replace('.', ',') : '')
+  const [besch, setBesch] = useState(initial.beschreibung || '')
+  const dauerMin = Math.round((parseFloat(String(stdVal).replace(',', '.')) || 0) * 60)
+  const canSave = dauerMin > 0 && besch.trim()
+  return (
+    <div style={{ border: `2px solid ${ZEIT_ACCENT}44`, borderRadius: '8px', padding: '12px', background: 'var(--surface)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '150px 120px', gap: '10px' }}>
+        <div><FieldLabel>Datum</FieldLabel><input type="date" value={datum} onChange={e => setDatum(e.target.value)} style={inputBase} /></div>
+        <div><FieldLabel>Dauer (Std.) *</FieldLabel><input type="text" inputMode="decimal" value={stdVal} onChange={e => setStdVal(e.target.value)} placeholder="z. B. 1,5" style={inputBase} /></div>
+      </div>
+      <div><FieldLabel>Tätigkeit *</FieldLabel><input value={besch} onChange={e => setBesch(e.target.value)} placeholder="z. B. Vorbereitung Buchhaltung Juni 2026" style={inputBase} /></div>
+      {dauerMin > 0 && <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>= {fmtStunden(dauerMin)} Std</div>}
+      <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+        <button onClick={onCancel} style={btnGhost}>Abbrechen</button>
+        <button onClick={() => canSave && onSave({ datum, dauerMin, beschreibung: besch.trim() })} disabled={!canSave}
+          style={{ ...btnPrimary, padding: '6px 18px', fontSize: '12px', opacity: canSave ? 1 : 0.5, cursor: canSave ? 'pointer' : 'not-allowed' }}>Speichern</button>
+      </div>
+    </div>
+  )
+}
+
+// ── Zeile ─────────────────────────────────────────────────────────────────────────
+function ZeitRow({ z, satz, onEdit, onDelete, onStatus }) {
+  const abger = z.status === 'abgerechnet'
+  const betrag = (z.dauerMin / 60) * satz
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: '7px', background: abger ? 'var(--surface2)' : 'var(--surface)', opacity: abger ? 0.7 : 1 }}>
+      <div style={{ fontSize: '11px', color: 'var(--text-muted)', width: '62px', flexShrink: 0 }}>{deDateShort(z.datum)}</div>
+      <div style={{ fontSize: '12px', fontWeight: 700, color: ZEIT_ACCENT, width: '58px', flexShrink: 0, whiteSpace: 'nowrap' }}>{fmtStunden(z.dauerMin)} Std</div>
+      <div style={{ flex: 1, minWidth: 0, fontSize: '12px', color: 'var(--text)' }}>{z.beschreibung}</div>
+      <div style={{ fontSize: '11px', color: 'var(--text-muted)', whiteSpace: 'nowrap', flexShrink: 0 }}>{fmtEuro(betrag, 2)}</div>
+      {abger
+        ? <span style={{ fontSize: '10px', background: 'rgba(100,116,139,0.15)', color: '#64748b', padding: '2px 8px', borderRadius: '10px', fontWeight: 600, flexShrink: 0 }}>abgerechnet</span>
+        : <span style={{ fontSize: '10px', background: 'rgba(8,145,178,0.12)', color: ZEIT_ACCENT, padding: '2px 8px', borderRadius: '10px', fontWeight: 600, flexShrink: 0 }}>offen</span>}
+      <button onClick={() => onStatus(abger ? 'offen' : 'abgerechnet')} title={abger ? 'Wieder als offen' : 'Als abgerechnet markieren'}
+        style={{ background: 'none', border: '1px solid var(--border)', borderRadius: '6px', padding: '2px 8px', cursor: 'pointer', fontSize: '11px', color: 'var(--text-muted)', flexShrink: 0 }}>{abger ? '↩' : '✓'}</button>
+      <button onClick={onEdit} title="Bearbeiten" style={iconBtn}>✏️</button>
+      <button onClick={onDelete} title="Löschen" style={iconBtn}>🗑</button>
+    </div>
+  )
+}
+
+// ── Hauptblock Zeiterfassung ──────────────────────────────────────────────────────
+function ZeiterfassungBlock({ client, onUpdate }) {
+  const eintraege = client.zeiteintraege ?? []
+  const satz = client.stundensatz ?? DEFAULT_STUNDENSATZ
+  const [showForm, setShowForm] = useState(false)
+  const [formInit, setFormInit] = useState(null)
+  const [editId, setEditId] = useState(null)
+  const [satzEdit, setSatzEdit] = useState(false)
+  const [satzVal, setSatzVal] = useState(String(satz))
+  const [showAbger, setShowAbger] = useState(false)
+
+  const offen = eintraege.filter(z => z.status !== 'abgerechnet')
+  const abger = eintraege.filter(z => z.status === 'abgerechnet')
+  const offenMin = offen.reduce((s, z) => s + (z.dauerMin || 0), 0)
+  const offenBetrag = (offenMin / 60) * satz
+  const byDateDesc = (a, b) => String(b.datum).localeCompare(String(a.datum))
+
+  function saveEntry(entry) {
+    if (editId) onUpdate({ zeiteintraege: eintraege.map(z => z.id === editId ? { ...z, ...entry } : z) })
+    else onUpdate({ zeiteintraege: [...eintraege, { ...mkZeit(), ...entry }] })
+    setShowForm(false); setFormInit(null); setEditId(null)
+  }
+  function startNew()       { setFormInit({ datum: todayISO(), dauerMin: 0, beschreibung: '' }); setEditId(null); setShowForm(true) }
+  function startEdit(z)     { setFormInit(z); setEditId(z.id); setShowForm(true) }
+  function onParsed(p)      { setFormInit({ datum: p.datum || todayISO(), dauerMin: p.dauerMin || 0, beschreibung: p.beschreibung || '' }); setEditId(null); setShowForm(true) }
+  function del(id)          { onUpdate({ zeiteintraege: eintraege.filter(z => z.id !== id) }) }
+  function setStatus(id, s) { onUpdate({ zeiteintraege: eintraege.map(z => z.id === id ? { ...z, status: s } : z) }) }
+  function saveSatz()       { const v = Math.max(0, parseFloat(String(satzVal).replace(',', '.')) || 0); onUpdate({ stundensatz: v }); setSatzEdit(false) }
+  function pdf()            { if (!offen.length) return; downloadPdf(buildLeistungsnachweis(client, offen, { satz }), leistungsnachweisFilename(client)) }
+
+  return (
+    <div style={{ border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden' }}>
+      {/* Header */}
+      <div style={{ background: ZEIT_ACCENT, color: '#fff', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+        <span style={{ fontSize: '16px' }}>⏱</span>
+        <span style={{ fontWeight: 700, fontSize: '13px', flex: 1 }}>Leistungen & Zeiten</span>
+        {satzEdit ? (
+          <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <input type="text" inputMode="decimal" value={satzVal} onChange={e => setSatzVal(e.target.value)}
+              style={{ width: '54px', padding: '3px 6px', borderRadius: '5px', border: 'none', fontSize: '12px' }} />
+            <span style={{ fontSize: '11px' }}>€/Std</span>
+            <button onClick={saveSatz} style={{ background: 'rgba(255,255,255,0.25)', border: 'none', color: '#fff', borderRadius: '5px', padding: '3px 8px', cursor: 'pointer', fontSize: '11px' }}>✓</button>
+          </span>
+        ) : (
+          <button onClick={() => { setSatzVal(String(satz)); setSatzEdit(true) }} title="Stundensatz ändern"
+            style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.4)', color: '#fff', borderRadius: '6px', padding: '3px 10px', cursor: 'pointer', fontSize: '12px', whiteSpace: 'nowrap' }}>
+            {satz} €/Std ✏️
+          </button>
+        )}
+        <button onClick={startNew}
+          style={{ padding: '4px 12px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.4)', background: 'rgba(255,255,255,0.15)', color: '#fff', fontSize: '12px', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+          + Zeit erfassen
+        </button>
+      </div>
+
+      <div style={{ padding: '12px', background: 'var(--surface2)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        {/* Offene Stunden + Leistungsnachweis */}
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'stretch' }}>
+          <div style={{ flex: 1, minWidth: '170px', border: `1px solid ${ZEIT_ACCENT}33`, borderRadius: '10px', padding: '10px 14px', background: `${ZEIT_ACCENT}0a` }}>
+            <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: ZEIT_ACCENT, marginBottom: '4px' }}>Offene Stunden</div>
+            <div style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text)' }}>
+              {fmtStunden(offenMin)} Std <span style={{ fontSize: '13px', color: 'var(--text-muted)', fontWeight: 400 }}>= {fmtEuro(offenBetrag, 2)}</span>
+            </div>
+          </div>
+          <button onClick={pdf} disabled={!offen.length} title="Leistungsnachweis der offenen Zeiten als PDF"
+            style={{ padding: '8px 14px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', fontSize: '12px', fontWeight: 600, cursor: offen.length ? 'pointer' : 'not-allowed', opacity: offen.length ? 1 : 0.5, whiteSpace: 'nowrap' }}>
+            🧾 Leistungsnachweis
+          </button>
+        </div>
+
+        {!showForm && <ZeitVoiceBlock onParsed={onParsed} />}
+        {showForm && <ZeitForm initial={formInit} onSave={saveEntry} onCancel={() => { setShowForm(false); setFormInit(null); setEditId(null) }} />}
+
+        {eintraege.length === 0 && !showForm && (
+          <div style={{ textAlign: 'center', padding: '14px', color: 'var(--text-muted)', fontSize: '12px' }}>
+            Noch keine Zeiten erfasst – per Sprache oben oder „+ Zeit erfassen".
+          </div>
+        )}
+
+        {offen.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            {[...offen].sort(byDateDesc).map(z => (
+              <ZeitRow key={z.id} z={z} satz={satz} onEdit={() => startEdit(z)} onDelete={() => del(z.id)} onStatus={s => setStatus(z.id, s)} />
+            ))}
+          </div>
+        )}
+
+        {abger.length > 0 && (
+          <div style={{ borderTop: '1px solid var(--border)', paddingTop: '8px' }}>
+            <button onClick={() => setShowAbger(o => !o)}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <span style={{ fontSize: '10px' }}>{showAbger ? '▼' : '▶'}</span>{abger.length} abgerechnet
+            </button>
+            {showAbger && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '8px' }}>
+                {[...abger].sort(byDateDesc).map(z => (
+                  <ZeitRow key={z.id} z={z} satz={satz} onEdit={() => startEdit(z)} onDelete={() => del(z.id)} onStatus={s => setStatus(z.id, s)} />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── Haupt-Tab ─────────────────────────────────────────────────────────────────────
 export default function HonorareTab({ client, onUpdate }) {
   const [showForm, setShowForm] = useState(false)
@@ -407,6 +680,9 @@ export default function HonorareTab({ client, onUpdate }) {
 
   return (
     <div className="tab-content" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+
+      {/* ── Zeiterfassung / Leistungen & Zeiten ── */}
+      <ZeiterfassungBlock client={client} onUpdate={onUpdate} />
 
       {/* ── Zusammenfassung ── */}
       {honorare.length > 0 && (
