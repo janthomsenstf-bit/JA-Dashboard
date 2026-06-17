@@ -23,6 +23,7 @@ import FormularPage from './components/formular/FormularPage.jsx'
 import BudgetView   from './components/BudgetView.jsx'
 import BotInbox, { BotInboxBadge } from './components/BotInbox.jsx'
 import WebsiteAnfragen from './components/WebsiteAnfragen.jsx'
+import ZeiterfassungView from './components/ZeiterfassungView.jsx'
 import { AUFTRAGS_TYP_CFG, WORKFLOW_CONFIGS } from './components/detail/AuftraegeTab.jsx'
 
 // ── Website-Lead → Auftrag (geteilt von "Mandant anlegen" + "Auftrag zu Mandant") ──
@@ -310,6 +311,9 @@ export default function App() {
   // ── Manuelle Aufgaben (global, mandantenübergreifend) ─────────────────────────
   const [aufgabenListe, setAufgabenListe] = useState([])
 
+  // ── Zeiterfassung (global, mandantenunabhängiges Logbuch) ─────────────────────
+  const [zeiterfassung, setZeiterfassung] = useState([])
+
   // ── Zeitstempel ───────────────────────────────────────────────────────────────
   const [lastSaveAt,   setLastSaveAt]   = useState(null)
   const [startupBanner, setStartupBanner] = useState(true)
@@ -352,6 +356,7 @@ export default function App() {
         setClients(Array.isArray(raw) ? raw.map(migrateClient).filter(Boolean) : [])
         if (Array.isArray(cloudData['sdb-termine']))        setTermine(cloudData['sdb-termine'])
         if (Array.isArray(cloudData['sdb-aufgaben-liste'])) setAufgabenListe(cloudData['sdb-aufgaben-liste'])
+        if (Array.isArray(cloudData['sdb-zeiterfassung']))  setZeiterfassung(cloudData['sdb-zeiterfassung'])
         if (cloudData['spielbuch-checklisten-v1'])    setChecklistenTypen(cloudData['spielbuch-checklisten-v1'])
         if (cloudData['spielbuch-vorlagen-v1'])       setVorlagen(cloudData['spielbuch-vorlagen-v1'])
         if (Array.isArray(cloudData['unbekannte-emails'])) setUnbekannteEmails(cloudData['unbekannte-emails'])
@@ -448,6 +453,10 @@ export default function App() {
     if (!authUser || dataLoading) return
     cloudSave('sdb-aufgaben-liste', aufgabenListe)
   }, [aufgabenListe])
+  useEffect(() => {
+    if (!authUser || dataLoading) return
+    cloudSave('sdb-zeiterfassung', zeiterfassung)
+  }, [zeiterfassung])
   useEffect(() => {
     if (!authUser || dataLoading) return
     cloudSave('unbekannte-emails', unbekannteEmails)
@@ -1343,6 +1352,18 @@ export default function App() {
               >
                 🌐 Website-Anfragen
               </button>
+              <button
+                onClick={() => setSelectedId('__zeiterfassung__')}
+                style={{
+                  width: '100%', padding: '8px 12px', borderRadius: '8px', border: 'none', cursor: 'pointer', textAlign: 'left',
+                  background: selectedId === '__zeiterfassung__' ? '#0891b2' : 'var(--surface2)',
+                  color: selectedId === '__zeiterfassung__' ? '#fff' : 'var(--text)',
+                  fontWeight: 600, fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px',
+                  transition: 'all 0.15s',
+                }}
+              >
+                ⏱ Zeiterfassung
+              </button>
             </div>
           )}
           {sidebarOpen && (
@@ -1440,6 +1461,10 @@ export default function App() {
                   }
                 }}
               />
+            </div>
+          ) : selectedId === '__zeiterfassung__' ? (
+            <div style={{ flex: 1, overflowY: 'auto' }}>
+              <ZeiterfassungView entries={zeiterfassung} onChange={setZeiterfassung} />
             </div>
           ) : selectedClient ? (
             <DetailView
