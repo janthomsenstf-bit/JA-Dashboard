@@ -1,37 +1,34 @@
 /**
- * ZeiterfassungView – Globales Zeit-Logbuch (mandantenunabhängig).
- * Schnell per Sprache oder manuell erfassen, was am Tag erledigt wurde.
- * Rückwirkende Erfassung über das Datumsfeld. Nach Tagen gruppiert mit Tagessummen.
+ * ZeiterfassungView – Globales Zeit-Logbuch (mandantenunabhängig) im Kalender-Stil.
+ * Wochen-/Tagesansicht mit Blättern, Klick auf einen Tag erfasst Zeit für dieses
+ * Datum (auch rückwirkend). Schnell per Sprache oder manuell.
  */
 import { useState, useRef, useMemo } from 'react'
 import { callAI, hasAiKey } from '../utils/aiClient.js'
 
 const ACCENT = '#0891b2'
+const TAGE = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So']
 
-// ── Datums-/Zeit-Helfer ─────────────────────────────────────────────────────────
-function todayISO() {
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+// ── Datums-Helfer (lokal, ohne UTC-Verschiebung) ──────────────────────────────────
+function pad(n) { return String(n).padStart(2, '0') }
+function isoOf(d) { return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` }
+function parseISO(s) { const [y, m, d] = String(s).split('-').map(Number); return new Date(y, m - 1, d) }
+function todayISO() { return isoOf(new Date()) }
+function addDays(s, n) { const d = parseISO(s); d.setDate(d.getDate() + n); return isoOf(d) }
+function startOfWeek(s) { const d = parseISO(s); const off = (d.getDay() + 6) % 7; d.setDate(d.getDate() - off); return isoOf(d) }
+function weekDates(anchor) { const mon = startOfWeek(anchor); return Array.from({ length: 7 }, (_, i) => addDays(mon, i)) }
+function deDate(s) { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s || '')); return m ? `${m[3]}.${m[2]}.${m[1]}` : String(s || '') }
+function ddmm(s) { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s || '')); return m ? `${m[3]}.${m[2]}.` : '' }
+function langDatum(s) { const d = parseISO(s); return `${TAGE[(d.getDay() + 6) % 7]}, ${deDate(s)}` }
+function isoWeek(s) {
+  const [y, m, d] = String(s).split('-').map(Number)
+  const dt = new Date(Date.UTC(y, m - 1, d))
+  const dayNum = (dt.getUTCDay() + 6) % 7
+  dt.setUTCDate(dt.getUTCDate() - dayNum + 3)
+  const firstThu = new Date(Date.UTC(dt.getUTCFullYear(), 0, 4))
+  return 1 + Math.round(((dt - firstThu) / 86400000 - 3 + ((firstThu.getUTCDay() + 6) % 7)) / 7)
 }
-function weekStartISO() {
-  const d = new Date()
-  const day = (d.getDay() + 6) % 7 // Montag = 0
-  d.setDate(d.getDate() - day)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
-function deDate(s) {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s || ''))
-  return m ? `${m[3]}.${m[2]}.${m[1]}` : String(s || '')
-}
-function wochentag(s) {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s || ''))
-  if (!m) return ''
-  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
-  return ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'][d.getDay()]
-}
-function fmtStd(min) {
-  return ((min || 0) / 60).toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 2 })
-}
+function fmtStd(min) { return ((min || 0) / 60).toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) }
 function mkEntry() {
   return { id: 'zl' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), datum: todayISO(), dauerMin: 0, beschreibung: '', projekt: '', status: 'offen', erstelltAm: new Date().toISOString() }
 }
@@ -60,23 +57,19 @@ function stripDauer(text) {
     .replace(/\b(und|ca\.?|circa|etwa|ungefähr|ungefaehr)\b/gi, ' ')
     .replace(/\s{2,}/g, ' ').trim().replace(/^[,\-–·\s]+/, '').trim()
 }
-function parseLocal(text) {
-  return { datum: todayISO(), dauerMin: parseDauerMin(text), beschreibung: stripDauer(text) || (text || '').trim() }
-}
-async function parseDiktat(text) {
+async function parseDiktat(text, fallbackDatum) {
+  const local = { datum: fallbackDatum || todayISO(), dauerMin: parseDauerMin(text), beschreibung: stripDauer(text) || (text || '').trim(), projekt: '' }
   if (hasAiKey()) {
     try {
-      const sys = `Du wandelst eine kurze deutsche Sprachnotiz eines Steuerberaters in einen Zeit-Logbuch-Eintrag um. Heutiges Datum: ${todayISO()}. Antworte ausschließlich mit JSON: {"dauerMin": <Minuten als Ganzzahl>, "beschreibung": "<knappe Tätigkeit ohne Dauerangabe>", "projekt": "<Mandant/Projekt falls genannt, sonst leer>", "datum": "YYYY-MM-DD"}. Beispiele: "zwei Stunden Belege gebucht" -> 120; "halbe Stunde Telefonat mit Müller" -> 30, projekt "Müller". Bei relativen Angaben wie "gestern" das passende Datum berechnen, sonst heutiges Datum.`
+      const sys = `Du wandelst eine kurze deutsche Sprachnotiz eines Steuerberaters in einen Zeit-Logbuch-Eintrag um. Bezugsdatum (falls keine Angabe): ${fallbackDatum || todayISO()}. Antworte ausschließlich mit JSON: {"dauerMin": <Minuten als Ganzzahl>, "beschreibung": "<knappe Tätigkeit ohne Dauerangabe>", "projekt": "<Mandant/Projekt falls genannt, sonst leer>", "datum": "YYYY-MM-DD"}. Beispiele: "zwei Stunden Belege gebucht" -> 120; "halbe Stunde Telefonat mit Müller" -> 30, projekt "Müller". Bei relativen Angaben wie "gestern" das Datum berechnen, sonst Bezugsdatum.`
       const r = await callAI(sys, text)
-      const datum = /^\d{4}-\d{2}-\d{2}$/.test(r?.datum || '') ? r.datum : todayISO()
-      let dauerMin = Math.max(0, Math.round(Number(r?.dauerMin) || 0))
-      let beschreibung = String(r?.beschreibung || '').trim()
-      if (!dauerMin) dauerMin = parseDauerMin(text)
-      if (!beschreibung) beschreibung = stripDauer(text)
+      const datum = /^\d{4}-\d{2}-\d{2}$/.test(r?.datum || '') ? r.datum : local.datum
+      let dauerMin = Math.max(0, Math.round(Number(r?.dauerMin) || 0)) || local.dauerMin
+      let beschreibung = String(r?.beschreibung || '').trim() || local.beschreibung
       if (dauerMin || beschreibung) return { datum, dauerMin, beschreibung, projekt: String(r?.projekt || '').trim() }
-    } catch { /* fällt auf lokalen Parser zurück */ }
+    } catch { /* lokal */ }
   }
-  return parseLocal(text)
+  return local
 }
 
 // ── Styles ──────────────────────────────────────────────────────────────────────
@@ -84,7 +77,7 @@ const inputBase = { width: '100%', padding: '7px 10px', border: '1px solid var(-
 const lblStyle = { fontSize: '10px', fontWeight: 700, marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)' }
 const btnGhost = { padding: '5px 12px', borderRadius: '6px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-secondary)', fontSize: '11px', cursor: 'pointer' }
 const btnPrimary = { padding: '6px 16px', borderRadius: '6px', border: 'none', background: ACCENT, color: '#fff', fontSize: '12px', fontWeight: 700, cursor: 'pointer' }
-const iconBtn = { background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '13px', padding: '2px 3px', flexShrink: 0 }
+const navBtn = { width: '30px', height: '30px', borderRadius: '7px', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', cursor: 'pointer', fontSize: '14px', flexShrink: 0 }
 
 function Kpi({ label, wert, sub }) {
   return (
@@ -97,7 +90,7 @@ function Kpi({ label, wert, sub }) {
 }
 
 // ── Erfassungsformular (mit Sprache) ──────────────────────────────────────────────
-function CaptureCard({ draft, editing, onSave, onCancel }) {
+function CaptureCard({ draft, editing, onSave, onClose }) {
   const [datum, setDatum] = useState(draft?.datum || todayISO())
   const [stdVal, setStdVal] = useState(draft?.dauerMin ? String(draft.dauerMin / 60).replace('.', ',') : '')
   const [besch, setBesch] = useState(draft?.beschreibung || '')
@@ -130,7 +123,7 @@ function CaptureCard({ draft, editing, onSave, onCancel }) {
     const text = transcript.trim(); if (!text) return
     setBusy(true); setError('')
     try {
-      const p = await parseDiktat(text)
+      const p = await parseDiktat(text, datum)
       if (p.datum) setDatum(p.datum)
       if (p.dauerMin) setStdVal(String(p.dauerMin / 60).replace('.', ','))
       if (p.beschreibung) setBesch(p.beschreibung)
@@ -142,15 +135,16 @@ function CaptureCard({ draft, editing, onSave, onCancel }) {
 
   const dauerMin = Math.round((parseFloat(String(stdVal).replace(',', '.')) || 0) * 60)
   const canSave = dauerMin > 0 && besch.trim()
+  function handleSave() { if (canSave) onSave({ datum, dauerMin, beschreibung: besch.trim(), projekt: projekt.trim() }) }
 
   return (
-    <div style={{ border: `1px solid var(--border)`, borderRadius: '10px', overflow: 'hidden' }}>
-      <div style={{ background: ACCENT, color: '#fff', padding: '10px 14px', fontWeight: 700, fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-        <span style={{ fontSize: '16px' }}>⏱</span>{editing ? 'Eintrag bearbeiten' : 'Neue Zeit erfassen'}
+    <div style={{ border: `2px solid ${ACCENT}55`, borderRadius: '10px', overflow: 'hidden' }}>
+      <div style={{ background: ACCENT, color: '#fff', padding: '9px 14px', fontWeight: 700, fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <span style={{ fontSize: '15px' }}>⏱</span>
+        {editing ? 'Eintrag bearbeiten' : `Zeit erfassen · ${langDatum(datum)}`}
+        <button onClick={onClose} title="Schließen" style={{ marginLeft: 'auto', background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', borderRadius: '6px', width: '24px', height: '24px', cursor: 'pointer', fontSize: '13px' }}>✕</button>
       </div>
       <div style={{ padding: '14px', background: 'var(--surface)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-
-        {/* Sprache */}
         {!editing && (
           <div style={{ border: `1px dashed ${ACCENT}55`, borderRadius: '8px', padding: '10px 12px', background: `${ACCENT}08` }}>
             <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: ACCENT, marginBottom: '8px' }}>
@@ -177,8 +171,6 @@ function CaptureCard({ draft, editing, onSave, onCancel }) {
             </div>
           </div>
         )}
-
-        {/* Felder */}
         <div style={{ display: 'grid', gridTemplateColumns: '150px 110px 1fr', gap: '10px' }}>
           <div><div style={lblStyle}>Datum</div><input type="date" value={datum} onChange={e => setDatum(e.target.value)} style={inputBase} /></div>
           <div><div style={lblStyle}>Dauer (Std.) *</div><input type="text" inputMode="decimal" value={stdVal} onChange={e => setStdVal(e.target.value)} placeholder="1,5" style={inputBase} /></div>
@@ -186,11 +178,9 @@ function CaptureCard({ draft, editing, onSave, onCancel }) {
         </div>
         <div><div style={lblStyle}>Tätigkeit *</div><input value={besch} onChange={e => setBesch(e.target.value)} placeholder="z. B. Belege gebucht, Buchhaltung Juni vorbereitet" style={inputBase} /></div>
         {dauerMin > 0 && <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>= {fmtStd(dauerMin)} Std</div>}
-
         <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-          {editing && <button onClick={onCancel} style={btnGhost}>Abbrechen</button>}
-          <button onClick={() => canSave && onSave({ datum, dauerMin, beschreibung: besch.trim(), projekt: projekt.trim() })} disabled={!canSave}
-            style={{ ...btnPrimary, opacity: canSave ? 1 : 0.5, cursor: canSave ? 'pointer' : 'not-allowed' }}>
+          <button onClick={onClose} style={btnGhost}>Abbrechen</button>
+          <button onClick={handleSave} disabled={!canSave} style={{ ...btnPrimary, opacity: canSave ? 1 : 0.5, cursor: canSave ? 'pointer' : 'not-allowed' }}>
             {editing ? 'Speichern' : '+ Eintragen'}
           </button>
         </div>
@@ -199,117 +189,165 @@ function CaptureCard({ draft, editing, onSave, onCancel }) {
   )
 }
 
+// ── Kompakter Eintrag (Wochenzelle) ────────────────────────────────────────────────
+function MiniEntry({ e, onClick }) {
+  const abger = e.status === 'abgerechnet'
+  return (
+    <button onClick={onClick} title={`${fmtStd(e.dauerMin)} Std · ${e.beschreibung}${e.projekt ? ' · ' + e.projekt : ''}`}
+      style={{ display: 'block', width: '100%', textAlign: 'left', border: '1px solid var(--border)', borderLeft: `3px solid ${abger ? '#94a3b8' : ACCENT}`, borderRadius: '5px', background: 'var(--surface)', padding: '4px 6px', cursor: 'pointer', opacity: abger ? 0.6 : 1 }}>
+      <div style={{ fontSize: '11px', fontWeight: 700, color: abger ? 'var(--text-muted)' : ACCENT }}>{fmtStd(e.dauerMin)} Std</div>
+      <div style={{ fontSize: '11px', color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.beschreibung}</div>
+      {e.projekt && <div style={{ fontSize: '10px', color: '#7c3aed', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.projekt}</div>}
+    </button>
+  )
+}
+
 // ── Hauptansicht ──────────────────────────────────────────────────────────────────
 export default function ZeiterfassungView({ entries = [], onChange }) {
+  const [view, setView] = useState('woche')          // 'woche' | 'tag'
+  const [anchor, setAnchor] = useState(todayISO())   // Bezugstag der Ansicht
+  const [captureDate, setCaptureDate] = useState(null)
   const [editId, setEditId] = useState(null)
-  const [nurOffen, setNurOffen] = useState(false)
+  const [nonce, setNonce] = useState(0)
 
+  const today = todayISO()
   const editEntry = editId ? entries.find(e => e.id === editId) : null
+
+  const byDay = useMemo(() => {
+    const m = {}
+    entries.forEach(e => { (m[e.datum] ??= []).push(e) })
+    Object.values(m).forEach(arr => arr.sort((a, b) => String(a.erstelltAm).localeCompare(String(b.erstelltAm))))
+    return m
+  }, [entries])
+
+  const offenMin = useMemo(() => entries.filter(e => e.status !== 'abgerechnet').reduce((s, e) => s + (e.dauerMin || 0), 0), [entries])
+  const dayMin = d => (byDay[d] || []).reduce((s, e) => s + (e.dauerMin || 0), 0)
+
+  const days = view === 'woche' ? weekDates(anchor) : [anchor]
+  const wochenSumme = days.reduce((s, d) => s + dayMin(d), 0)
 
   function save(data) {
     if (editId) onChange(entries.map(e => e.id === editId ? { ...e, ...data } : e))
     else onChange([...entries, { ...mkEntry(), ...data }])
-    setEditId(null)
+    if (editId) { setEditId(null) }
+    else { setNonce(n => n + 1) } // Formular für weitere Einträge am selben Tag offen halten
   }
-  function del(id) { onChange(entries.filter(e => e.id !== id)) }
+  function del(id) { onChange(entries.filter(e => e.id !== id)); setEditId(null) }
   function setStatus(id, status) { onChange(entries.map(e => e.id === id ? { ...e, status } : e)) }
+  function openCapture(d) { setEditId(null); setCaptureDate(d) }
+  function shift(n) { setAnchor(a => addDays(a, n)) }
 
-  const today = todayISO()
-  const wStart = weekStartISO()
-  const kpi = useMemo(() => {
-    let heute = 0, woche = 0, offen = 0
-    entries.forEach(e => {
-      const m = e.dauerMin || 0
-      if (e.datum === today) heute += m
-      if (e.datum >= wStart && e.datum <= today) woche += m
-      if (e.status !== 'abgerechnet') offen += m
-    })
-    return { heute, woche, offen }
-  }, [entries, today, wStart])
-
-  // Nach Tag gruppieren (neueste zuerst)
-  const groups = useMemo(() => {
-    const list = nurOffen ? entries.filter(e => e.status !== 'abgerechnet') : entries
-    const byDay = {}
-    list.forEach(e => { (byDay[e.datum] ??= []).push(e) })
-    return Object.keys(byDay).sort((a, b) => b.localeCompare(a)).map(datum => {
-      const items = byDay[datum].slice().sort((a, b) => String(b.erstelltAm).localeCompare(String(a.erstelltAm)))
-      const summe = items.reduce((s, e) => s + (e.dauerMin || 0), 0)
-      return { datum, items, summe }
-    })
-  }, [entries, nurOffen])
+  const navLabel = view === 'woche'
+    ? `KW ${isoWeek(days[0])} · ${ddmm(days[0])}–${deDate(days[6])}`
+    : langDatum(anchor)
 
   return (
-    <div style={{ padding: '20px', maxWidth: '1000px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '18px' }}>
+    <div style={{ padding: '20px', maxWidth: '1100px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
       <div>
         <h2 style={{ fontSize: '18px', fontWeight: 700, margin: '0 0 4px', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px' }}>
           <span>⏱</span> Zeiterfassung
         </h2>
         <p style={{ fontSize: '12px', color: 'var(--text-muted)', margin: 0 }}>
-          Schnell festhalten, was du erledigt hast – per Sprache oder manuell, auch rückwirkend. Mandantenunabhängiges Logbuch.
+          Klick auf einen Tag, um Zeit zu erfassen – auch rückwirkend. Per Sprache oder manuell. Mandantenunabhängiges Logbuch.
         </p>
       </div>
 
       {/* KPIs */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px' }}>
-        <Kpi label="Heute" wert={`${fmtStd(kpi.heute)} Std`} />
-        <Kpi label="Diese Woche" wert={`${fmtStd(kpi.woche)} Std`} sub="seit Montag" />
-        <Kpi label="Offen gesamt" wert={`${fmtStd(kpi.offen)} Std`} sub="noch nicht abgerechnet" />
+        <Kpi label="Heute" wert={`${fmtStd(dayMin(today))} Std`} />
+        <Kpi label={view === 'woche' ? 'Angezeigte Woche' : 'Angezeigter Tag'} wert={`${fmtStd(wochenSumme)} Std`} sub={navLabel} />
+        <Kpi label="Offen gesamt" wert={`${fmtStd(offenMin)} Std`} sub="noch nicht abgerechnet" />
       </div>
 
-      {/* Erfassung */}
-      <CaptureCard
-        key={editId || 'neu'}
-        draft={editEntry}
-        editing={!!editId}
-        onSave={save}
-        onCancel={() => setEditId(null)}
-      />
-
-      {/* Liste */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-        <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', flex: 1 }}>Verlauf</span>
-        <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer', fontSize: '12px', color: 'var(--text-secondary)', userSelect: 'none' }}>
-          <input type="checkbox" checked={nurOffen} onChange={e => setNurOffen(e.target.checked)} style={{ accentColor: ACCENT, cursor: 'pointer' }} />
-          nur offene
-        </label>
+      {/* Navigation */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+        <button onClick={() => shift(view === 'woche' ? -7 : -1)} style={navBtn} title="Zurück">‹</button>
+        <button onClick={() => setAnchor(today)} style={{ ...btnGhost, padding: '6px 12px', fontSize: '12px' }}>Heute</button>
+        <button onClick={() => shift(view === 'woche' ? 7 : 1)} style={navBtn} title="Weiter">›</button>
+        <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)', marginLeft: '6px' }}>{navLabel}</span>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: '6px' }}>
+          {['woche', 'tag'].map(v => (
+            <button key={v} onClick={() => setView(v)}
+              style={{ padding: '5px 14px', borderRadius: '7px', fontSize: '12px', fontWeight: 600, cursor: 'pointer', border: `1px solid ${view === v ? ACCENT : 'var(--border)'}`, background: view === v ? `${ACCENT}14` : 'transparent', color: view === v ? ACCENT : 'var(--text-secondary)' }}>
+              {v === 'woche' ? 'Woche' : 'Tag'}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {groups.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '28px', color: 'var(--text-muted)', fontSize: '12px', border: '1px solid var(--border)', borderRadius: '10px' }}>
-          Noch keine Einträge – oben per Sprache oder manuell erfassen.
+      {/* Erfassungs-/Bearbeiten-Formular */}
+      {(captureDate || editId) && (
+        <CaptureCard
+          key={editId ? `edit-${editId}` : `new-${captureDate}-${nonce}`}
+          draft={editEntry || { datum: captureDate }}
+          editing={!!editId}
+          onSave={save}
+          onClose={() => { setCaptureDate(null); setEditId(null) }}
+        />
+      )}
+
+      {/* Wochenraster */}
+      {view === 'woche' ? (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(120px, 1fr))', gap: '8px', overflowX: 'auto' }}>
+          {days.map(d => {
+            const items = byDay[d] || []
+            const isToday = d === today
+            return (
+              <div key={d} style={{ border: `1px solid ${isToday ? ACCENT : 'var(--border)'}`, borderRadius: '8px', overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: '120px', background: 'var(--surface2)' }}>
+                <button onClick={() => openCapture(d)} title="Zeit für diesen Tag erfassen"
+                  style={{ border: 'none', borderBottom: '1px solid var(--border)', background: isToday ? `${ACCENT}14` : 'var(--surface)', cursor: 'pointer', padding: '6px 8px', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 700, color: isToday ? ACCENT : 'var(--text)' }}>{TAGE[(parseISO(d).getDay() + 6) % 7]} {ddmm(d)}</span>
+                  {dayMin(d) > 0 && <span style={{ marginLeft: 'auto', fontSize: '10px', fontWeight: 700, color: ACCENT }}>{fmtStd(dayMin(d))}h</span>}
+                  <span style={{ marginLeft: dayMin(d) > 0 ? '4px' : 'auto', color: 'var(--text-muted)', fontSize: '13px', lineHeight: 1 }}>＋</span>
+                </button>
+                <div style={{ padding: '6px', display: 'flex', flexDirection: 'column', gap: '5px', flex: 1 }}>
+                  {items.length === 0
+                    ? <button onClick={() => openCapture(d)} style={{ border: 'none', background: 'none', color: 'var(--text-muted)', fontSize: '11px', cursor: 'pointer', padding: '4px', textAlign: 'center' }}>+ erfassen</button>
+                    : items.map(e => <MiniEntry key={e.id} e={e} onClick={() => { setCaptureDate(null); setEditId(e.id) }} />)}
+                </div>
+              </div>
+            )
+          })}
         </div>
       ) : (
-        groups.map(g => (
-          <div key={g.datum} style={{ border: '1px solid var(--border)', borderRadius: '10px', overflow: 'hidden' }}>
-            <div style={{ padding: '8px 14px', background: 'var(--surface)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text)' }}>{wochentag(g.datum)}, {deDate(g.datum)}</span>
-              {g.datum === today && <span style={{ fontSize: '10px', background: `${ACCENT}1a`, color: ACCENT, padding: '1px 7px', borderRadius: '8px', fontWeight: 700 }}>heute</span>}
-              <span style={{ marginLeft: 'auto', fontSize: '12px', fontWeight: 700, color: ACCENT }}>{fmtStd(g.summe)} Std</span>
-            </div>
-            <div style={{ background: 'var(--surface2)' }}>
-              {g.items.map(e => {
-                const abger = e.status === 'abgerechnet'
-                return (
-                  <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 14px', borderBottom: '1px solid var(--border)', opacity: abger ? 0.65 : 1 }}>
-                    <span style={{ fontSize: '12px', fontWeight: 700, color: ACCENT, width: '58px', flexShrink: 0, whiteSpace: 'nowrap' }}>{fmtStd(e.dauerMin)} Std</span>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <span style={{ fontSize: '12px', color: 'var(--text)' }}>{e.beschreibung}</span>
-                      {e.projekt && <span style={{ marginLeft: '8px', fontSize: '10px', background: 'rgba(124,58,237,0.1)', color: '#7c3aed', padding: '1px 7px', borderRadius: '8px', fontWeight: 600 }}>{e.projekt}</span>}
-                    </div>
-                    {abger
-                      ? <span style={{ fontSize: '10px', background: 'rgba(100,116,139,0.15)', color: '#64748b', padding: '2px 8px', borderRadius: '10px', fontWeight: 600, flexShrink: 0 }}>abgerechnet</span>
-                      : <span style={{ fontSize: '10px', background: `${ACCENT}1f`, color: ACCENT, padding: '2px 8px', borderRadius: '10px', fontWeight: 600, flexShrink: 0 }}>offen</span>}
-                    <button onClick={() => setStatus(e.id, abger ? 'offen' : 'abgerechnet')} title={abger ? 'Wieder offen' : 'Als abgerechnet markieren'}
-                      style={{ background: 'none', border: '1px solid var(--border)', borderRadius: '6px', padding: '2px 8px', cursor: 'pointer', fontSize: '11px', color: 'var(--text-muted)', flexShrink: 0 }}>{abger ? '↩' : '✓'}</button>
-                    <button onClick={() => setEditId(e.id)} title="Bearbeiten" style={iconBtn}>✏️</button>
-                    <button onClick={() => del(e.id)} title="Löschen" style={iconBtn}>🗑</button>
-                  </div>
-                )
-              })}
-            </div>
+        /* Tagesansicht */
+        <div style={{ border: '1px solid var(--border)', borderRadius: '10px', overflow: 'hidden' }}>
+          <div style={{ padding: '9px 14px', background: 'var(--surface)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)' }}>{langDatum(anchor)}</span>
+            {anchor === today && <span style={{ fontSize: '10px', background: `${ACCENT}1a`, color: ACCENT, padding: '1px 7px', borderRadius: '8px', fontWeight: 700 }}>heute</span>}
+            <span style={{ marginLeft: 'auto', fontSize: '12px', fontWeight: 700, color: ACCENT }}>{fmtStd(dayMin(anchor))} Std</span>
+            <button onClick={() => openCapture(anchor)} style={{ ...btnPrimary, padding: '4px 12px', fontSize: '11px' }}>+ erfassen</button>
           </div>
-        ))
+          <div style={{ background: 'var(--surface2)' }}>
+            {(byDay[anchor] || []).length === 0 ? (
+              <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '12px' }}>Keine Einträge an diesem Tag.</div>
+            ) : (byDay[anchor]).map(e => {
+              const abger = e.status === 'abgerechnet'
+              return (
+                <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 14px', borderBottom: '1px solid var(--border)', opacity: abger ? 0.65 : 1 }}>
+                  <span style={{ fontSize: '12px', fontWeight: 700, color: ACCENT, width: '58px', flexShrink: 0, whiteSpace: 'nowrap' }}>{fmtStd(e.dauerMin)} Std</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ fontSize: '12px', color: 'var(--text)' }}>{e.beschreibung}</span>
+                    {e.projekt && <span style={{ marginLeft: '8px', fontSize: '10px', background: 'rgba(124,58,237,0.1)', color: '#7c3aed', padding: '1px 7px', borderRadius: '8px', fontWeight: 600 }}>{e.projekt}</span>}
+                  </div>
+                  {abger
+                    ? <span style={{ fontSize: '10px', background: 'rgba(100,116,139,0.15)', color: '#64748b', padding: '2px 8px', borderRadius: '10px', fontWeight: 600, flexShrink: 0 }}>abgerechnet</span>
+                    : <span style={{ fontSize: '10px', background: `${ACCENT}1f`, color: ACCENT, padding: '2px 8px', borderRadius: '10px', fontWeight: 600, flexShrink: 0 }}>offen</span>}
+                  <button onClick={() => setStatus(e.id, abger ? 'offen' : 'abgerechnet')} title={abger ? 'Wieder offen' : 'Als abgerechnet markieren'}
+                    style={{ background: 'none', border: '1px solid var(--border)', borderRadius: '6px', padding: '2px 8px', cursor: 'pointer', fontSize: '11px', color: 'var(--text-muted)', flexShrink: 0 }}>{abger ? '↩' : '✓'}</button>
+                  <button onClick={() => { setCaptureDate(null); setEditId(e.id) }} title="Bearbeiten" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '13px', padding: '2px 3px', flexShrink: 0 }}>✏️</button>
+                  <button onClick={() => del(e.id)} title="Löschen" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '13px', padding: '2px 3px', flexShrink: 0 }}>🗑</button>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {view === 'woche' && (
+        <p style={{ fontSize: '11px', color: 'var(--text-muted)', margin: 0 }}>
+          💡 Tag anklicken zum Erfassen · Eintrag anklicken zum Bearbeiten · Statuswechsel (offen/abgerechnet) in der Tagesansicht.
+        </p>
       )}
     </div>
   )
