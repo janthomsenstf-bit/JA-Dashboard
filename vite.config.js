@@ -31,6 +31,10 @@ export default defineConfig({
       workbox: {
         // Cache static assets; API calls pass through to network
         globPatterns: ['**/*.{js,css,html,svg,woff2}'],
+        // WICHTIG: /api/* NICHT auf index.html umleiten – sonst fängt der
+        // Service Worker den OneDrive-OAuth-Popup (/api/onedrive-callback) ab
+        // und zeigt die App statt des Microsoft-Logins.
+        navigateFallbackDenylist: [/^\/api\//],
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
