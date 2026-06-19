@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect } from 'react'
 import { AUFTRAGS_TYP_CFG, AUFTRAGS_STATUS_CFG, generateSerieInstanzen, intervallLabel } from './detail/AuftraegeTab.jsx'
 
 const CUR_MONAT = new Date().getMonth() + 1
@@ -8,6 +8,16 @@ const MONAT_KURZ   = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Ok
 const WOCHENTAG    = ['So','Mo','Di','Mi','Do','Fr','Sa']
 const WOCHENTAG_L  = ['Sonntag','Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag']
 const STATUS_ORDER = ['offen','in_bearbeitung','erledigt']
+
+// Persistente Filter der Aufgabenübersicht – reine Anzeige-Einstellungen, gerätelokal.
+const TODO_FILTER_KEY = 'sda-todo-filters-v1'
+function loadTodoFilters() {
+  try {
+    const raw = localStorage.getItem(TODO_FILTER_KEY)
+    if (raw) return JSON.parse(raw) || {}
+  } catch {}
+  return {}
+}
 
 // ── Hilfsfunktionen ───────────────────────────────────────────────────────────
 function fmtFrist(iso) {
@@ -596,19 +606,31 @@ function StatBadge({ label, count, color, bg }) {
 // ── Hauptkomponente ───────────────────────────────────────────────────────────
 export default function GlobalTodoView({ clients, onUpdateClient, onSelectClient, onNavigateToAuftrag }) {
   const aktiveClients = useMemo(() => clients.filter(c => !c.archiviert), [clients])
+  const saved = useMemo(() => loadTodoFilters(), [])
 
-  // ── Ansicht & Navigation ──────────────────────────────────────────────────
-  const [viewMode,      setViewMode]      = useState('monat')
-  const [navDate,       setNavDate]       = useState(() => new Date())
+  // ── Ansicht & Navigation (letzte Ansicht wiederhergestellt) ───────────────
+  const [viewMode,      setViewMode]      = useState(saved.viewMode ?? 'monat')
+  const [navDate,       setNavDate]       = useState(() => saved.navDate ? new Date(saved.navDate) : new Date())
   const [quickCreateDay, setQuickCreateDay] = useState(null)
   const [showNew,        setShowNew]        = useState(false)
 
-  // ── Filter ────────────────────────────────────────────────────────────────
-  const [filterJahr,       setFilterJahr]       = useState(CUR_JAHR)
-  const [filterMonat,      setFilterMonat]      = useState(CUR_MONAT)
-  const [filterTyp,        setFilterTyp]        = useState('alle')
-  const [filterStatus,     setFilterStatus]     = useState('aktiv')
-  const [filterMandatstyp, setFilterMandatstyp] = useState('alle')
+  // ── Filter (letzte Auswahl wiederhergestellt) ─────────────────────────────
+  const [filterJahr,       setFilterJahr]       = useState(saved.filterJahr ?? CUR_JAHR)
+  const [filterMonat,      setFilterMonat]      = useState(saved.filterMonat !== undefined ? saved.filterMonat : CUR_MONAT)
+  const [filterTyp,        setFilterTyp]        = useState(saved.filterTyp ?? 'alle')
+  const [filterStatus,     setFilterStatus]     = useState(saved.filterStatus ?? 'aktiv')
+  const [filterMandatstyp, setFilterMandatstyp] = useState(saved.filterMandatstyp ?? 'alle')
+
+  // Letzte Ansicht automatisch merken (gerätelokal, nur Anzeige-Einstellungen)
+  useEffect(() => {
+    try {
+      localStorage.setItem(TODO_FILTER_KEY, JSON.stringify({
+        viewMode,
+        navDate: (navDate instanceof Date && !isNaN(navDate)) ? navDate.toISOString() : null,
+        filterJahr, filterMonat, filterTyp, filterStatus, filterMandatstyp,
+      }))
+    } catch {}
+  }, [viewMode, navDate, filterJahr, filterMonat, filterTyp, filterStatus, filterMandatstyp])
 
   // ── Alle Aufträge (Serien expandiert) ─────────────────────────────────────
   const alleAuftraege = useMemo(() => {
@@ -812,6 +834,13 @@ export default function GlobalTodoView({ clients, onUpdateClient, onSelectClient
     setNavDate(today)
     setFilterJahr(today.getFullYear())
     setFilterMonat(today.getMonth() + 1)
+  }
+
+  function resetFilters() {
+    const t = new Date()
+    setViewMode('monat'); setNavDate(t)
+    setFilterJahr(t.getFullYear()); setFilterMonat(t.getMonth() + 1)
+    setFilterTyp('alle'); setFilterStatus('aktiv'); setFilterMandatstyp('alle')
   }
 
   function goPrev() {
@@ -1075,6 +1104,10 @@ export default function GlobalTodoView({ clients, onUpdateClient, onSelectClient
           {[['alle','👥 Alle'],['extern','🏢 Extern'],['intern','🏠 Intern']].map(([k,l]) => (
             <button key={k} onClick={() => setFilterMandatstyp(k)} style={btnFilter(filterMandatstyp === k, '#f59e0b')}>{l}</button>
           ))}
+
+          {divider}
+          <button onClick={resetFilters} title="Alle Filter auf Standard zurücksetzen (aktueller Monat, alle Typen, aktiv)"
+            style={{ ...inputStyle, fontSize:'11px', fontWeight:600 }}>↺ Zurücksetzen</button>
         </div>
       </div>
 
