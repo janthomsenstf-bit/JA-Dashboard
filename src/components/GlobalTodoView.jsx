@@ -73,7 +73,7 @@ function fmtDE(date, opts) {
 // ── Gemeinsame Tabellenzeile ───────────────────────────────────────────────────
 const thStyle = { padding:'8px 12px', textAlign:'left', fontWeight:600, color:'var(--text-muted)', fontSize:'11px', borderBottom:'2px solid var(--border)' }
 
-function AuftragRow({ au, idx, onSelectClient, onCycleStatus, onNavigateToAuftrag, overdueDays }) {
+function AuftragRow({ au, idx, onSelectClient, onCycleStatus, onToggleDone, onNavigateToAuftrag, overdueDays }) {
   const typCfg    = AUFTRAGS_TYP_CFG[au.typ]      ?? AUFTRAGS_TYP_CFG.freitext
   const statusCfg = AUFTRAGS_STATUS_CFG[au.status] ?? AUFTRAGS_STATUS_CFG.offen
   const frist     = fmtFrist(au.frist)
@@ -176,22 +176,28 @@ function AuftragRow({ au, idx, onSelectClient, onCycleStatus, onNavigateToAuftra
         )}
       </td>
       <td style={{ padding:'8px 12px' }}>
-        <button onClick={() => onCycleStatus(au)} title="Status wechseln"
-          style={{ fontSize:'11px', fontWeight:700, padding:'3px 10px', borderRadius:'20px', border:`1px solid ${statusCfg.border}`, background:statusCfg.bg, color:statusCfg.color, cursor:'pointer', whiteSpace:'nowrap' }}>
-          {statusCfg.icon} {statusCfg.label}
-          {erledigt && au.erledigtAm && (
-            <span style={{ fontWeight:400, opacity:0.7, marginLeft:'5px', fontSize:'10px' }}>
-              {new Date(au.erledigtAm).toLocaleDateString('de-DE', { day:'2-digit', month:'2-digit' })}
-            </span>
-          )}
-        </button>
+        <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
+          <input type="checkbox" checked={erledigt}
+            onChange={e => onToggleDone(au, e.target.checked)}
+            title={erledigt ? 'Als offen markieren' : 'Als erledigt markieren'}
+            style={{ width:'16px', height:'16px', accentColor:'#16a34a', cursor:'pointer', flexShrink:0 }} />
+          <button onClick={() => onCycleStatus(au)} title="Status wechseln"
+            style={{ fontSize:'11px', fontWeight:700, padding:'3px 10px', borderRadius:'20px', border:`1px solid ${statusCfg.border}`, background:statusCfg.bg, color:statusCfg.color, cursor:'pointer', whiteSpace:'nowrap' }}>
+            {statusCfg.icon} {statusCfg.label}
+            {erledigt && au.erledigtAm && (
+              <span title={new Date(au.erledigtAm).toLocaleString('de-DE')} style={{ fontWeight:400, opacity:0.7, marginLeft:'5px', fontSize:'10px' }}>
+                {new Date(au.erledigtAm).toLocaleDateString('de-DE', { day:'2-digit', month:'2-digit', year:'2-digit' })}
+              </span>
+            )}
+          </button>
+        </div>
       </td>
     </tr>
   )
 }
 
 // ── Monats-Tabelle ────────────────────────────────────────────────────────────
-function MonthTable({ gefiltert, alleAuftraege, onSelectClient, onCycleStatus, onNavigateToAuftrag }) {
+function MonthTable({ gefiltert, alleAuftraege, onSelectClient, onCycleStatus, onToggleDone, onNavigateToAuftrag }) {
   return (
     <div style={{ flex:1, overflowY:'auto', background:'var(--bg)' }}>
       {gefiltert.length === 0 ? (
@@ -214,7 +220,7 @@ function MonthTable({ gefiltert, alleAuftraege, onSelectClient, onCycleStatus, o
           </thead>
           <tbody>
             {[...gefiltert].sort((a, b) => (b._carryForward ? 1 : 0) - (a._carryForward ? 1 : 0)).map((au, idx) => (
-              <AuftragRow key={au.id} au={au} idx={idx} onSelectClient={onSelectClient} onCycleStatus={onCycleStatus} onNavigateToAuftrag={onNavigateToAuftrag}
+              <AuftragRow key={au.id} au={au} idx={idx} onSelectClient={onSelectClient} onCycleStatus={onCycleStatus} onToggleDone={onToggleDone} onNavigateToAuftrag={onNavigateToAuftrag}
                 overdueDays={au._carryForward ? au._carryDays : undefined} />
             ))}
           </tbody>
@@ -316,7 +322,7 @@ function WeekCard({ au, onSelectClient, onCycleStatus, onNavigateToAuftrag }) {
 }
 
 // ── Tages-Ansicht ─────────────────────────────────────────────────────────────
-function DayTable({ items, date, onSelectClient, onCycleStatus, onQuickCreate, onNavigateToAuftrag }) {
+function DayTable({ items, date, onSelectClient, onCycleStatus, onToggleDone, onQuickCreate, onNavigateToAuftrag }) {
   const heute = new Date(); heute.setHours(0,0,0,0)
   const istHeute    = isSameDay(date, heute)
   const carryItems  = items.filter(a => a._carryForward)
@@ -338,7 +344,7 @@ function DayTable({ items, date, onSelectClient, onCycleStatus, onQuickCreate, o
         <tbody>
           {rows.map((au, idx) => (
             <AuftragRow key={au.id} au={au} idx={startIdx + idx}
-              onSelectClient={onSelectClient} onCycleStatus={onCycleStatus}
+              onSelectClient={onSelectClient} onCycleStatus={onCycleStatus} onToggleDone={onToggleDone}
               onNavigateToAuftrag={onNavigateToAuftrag}
               overdueDays={au._carryForward ? au._carryDays : undefined} />
           ))}
@@ -469,6 +475,114 @@ function QuickCreateModal({ day, clients, onClose, onCreate }) {
   )
 }
 
+// ── Neuer-Auftrag-Modal (mit Mandantensuche) ───────────────────────────────────
+function NewAuftragModal({ clients, onClose, onCreate }) {
+  const [query,       setQuery]       = useState('')
+  const [clientId,    setClientId]    = useState('')
+  const [typ,         setTyp]         = useState('fibu')
+  const [bezeichnung, setBezeichnung] = useState('')
+  const [frist,       setFrist]       = useState('')
+  const [istSerie,    setIstSerie]    = useState(false)
+  const [prioritaet,  setPrioritaet]  = useState('normal')
+  const [beschreibung, setBeschreibung] = useState('')
+  const [status,      setStatus]      = useState('offen')
+
+  const selected = clients.find(c => c.id === clientId)
+  const matches = (query.trim().length >= 1 && !selected)
+    ? clients.filter(c => (c.name || '').toLowerCase().includes(query.toLowerCase()) || String(c.mandantennummer || '').includes(query.trim())).slice(0, 8)
+    : []
+
+  function submit() {
+    if (!clientId) return
+    onCreate({ clientId, typ, bezeichnung: bezeichnung.trim(), frist, istSerie, prioritaet, beschreibung: beschreibung.trim(), status })
+  }
+
+  return (
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.55)', zIndex:9000, display:'flex', alignItems:'center', justifyContent:'center', padding:'16px' }}
+      onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={{ background:'var(--surface)', borderRadius:'12px', padding:'22px', width:'min(480px, 94vw)', maxHeight:'90vh', overflowY:'auto', boxShadow:'0 24px 60px rgba(0,0,0,0.4)', border:'1px solid var(--border)' }}>
+        <div style={{ fontWeight:700, fontSize:'15px', marginBottom:'16px' }}>➕ Neuer Auftrag</div>
+
+        <div style={{ display:'flex', flexDirection:'column', gap:'12px' }}>
+          {/* Mandantensuche */}
+          <div>
+            <span style={modalLabelStyle}>Mandant</span>
+            {selected ? (
+              <div style={{ display:'flex', alignItems:'center', gap:'8px', padding:'7px 10px', borderRadius:'7px', border:'1px solid var(--accent)', background:'var(--surface2)' }}>
+                <span style={{ fontSize:'13px', fontWeight:600, flex:1 }}>{selected.name}{selected.mandantennummer ? ` (${selected.mandantennummer})` : ''}</span>
+                <button onClick={() => { setClientId(''); setQuery('') }} style={{ background:'none', border:'none', color:'var(--text-muted)', cursor:'pointer', fontSize:'12px' }}>ändern</button>
+              </div>
+            ) : (
+              <>
+                <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Name eintippen… z. B. Müller GmbH" style={modalInputStyle} autoFocus />
+                {matches.length > 0 && (
+                  <div style={{ marginTop:'4px', border:'1px solid var(--border)', borderRadius:'7px', overflow:'hidden', maxHeight:'190px', overflowY:'auto' }}>
+                    {matches.map(c => (
+                      <button key={c.id} onClick={() => { setClientId(c.id); setQuery('') }}
+                        style={{ display:'block', width:'100%', textAlign:'left', padding:'7px 10px', border:'none', borderBottom:'1px solid var(--border)', background:'var(--surface)', color:'var(--text)', fontSize:'13px', cursor:'pointer' }}>
+                        {c.name}{c.mandantennummer ? <span style={{ color:'var(--text-muted)', fontSize:'11px' }}> · {c.mandantennummer}</span> : null}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {query.trim() && matches.length === 0 && <div style={{ fontSize:'11px', color:'var(--text-muted)', marginTop:'4px' }}>Kein Mandant gefunden.</div>}
+              </>
+            )}
+          </div>
+
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px' }}>
+            <label><span style={modalLabelStyle}>Auftragstyp</span>
+              <select value={typ} onChange={e => setTyp(e.target.value)} style={modalInputStyle}>
+                {Object.entries(AUFTRAGS_TYP_CFG).map(([k, v]) => <option key={k} value={k}>{v.icon} {v.label}</option>)}
+              </select>
+            </label>
+            <label><span style={modalLabelStyle}>Status</span>
+              <select value={status} onChange={e => setStatus(e.target.value)} style={modalInputStyle}>
+                {Object.entries(AUFTRAGS_STATUS_CFG).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+              </select>
+            </label>
+          </div>
+
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px' }}>
+            <label><span style={modalLabelStyle}>Interne Frist</span>
+              <input type="date" value={frist} onChange={e => setFrist(e.target.value)} style={modalInputStyle} />
+            </label>
+            <label><span style={modalLabelStyle}>Priorität</span>
+              <select value={prioritaet} onChange={e => setPrioritaet(e.target.value)} style={modalInputStyle}>
+                <option value="niedrig">Niedrig</option>
+                <option value="normal">Normal</option>
+                <option value="hoch">Hoch</option>
+              </select>
+            </label>
+          </div>
+
+          <label><span style={modalLabelStyle}>Bezeichnung</span>
+            <input value={bezeichnung} onChange={e => setBezeichnung(e.target.value)} placeholder="z. B. Buchhaltung Mai 2026" style={modalInputStyle} />
+          </label>
+
+          <label><span style={modalLabelStyle}>Beschreibung (optional)</span>
+            <textarea value={beschreibung} onChange={e => setBeschreibung(e.target.value)} rows={2} placeholder="Notiz…" style={{ ...modalInputStyle, resize:'vertical' }} />
+          </label>
+
+          <label style={{ display:'flex', alignItems:'center', gap:'8px', cursor:'pointer' }}>
+            <input type="checkbox" checked={istSerie} onChange={e => setIstSerie(e.target.checked)} style={{ width:'15px', height:'15px', accentColor:'var(--accent)', cursor:'pointer' }} />
+            <span style={{ fontSize:'13px', color:'var(--text)' }}>Serienauftrag (monatlich wiederkehrend)</span>
+          </label>
+          {istSerie && <div style={{ fontSize:'11px', color:'var(--text-muted)', marginTop:'-4px' }}>Startet ab der internen Frist (bzw. aktuellem Monat). Details später im Mandanten-Reiter „Aufträge" anpassbar.</div>}
+        </div>
+
+        <div style={{ display:'flex', gap:'8px', justifyContent:'flex-end', marginTop:'20px' }}>
+          <button onClick={onClose} style={{ padding:'7px 14px', borderRadius:'7px', border:'1px solid var(--border)', background:'transparent', color:'var(--text-muted)', fontSize:'13px', cursor:'pointer' }}>Abbrechen</button>
+          <button onClick={submit} disabled={!clientId}
+            style={{ padding:'7px 18px', borderRadius:'7px', border:'none', background: clientId ? 'var(--accent)' : 'var(--border)', color: clientId ? '#fff' : 'var(--text-muted)', fontWeight:700, fontSize:'13px', cursor: clientId ? 'pointer' : 'not-allowed' }}>
+            ✓ Auftrag anlegen
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Statistik-Badge ────────────────────────────────────────────────────────────
 function StatBadge({ label, count, color, bg }) {
   return (
@@ -487,6 +601,7 @@ export default function GlobalTodoView({ clients, onUpdateClient, onSelectClient
   const [viewMode,      setViewMode]      = useState('monat')
   const [navDate,       setNavDate]       = useState(() => new Date())
   const [quickCreateDay, setQuickCreateDay] = useState(null)
+  const [showNew,        setShowNew]        = useState(false)
 
   // ── Filter ────────────────────────────────────────────────────────────────
   const [filterJahr,       setFilterJahr]       = useState(CUR_JAHR)
@@ -753,6 +868,64 @@ export default function GlobalTodoView({ clients, onUpdateClient, onSelectClient
     }
   }
 
+  // ── Direkt erledigt/offen schalten ────────────────────────────────────────
+  function markDone(au, done) {
+    const status = done ? 'erledigt' : 'offen'
+    const stamp  = done ? new Date().toISOString() : null
+    if (au.istSerie && au.serieId && au.serieKey) {
+      const upd = (au.client.auftraege ?? []).map(a =>
+        a.id !== au.serieId ? a : { ...a, instanzen: { ...(a.instanzen ?? {}), [au.serieKey]: { status, erledigtAm: stamp } } })
+      onUpdateClient(au.client.id, { auftraege: upd })
+    } else {
+      const upd = (au.client.auftraege ?? []).map(a =>
+        a.id === au.id ? { ...a, status, erledigtAm: stamp } : a)
+      onUpdateClient(au.client.id, { auftraege: upd })
+    }
+  }
+
+  // ── Auftrag aus der Übersicht anlegen ─────────────────────────────────────
+  function createAuftrag({ clientId, typ, bezeichnung, frist, istSerie, prioritaet, beschreibung, status }) {
+    const client = aktiveClients.find(c => c.id === clientId)
+    if (!client) return
+    const now = new Date().toISOString()
+    let newAu
+    if (istSerie) {
+      const start = frist || `${CUR_JAHR}-${String(CUR_MONAT).padStart(2, '0')}-01`
+      newAu = {
+        id: 'au_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+        typ, bezeichnung,
+        istSerie: true,
+        serie: { startDatum: start, intervallTyp: 'monate', intervallWert: 1, endTyp: 'kein', endDatum: '', endAnzahl: 12 },
+        instanzen: {},
+        notiz: beschreibung || '',
+        prioritaet: prioritaet || 'normal',
+        erstelltAm: now,
+      }
+    } else {
+      const d = frist ? new Date(frist + 'T12:00:00') : null
+      newAu = {
+        id: 'au_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+        typ, bezeichnung,
+        jahr:  d ? d.getFullYear() : CUR_JAHR,
+        monat: d ? d.getMonth() + 1 : null,
+        frist: frist || '',
+        status: status || 'offen',
+        notiz: beschreibung || '',
+        hinweise: [], verlauf: [],
+        prioritaet: prioritaet || 'normal',
+        erstelltAm: now,
+        erledigtAm: status === 'erledigt' ? now : null,
+        ...(typ === 'jahresabschluss' ? {
+          abschlussJahr: CUR_JAHR - 1,
+          jaWorkflowStatus: 'neu',
+          jaWorkflowStatusDatum: now.slice(0, 10),
+          honorar: { typ: 'pauschale', betrag: '', notiz: '' },
+        } : {}),
+      }
+    }
+    onUpdateClient(clientId, { auftraege: [...(client.auftraege ?? []), newAu] })
+  }
+
   // ── Schnell-Anlegen ───────────────────────────────────────────────────────
   function handleQuickCreate(clientId, typ, bezeichnung) {
     const client = aktiveClients.find(c => c.id === clientId)
@@ -824,6 +997,12 @@ export default function GlobalTodoView({ clients, onUpdateClient, onSelectClient
               }}>{l}</button>
             ))}
           </div>
+
+          {/* Neuer Auftrag */}
+          <button onClick={() => setShowNew(true)}
+            style={{ padding:'7px 14px', borderRadius:'8px', border:'none', background:'#0891b2', color:'#fff', fontWeight:700, fontSize:'12px', cursor:'pointer', whiteSpace:'nowrap', marginLeft:'4px' }}>
+            ➕ Neuer Auftrag
+          </button>
 
           {/* Stat-Badges */}
           <div style={{ marginLeft:'auto', display:'flex', gap:'7px', alignItems:'center', flexWrap:'wrap' }}>
@@ -901,13 +1080,13 @@ export default function GlobalTodoView({ clients, onUpdateClient, onSelectClient
 
       {/* ── Inhalt ── */}
       {viewMode === 'monat' && (
-        <MonthTable gefiltert={gefiltert} alleAuftraege={alleAuftraege} onSelectClient={onSelectClient} onCycleStatus={cycleStatus} onNavigateToAuftrag={onNavigateToAuftrag} />
+        <MonthTable gefiltert={gefiltert} alleAuftraege={alleAuftraege} onSelectClient={onSelectClient} onCycleStatus={cycleStatus} onToggleDone={markDone} onNavigateToAuftrag={onNavigateToAuftrag} />
       )}
       {viewMode === 'woche' && weekDays && (
         <WeekView weekDays={weekDays} onSelectClient={onSelectClient} onCycleStatus={cycleStatus} onQuickCreate={setQuickCreateDay} onNavigateToAuftrag={onNavigateToAuftrag} />
       )}
       {viewMode === 'tag' && dayItems && (
-        <DayTable items={dayItems} date={navDate} onSelectClient={onSelectClient} onCycleStatus={cycleStatus} onQuickCreate={setQuickCreateDay} onNavigateToAuftrag={onNavigateToAuftrag} />
+        <DayTable items={dayItems} date={navDate} onSelectClient={onSelectClient} onCycleStatus={cycleStatus} onToggleDone={markDone} onQuickCreate={setQuickCreateDay} onNavigateToAuftrag={onNavigateToAuftrag} />
       )}
 
       {/* ── Footer ── */}
@@ -925,6 +1104,15 @@ export default function GlobalTodoView({ clients, onUpdateClient, onSelectClient
           clients={aktiveClients}
           onClose={() => setQuickCreateDay(null)}
           onCreate={handleQuickCreate}
+        />
+      )}
+
+      {/* ── Neuer-Auftrag-Modal ── */}
+      {showNew && (
+        <NewAuftragModal
+          clients={aktiveClients}
+          onClose={() => setShowNew(false)}
+          onCreate={(data) => { createAuftrag(data); setShowNew(false) }}
         />
       )}
     </div>
