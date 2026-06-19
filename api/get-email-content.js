@@ -102,6 +102,7 @@ export default async function handler(req, res) {
       from:        parsed.from?.value?.[0]?.address ?? null,
       to:          (parsed.to?.value ?? []).map(a => a.address).join(', ') || null,
       cc:          (parsed.cc?.value ?? []).map(a => a.address).join(', ') || null,
+      messageId:   parsed.messageId ?? null,
       attachments,
     })
 

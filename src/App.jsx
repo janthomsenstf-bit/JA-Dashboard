@@ -560,6 +560,33 @@ export default function App() {
     }
   }
 
+  // ── Variante A: E-Mail-Inhalt cachen, solange noch abrufbar ───────────────────
+  // Additiv & read-only: schreibt nur Inhalt/Anhang-Metadaten in ein vorhandenes
+  // Event (funktionales Update → kein Überschreiben anderer Daten). Stilles
+  // Scheitern bei Fehlern → keine Datenänderung. Anhang-Binärdaten werden NICHT
+  // persistiert (nur Metadaten), um den Cloud-Speicher klein zu halten.
+  async function cacheEventBody(clientId, ev) {
+    if (!ev?.sourceUid || !ev?.sourceAccount || ev.contentLoaded) return
+    try {
+      const res  = await fetch(`/api/get-email-content?uid=${encodeURIComponent(ev.sourceUid)}&account=${encodeURIComponent(ev.sourceAccount)}`)
+      const data = await res.json()
+      if (!res.ok || data.error) return
+      setClients(prev => prev.map(c => {
+        if (c.id !== clientId) return c
+        const evs = (c.kommunikation?.events ?? []).map(e => e.id !== ev.id ? e : {
+          ...e,
+          text:          data.text ?? e.text,
+          html:          data.html ?? e.html,
+          anlagen:       (data.attachments ?? []).map(a => ({ name: a.name, size: a.size, contentType: a.contentType, tooLarge: a.tooLarge ?? false })),
+          contentLoaded: true,
+          ...(data.messageId ? { messageId: data.messageId } : {}),
+          ...(data.cc        ? { cc: data.cc }            : {}),
+        })
+        return { ...c, kommunikation: { ...(c.kommunikation ?? { events: [] }), events: evs } }
+      }))
+    } catch {}
+  }
+
   async function pollEmails() {
     const since = lastEmailFetchRef.current
     const sinceParam = since ? '&since=' + encodeURIComponent(since) : ''
@@ -629,6 +656,27 @@ export default function App() {
     const id = setInterval(() => pollEmails().catch(() => {}), 15 * 60 * 1000)
     return () => { clearTimeout(initTimer); clearInterval(id) }
   }, [authUser])
+
+  // ── Variante A: beim Öffnen eines Mandanten dessen noch nicht gecachte
+  //    eingehenden E-Mails im Hintergrund sichern (gedrosselt, abbrechbar) ───────
+  useEffect(() => {
+    if (!authUser || dataLoading) return
+    if (!selectedId || (typeof selectedId === 'string' && selectedId.startsWith('__'))) return
+    const c = clientsRef.current.find(x => x.id === selectedId)
+    const pending = (c?.kommunikation?.events ?? []).filter(
+      e => e.typ === 'eingehend' && e.sourceUid && e.sourceAccount && !e.contentLoaded
+    )
+    if (!pending.length) return
+    let cancelled = false
+    ;(async () => {
+      for (const ev of pending) {
+        if (cancelled) break
+        await cacheEventBody(selectedId, ev)
+        await new Promise(r => setTimeout(r, 500))
+      }
+    })()
+    return () => { cancelled = true }
+  }, [selectedId, authUser, dataLoading])
 
   // ── E-Mail einem Mandanten manuell zuordnen ───────────────────────────────────
   function assignEmail(emailUid, emailAccount, clientId, saveContact) {
