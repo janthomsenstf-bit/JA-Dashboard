@@ -395,15 +395,18 @@ export default function App() {
   const sessionValidatedRef = useRef(false)
   useEffect(() => {
     if (dataLoading || sessionValidatedRef.current) return
-    sessionValidatedRef.current = true
     const restored = _restoredSession.current
-    if (!restored?.selectedId) return
+    if (!restored?.selectedId) { sessionValidatedRef.current = true; return }
     // Spezial-IDs (__todo__, __budget__, __bot_inbox__) sind immer gültig
     if (typeof restored.selectedId === 'string' && restored.selectedId.startsWith('__')) {
+      sessionValidatedRef.current = true
       setBackupToast('✓ Letzte Ansicht wiederhergestellt')
       setTimeout(() => setBackupToast(''), 3000)
       return
     }
+    // Erst validieren, wenn die Mandanten wirklich geladen sind (sonst fälschlicher Reset)
+    if (clients.length === 0) return
+    sessionValidatedRef.current = true
     // Prüfen ob der Mandant noch existiert
     const found = clients.find(c => c.id === restored.selectedId)
     if (!found) {
@@ -1518,6 +1521,7 @@ export default function App() {
             <DetailView
               client={selectedClient}
               initialTab={detailInitialTab}
+              onTabChange={setDetailInitialTab}
               onUpdate={(patch) => updateClient(selectedClient.id, patch)}
               onAddRueckfrage={(text) => addRueckfrage(selectedClient.id, text)}
               onToggleRueckfrage={(rqId, checked) => toggleRueckfrage(selectedClient.id, rqId, checked)}

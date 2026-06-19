@@ -35,6 +35,7 @@ const TAB_NAV = [
 export default function DetailView({
   client,
   initialTab = 0,
+  onTabChange,
   onUpdate,
   onAddRueckfrage,
   onToggleRueckfrage,
@@ -84,8 +85,9 @@ export default function DetailView({
     }
   }, [initialTab])
 
-  // Aktiven Tab persistieren (für Session-Wiederherstellung)
+  // Aktiven Tab nach oben melden (App = alleinige Quelle) + persistieren
   useEffect(() => {
+    onTabChange?.(activeTab)
     saveSessionState({ selectedId: client.id, detailInitialTab: activeTab, activeTab })
   }, [activeTab, client.id])
 

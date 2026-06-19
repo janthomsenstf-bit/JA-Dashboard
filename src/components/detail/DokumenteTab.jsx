@@ -197,7 +197,7 @@ function EmailAnhaeange({ client, onNavigateToKomm }) {
 }
 
 // ── Vorschau-Modal ────────────────────────────────────────────────────────────
-function PreviewModal({ item, previewUrl, loading, error, onClose }) {
+function PreviewModal({ item, previewUrl, downloadUrl, webUrl, loading, error, onClose }) {
   const isImage = item?.file?.mimeType?.startsWith('image/') || /\.(png|jpg|jpeg|gif|webp|svg)$/i.test(item?.name ?? '')
   const isPdf   = item?.file?.mimeType === 'application/pdf' || /\.pdf$/i.test(item?.name ?? '')
 
@@ -218,8 +218,13 @@ function PreviewModal({ item, previewUrl, loading, error, onClose }) {
             <span style={{ fontSize: '11px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{fmtFileSize(item?.size)}</span>
           </div>
           <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
-            {previewUrl && (
-              <a href={previewUrl} target="_blank" rel="noreferrer" className="btn btn-ghost btn-sm" style={{ fontSize: '11px' }}>
+            {webUrl && (
+              <a href={webUrl} target="_blank" rel="noreferrer" className="btn btn-ghost btn-sm" style={{ fontSize: '11px' }}>
+                ☁️ In OneDrive öffnen
+              </a>
+            )}
+            {downloadUrl && (
+              <a href={downloadUrl} target="_blank" rel="noreferrer" className="btn btn-ghost btn-sm" style={{ fontSize: '11px' }}>
                 ⬇️ Herunterladen
               </a>
             )}
@@ -231,17 +236,18 @@ function PreviewModal({ item, previewUrl, loading, error, onClose }) {
         <div style={{ flex: 1, overflow: 'auto', padding: loading ? '40px' : '0', textAlign: loading ? 'center' : undefined, minHeight: '200px' }}>
           {loading && <div style={{ color: 'var(--text-muted)', fontSize: '13px' }}>⏳ Lade Vorschau…</div>}
           {error  && <div style={{ color: '#ef4444', fontSize: '13px', padding: '20px' }}>⚠️ {error}</div>}
-          {!loading && !error && previewUrl && isImage && (
+          {!loading && !error && isImage && previewUrl && (
             <img src={previewUrl} alt={item?.name} style={{ maxWidth: '100%', maxHeight: '75vh', objectFit: 'contain', display: 'block', margin: '0 auto' }} />
           )}
-          {!loading && !error && previewUrl && isPdf && (
+          {!loading && !error && isPdf && previewUrl && (
             <iframe src={previewUrl} title={item?.name} style={{ width: '100%', height: '75vh', border: 'none', display: 'block' }} />
           )}
-          {!loading && !error && previewUrl && !isImage && !isPdf && (
+          {!loading && !error && !isImage && !isPdf && (
             <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>
               <div style={{ fontSize: '40px', marginBottom: '12px' }}>{fileIcon(item?.name, item?.file?.mimeType)}</div>
               <div style={{ marginBottom: '12px' }}>Vorschau für diesen Dateityp nicht verfügbar.</div>
-              <a href={previewUrl} target="_blank" rel="noreferrer" className="btn btn-primary btn-sm">⬇️ Datei herunterladen</a>
+              {webUrl && <a href={webUrl} target="_blank" rel="noreferrer" className="btn btn-primary btn-sm" style={{ marginRight: '8px' }}>☁️ In OneDrive öffnen</a>}
+              {downloadUrl && <a href={downloadUrl} target="_blank" rel="noreferrer" className="btn btn-ghost btn-sm">⬇️ Datei herunterladen</a>}
             </div>
           )}
         </div>
@@ -296,6 +302,8 @@ function OneDriveSection({ client, tokens, onUpdateTokens, onSendAsAttachment, o
   const [previewUrl, setPreviewUrl]         = useState(null)
   const [previewLoading, setPreviewLoading] = useState(false)
   const [previewError, setPreviewError]     = useState('')
+  const [previewDownloadUrl, setPreviewDownloadUrl] = useState(null)
+  const [previewWebUrl, setPreviewWebUrl]   = useState(null)
 
   // Callback wenn Tokens server-seitig refreshed wurden
   const handleTokenRefresh = useCallback((newTokens) => {
@@ -471,21 +479,38 @@ function OneDriveSection({ client, tokens, onUpdateTokens, onSendAsAttachment, o
   async function handlePreview(item) {
     setPreviewItem(item)
     setPreviewUrl(null)
+    setPreviewDownloadUrl(null)
+    setPreviewWebUrl(null)
     setPreviewError('')
     setPreviewLoading(true)
     try {
       const filePath = `${currentPath}/${item.name}`
       const res = await apiCall('downloadUrl', { filePath })
-      if (res.downloadUrl) {
-        setPreviewUrl(res.downloadUrl)
-      } else {
-        setPreviewError('Vorschau-URL nicht verfügbar.')
+      if (!res.downloadUrl) { setPreviewError('Vorschau-URL nicht verfügbar.'); return }
+      setPreviewDownloadUrl(res.downloadUrl)
+      setPreviewWebUrl(res.item?.webUrl ?? null)
+      const isImage = item?.file?.mimeType?.startsWith('image/') || /\.(png|jpg|jpeg|gif|webp|svg)$/i.test(item?.name ?? '')
+      const isPdf   = item?.file?.mimeType === 'application/pdf' || /\.pdf$/i.test(item?.name ?? '')
+      if (isImage || isPdf) {
+        // Inhalt als Blob laden → Inline-Vorschau ohne Download in den Download-Ordner
+        const r = await fetch(res.downloadUrl)
+        if (!r.ok) throw new Error(`Laden fehlgeschlagen (HTTP ${r.status})`)
+        const blob = await r.blob()
+        setPreviewUrl(URL.createObjectURL(blob))
       }
     } catch (err) {
       setPreviewError(err.message)
     } finally {
       setPreviewLoading(false)
     }
+  }
+
+  function closePreview() {
+    setPreviewUrl(prev => { if (prev && prev.startsWith('blob:')) URL.revokeObjectURL(prev); return null })
+    setPreviewItem(null)
+    setPreviewDownloadUrl(null)
+    setPreviewWebUrl(null)
+    setPreviewError('')
   }
 
   async function handleSendAsAttachment() {
@@ -900,9 +925,11 @@ function OneDriveSection({ client, tokens, onUpdateTokens, onSendAsAttachment, o
         <PreviewModal
           item={previewItem}
           previewUrl={previewUrl}
+          downloadUrl={previewDownloadUrl}
+          webUrl={previewWebUrl}
           loading={previewLoading}
           error={previewError}
-          onClose={() => { setPreviewItem(null); setPreviewUrl(null); setPreviewError('') }}
+          onClose={closePreview}
         />
       )}
     </div>
