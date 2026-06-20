@@ -24,6 +24,7 @@ import BudgetView   from './components/BudgetView.jsx'
 import BotInbox, { BotInboxBadge } from './components/BotInbox.jsx'
 import WebsiteAnfragen from './components/WebsiteAnfragen.jsx'
 import ZeiterfassungView from './components/ZeiterfassungView.jsx'
+import DatenRettung from './components/DatenRettung.jsx'
 import { AUFTRAGS_TYP_CFG, WORKFLOW_CONFIGS } from './components/detail/AuftraegeTab.jsx'
 
 // ── Website-Lead → Auftrag (geteilt von "Mandant anlegen" + "Auftrag zu Mandant") ──
@@ -534,7 +535,12 @@ export default function App() {
   useEffect(() => {
     if (!authUser) return
     const id = setInterval(() => {
-      cloudSnapshot(STORAGE_KEY, clientsRef.current).catch(() => {})
+      // Schutz: keine Sicherung anlegen, wenn aktuell gar keine Zeiteinträge vorhanden sind
+      // – sonst könnten leere Stände gute Backups aus dem 10er-Fenster verdrängen.
+      const cs = clientsRef.current || []
+      const totalZeit = cs.reduce((n, c) => n + (Array.isArray(c?.zeiteintraege) ? c.zeiteintraege.length : 0), 0)
+      if (cs.length === 0 || totalZeit === 0) return
+      cloudSnapshot(STORAGE_KEY, cs).catch(() => {})
       const now = new Date().toISOString()
       setLastBackupAt(now)
     }, BACKUP_INTERVAL_MS)
@@ -1415,6 +1421,18 @@ export default function App() {
               >
                 ⏱ Zeiterfassung
               </button>
+              <button
+                onClick={() => setSelectedId('__rettung__')}
+                style={{
+                  width: '100%', padding: '8px 12px', borderRadius: '8px', border: 'none', cursor: 'pointer', textAlign: 'left',
+                  background: selectedId === '__rettung__' ? '#dc2626' : 'var(--surface2)',
+                  color: selectedId === '__rettung__' ? '#fff' : 'var(--text)',
+                  fontWeight: 600, fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px',
+                  transition: 'all 0.15s',
+                }}
+              >
+                🛟 Daten-Rettung
+              </button>
             </div>
           )}
           {sidebarOpen && (
@@ -1516,6 +1534,21 @@ export default function App() {
           ) : selectedId === '__zeiterfassung__' ? (
             <div style={{ flex: 1, overflowY: 'auto' }}>
               <ZeiterfassungView entries={zeiterfassung} onChange={setZeiterfassung} />
+            </div>
+          ) : selectedId === '__rettung__' ? (
+            <div style={{ flex: 1, overflowY: 'auto' }}>
+              <DatenRettung
+                onRestore={(value, ts) => {
+                  // 1) aktuellen Stand zusätzlich sichern (damit die Wiederherstellung reversibel bleibt)
+                  cloudSnapshot(STORAGE_KEY, clientsRef.current).catch(() => {})
+                  // 2) gewählten Stand wiederherstellen
+                  const restored = (Array.isArray(value) ? value : []).map(migrateClient).filter(Boolean)
+                  setClients(restored)
+                  cloudSaveNow(STORAGE_KEY, restored).catch(() => {})
+                  setBackupToast(`✓ Stand wiederhergestellt – ${restored.length} Mandanten`)
+                  setTimeout(() => setBackupToast(''), 6000)
+                }}
+              />
             </div>
           ) : selectedClient ? (
             <DetailView

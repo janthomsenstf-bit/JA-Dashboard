@@ -77,6 +77,20 @@ export async function cloudListSnapshots(key) {
   return data ?? []
 }
 
+// ── Snapshots inkl. Inhalt laden (für das Daten-Rettung-Panel) ───────────────
+export async function cloudListSnapshotsWithValues(key) {
+  const user = await getUser()
+  if (!user) return []
+  const { data } = await supabase
+    .from('data_snapshots')
+    .select('id, created_at, value')
+    .eq('user_id', user.id)
+    .eq('key', key)
+    .order('created_at', { ascending: false })
+    .limit(SNAPSHOT_MAX)
+  return data ?? []
+}
+
 // ── Snapshot-Wert laden ───────────────────────────────────────────────────────
 export async function cloudRestoreSnapshot(snapshotId) {
   const user = await getUser()
