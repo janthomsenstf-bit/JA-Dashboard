@@ -5,7 +5,7 @@
  */
 import { supabase } from './supabaseClient.js'
 
-const SNAPSHOT_MAX = 10
+const SNAPSHOT_MAX = 30
 const debounceTimers = new Map()
 
 // ── Hilfsfunktion: aktuellen User holen ──────────────────────────────────────

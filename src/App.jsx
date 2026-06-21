@@ -17,6 +17,7 @@ import StartseiteHome        from './components/dashboard/StartseiteHome.jsx'
 import CommandPalette        from './components/CommandPalette.jsx'
 import { supabase } from './utils/supabaseClient.js'
 import { cloudLoadAll, cloudSave, cloudSaveNow, cloudSnapshot, migrateLocalStorageToCloud } from './utils/cloudStorage.js'
+import { mergeClientsInto } from './utils/clientMerge.js'
 import { saveSessionState, loadSessionState, clearSessionState } from './utils/sessionPersistence.js'
 import LoginPage from './components/LoginPage.jsx'
 import FormularPage from './components/formular/FormularPage.jsx'
@@ -142,6 +143,9 @@ function migrateClient(c) {
     : []
 
   return {
+    // WICHTIG: alle vorhandenen Felder behalten – verhindert, dass eine ältere
+    // App-Version unbekannte/neue Felder beim Speichern verliert (Datenverlust-Schutz).
+    ...c,
     id:                       c.id                       ?? ('c' + Date.now().toString(36)),
     mandantennummer:          c.mandantennummer          ?? '',
     mandantennummer2:         c.mandantennummer2         ?? '',
@@ -354,6 +358,9 @@ export default function App() {
     cloudLoadAll().then(cloudData => {
       if (cloudData && cloudData[STORAGE_KEY]) {
         const raw = cloudData[STORAGE_KEY]
+        // Datensicherheit: den frisch geladenen (guten) Cloud-Stand sofort als Snapshot sichern,
+        // bevor irgendein Speichern ihn verändern kann.
+        if (Array.isArray(raw) && raw.length > 0) cloudSnapshot(STORAGE_KEY, raw).catch(() => {})
         setClients(Array.isArray(raw) ? raw.map(migrateClient).filter(Boolean) : [])
         if (Array.isArray(cloudData['sdb-termine']))        setTermine(cloudData['sdb-termine'])
         if (Array.isArray(cloudData['sdb-aufgaben-liste'])) setAufgabenListe(cloudData['sdb-aufgaben-liste'])
@@ -1538,14 +1545,16 @@ export default function App() {
           ) : selectedId === '__rettung__' ? (
             <div style={{ flex: 1, overflowY: 'auto' }}>
               <DatenRettung
-                onRestore={(value, ts) => {
-                  // 1) aktuellen Stand zusätzlich sichern (damit die Wiederherstellung reversibel bleibt)
+                onMerge={(snapList) => {
+                  // aktuellen Stand zusätzlich sichern (reversibel)
                   cloudSnapshot(STORAGE_KEY, clientsRef.current).catch(() => {})
-                  // 2) gewählten Stand wiederherstellen
-                  const restored = (Array.isArray(value) ? value : []).map(migrateClient).filter(Boolean)
-                  setClients(restored)
-                  cloudSaveNow(STORAGE_KEY, restored).catch(() => {})
-                  setBackupToast(`✓ Stand wiederhergestellt – ${restored.length} Mandanten`)
+                  // Backup-Stände in den aktuellen Stand einfügen – nur ergänzen, nichts löschen
+                  let merged = clientsRef.current || []
+                  for (const snap of (snapList || [])) merged = mergeClientsInto(merged, snap)
+                  merged = merged.map(migrateClient).filter(Boolean)
+                  setClients(merged)
+                  cloudSaveNow(STORAGE_KEY, merged).catch(() => {})
+                  setBackupToast(`✓ Zusammengeführt – ${merged.length} Mandanten`)
                   setTimeout(() => setBackupToast(''), 6000)
                 }}
               />
