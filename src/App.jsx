@@ -236,6 +236,27 @@ function migrateClient(c) {
   }
 }
 
+// Entfernt große E-Mail-Inhalte (text/html) aus kommunikation.events, bevor in die Cloud
+// gespeichert wird. Die Inhalte sind jederzeit per IMAP neu abrufbar – so bleibt der
+// Cloud-Block klein (sonst läuft die Datenbank in 500-Fehler / Datenverlust).
+function slimForCloud(clients) {
+  if (!Array.isArray(clients)) return clients
+  return clients.map(c => {
+    const evs = c?.kommunikation?.events
+    if (!Array.isArray(evs) || evs.length === 0) return c
+    let changed = false
+    const slim = evs.map(e => {
+      if (e && (e.text != null || e.html != null)) {
+        changed = true
+        const { text, html, ...rest } = e
+        return { ...rest, contentLoaded: false }
+      }
+      return e
+    })
+    return changed ? { ...c, kommunikation: { ...c.kommunikation, events: slim } } : c
+  })
+}
+
 function loadState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
@@ -358,9 +379,17 @@ export default function App() {
     cloudLoadAll().then(cloudData => {
       if (cloudData && cloudData[STORAGE_KEY]) {
         const raw = cloudData[STORAGE_KEY]
-        // Datensicherheit: den frisch geladenen (guten) Cloud-Stand sofort als Snapshot sichern,
-        // bevor irgendein Speichern ihn verändern kann.
-        if (Array.isArray(raw) && raw.length > 0) cloudSnapshot(STORAGE_KEY, raw).catch(() => {})
+        if (Array.isArray(raw) && raw.length > 0) {
+          const slim = slimForCloud(raw)
+          // Schlanke Sicherung – aber nur, wenn der Stand tatsächlich Zeiten enthält
+          // (keine Snapshots von leeren/gestrippten Ständen).
+          const totalZeit = raw.reduce((n, c) => n + (Array.isArray(c?.zeiteintraege) ? c.zeiteintraege.length : 0), 0)
+          if (totalZeit > 0) cloudSnapshot(STORAGE_KEY, slim).catch(() => {})
+          // Einmaliges Aufräumen: enthielt der geladene Stand gecachte E-Mail-Inhalte,
+          // sofort schlank zurückschreiben (behebt die 500-Fehler / Aufblähung).
+          const bloated = raw.some(c => (c?.kommunikation?.events || []).some(e => e && (e.text != null || e.html != null)))
+          if (bloated) cloudSaveNow(STORAGE_KEY, slim).catch(() => {})
+        }
         setClients(Array.isArray(raw) ? raw.map(migrateClient).filter(Boolean) : [])
         if (Array.isArray(cloudData['sdb-termine']))        setTermine(cloudData['sdb-termine'])
         if (Array.isArray(cloudData['sdb-aufgaben-liste'])) setAufgabenListe(cloudData['sdb-aufgaben-liste'])
@@ -429,7 +458,7 @@ export default function App() {
   // ── Cloud speichern (debounced, 1,5s) ────────────────────────────────────────
   useEffect(() => {
     if (!authUser || dataLoading) return
-    cloudSave(STORAGE_KEY, clients)
+    cloudSave(STORAGE_KEY, slimForCloud(clients))
     setLastSaveAt(new Date().toISOString())
   }, [clients])
 
@@ -439,11 +468,12 @@ export default function App() {
     if (!authUser) return
     const handleBeforeUnload = () => {
       // Synchron in localStorage schreiben – das klappt immer, auch beim Tab-Schließen
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(clientsRef.current)) } catch {}
+      const slim = slimForCloud(clientsRef.current)
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(slim)) } catch {}
       // Navigations-Zustand sichern
       saveSessionState(sessionStateRef.current)
       // Async Cloud-Save mit keepalive (Browser bricht es nicht ab)
-      cloudSaveNow(STORAGE_KEY, clientsRef.current).catch(() => {})
+      cloudSaveNow(STORAGE_KEY, slim).catch(() => {})
     }
     window.addEventListener('beforeunload', handleBeforeUnload)
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
@@ -547,7 +577,7 @@ export default function App() {
       const cs = clientsRef.current || []
       const totalZeit = cs.reduce((n, c) => n + (Array.isArray(c?.zeiteintraege) ? c.zeiteintraege.length : 0), 0)
       if (cs.length === 0 || totalZeit === 0) return
-      cloudSnapshot(STORAGE_KEY, cs).catch(() => {})
+      cloudSnapshot(STORAGE_KEY, slimForCloud(cs)).catch(() => {})
       const now = new Date().toISOString()
       setLastBackupAt(now)
     }, BACKUP_INTERVAL_MS)
@@ -1546,14 +1576,14 @@ export default function App() {
             <div style={{ flex: 1, overflowY: 'auto' }}>
               <DatenRettung
                 onMerge={(snapList) => {
-                  // aktuellen Stand zusätzlich sichern (reversibel)
-                  cloudSnapshot(STORAGE_KEY, clientsRef.current).catch(() => {})
+                  // aktuellen Stand zusätzlich sichern (reversibel, schlank)
+                  cloudSnapshot(STORAGE_KEY, slimForCloud(clientsRef.current)).catch(() => {})
                   // Backup-Stände in den aktuellen Stand einfügen – nur ergänzen, nichts löschen
                   let merged = clientsRef.current || []
                   for (const snap of (snapList || [])) merged = mergeClientsInto(merged, snap)
                   merged = merged.map(migrateClient).filter(Boolean)
                   setClients(merged)
-                  cloudSaveNow(STORAGE_KEY, merged).catch(() => {})
+                  cloudSaveNow(STORAGE_KEY, slimForCloud(merged)).catch(() => {})
                   setBackupToast(`✓ Zusammengeführt – ${merged.length} Mandanten`)
                   setTimeout(() => setBackupToast(''), 6000)
                 }}
