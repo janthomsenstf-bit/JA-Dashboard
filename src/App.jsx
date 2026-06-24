@@ -703,26 +703,16 @@ export default function App() {
     return () => { clearTimeout(initTimer); clearInterval(id) }
   }, [authUser])
 
-  // ── Variante A: beim Öffnen eines Mandanten dessen noch nicht gecachte
-  //    eingehenden E-Mails im Hintergrund sichern (gedrosselt, abbrechbar) ───────
-  useEffect(() => {
-    if (!authUser || dataLoading) return
-    if (!selectedId || (typeof selectedId === 'string' && selectedId.startsWith('__'))) return
-    const c = clientsRef.current.find(x => x.id === selectedId)
-    const pending = (c?.kommunikation?.events ?? []).filter(
-      e => e.typ === 'eingehend' && e.sourceUid && e.sourceAccount && !e.contentLoaded
-    )
-    if (!pending.length) return
-    let cancelled = false
-    ;(async () => {
-      for (const ev of pending) {
-        if (cancelled) break
-        await cacheEventBody(selectedId, ev)
-        await new Promise(r => setTimeout(r, 500))
-      }
-    })()
-    return () => { cancelled = true }
-  }, [selectedId, authUser, dataLoading])
+  // ── Variante A: proaktives Hintergrund-Nachladen von E-Mail-Inhalten ──────────
+  //    DEAKTIVIERT (24.06.2026): Da E-Mail-Inhalte bewusst nicht mehr dauerhaft
+  //    gespeichert werden (Schlank-Fix), versuchte diese Schleife sie sofort wieder
+  //    vom Mailserver zu laden. Für E-Mails, die dort nicht mehr liegen (gelöscht/
+  //    zu alt), antwortet /api/get-email-content mit 404; der Fehlerfall markierte
+  //    das Event nicht als erledigt → bei jedem Mandanten-Öffnen/Token-Refresh
+  //    wurden ALLE alten E-Mails erneut abgefragt → 404-Endlosschleife → Flackern.
+  //    E-Mail-Inhalte werden jetzt ausschließlich on-demand beim Anklicken einer
+  //    Nachricht geladen (siehe KommunikationTab). Bewusst nur deaktiviert (nicht
+  //    gelöscht), damit es bei Bedarf mit 404-Markierung reaktiviert werden kann.
 
   // ── E-Mail einem Mandanten manuell zuordnen ───────────────────────────────────
   function assignEmail(emailUid, emailAccount, clientId, saveContact) {
