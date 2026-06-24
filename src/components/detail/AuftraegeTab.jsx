@@ -1,5 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import JAComposePanel from './JAComposePanel.jsx'
+import LohnMerkzettel from './LohnMerkzettel.jsx'
 import { buildDoc, downloadPdf, pdfFilename, pdfToBase64 } from '../../utils/ustRegPdf.js'
 import { buildVertragGeschaeftsadresse, gaVertragFilename } from '../../utils/geschaeftsadressePdf.js'
 import { buildAngebotVorratsgesell, vgAngebotFilename } from '../../utils/vorratsgesellPdf.js'
@@ -3274,6 +3275,12 @@ function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete, client, onOpe
             />
           </div>
 
+          {au.typ === 'lohn' && (
+            <div style={{ marginBottom: '14px' }}>
+              <LohnMerkzettel eintraege={au.merkzettel ?? []} onChange={next => onUpdate({ merkzettel: next })} />
+            </div>
+          )}
+
           {/* E-Mail-Quelle (wenn aus E-Mail erstellt) */}
           {au.emailRef && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 10px', borderRadius: '6px', background: 'rgba(22,163,74,0.04)', border: '1px solid rgba(22,163,74,0.15)', marginBottom: '14px', flexWrap: 'wrap' }}>
@@ -3489,6 +3496,12 @@ function SerienAuftragCard({ au, expanded, onExpand, onUpdate, onDelete }) {
               inputStyle={inputStyle}
             />
           </div>
+
+          {au.typ === 'lohn' && (
+            <div style={{ marginBottom: '14px' }}>
+              <LohnMerkzettel eintraege={au.merkzettel ?? []} onChange={next => onUpdate({ merkzettel: next })} />
+            </div>
+          )}
 
           {/* ── Instanzen-Zeitstrahl ── */}
           <div style={{ borderTop: '1px solid var(--border)', paddingTop: '12px' }}>

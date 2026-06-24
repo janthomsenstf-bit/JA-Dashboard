@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { generateAufgaben, getStatus, buildTogglePatch, fmtDatum } from '../../utils/aufgaben.js'
 import SerieKonfigPanel from './SerieKonfigPanel.jsx'
 import AuftragKontextPanel from './AuftragKontextPanel.jsx'
-import LohnMerkzettel from './LohnMerkzettel.jsx'
 
 const ACCENT = '#7c3aed'
 
@@ -101,9 +100,6 @@ export default function LohnTab({ client, onUpdate }) {
         onUpdate={onUpdate}
         auftraegeTabIndex={13}
       />
-
-      {/* ── Lohn-Merkzettel: lohnrelevante Besonderheiten je Mitarbeiter ── */}
-      <LohnMerkzettel client={client} onUpdate={onUpdate} />
 
       {/* ── Lohnabrechnung ── */}
       <div style={{ border:'1px solid var(--border)', borderRadius:'8px', overflow:'hidden' }}>

@@ -199,9 +199,8 @@ function MerkEintrag({ eintrag, onCycle, onDelete, istHistorie }) {
   )
 }
 
-export default function LohnMerkzettel({ client, onUpdate }) {
-  const lohn      = client.lohn ?? {}
-  const eintraege = Array.isArray(lohn.merkzettel) ? lohn.merkzettel : []
+export default function LohnMerkzettel({ eintraege: eintraegeProp = [], onChange }) {
+  const eintraege = Array.isArray(eintraegeProp) ? eintraegeProp : []
 
   const [showForm,    setShowForm]    = useState(false)
   const [mitarbeiter, setMitarbeiter] = useState('')
@@ -209,7 +208,7 @@ export default function LohnMerkzettel({ client, onUpdate }) {
   const [datum,       setDatum]       = useState(todayInput())
   const [showHist,    setShowHist]    = useState(false)
 
-  function save(next) { onUpdate({ lohn: { ...lohn, merkzettel: next } }) }
+  function save(next) { onChange(next) }
 
   function addManuell() {
     const h = hinweis.trim()
