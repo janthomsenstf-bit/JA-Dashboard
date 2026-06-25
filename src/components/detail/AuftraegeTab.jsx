@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import JAComposePanel from './JAComposePanel.jsx'
-import LohnMerkzettel from './LohnMerkzettel.jsx'
+import LohnJahresmappe from './LohnJahresmappe.jsx'
 import { buildDoc, downloadPdf, pdfFilename, pdfToBase64 } from '../../utils/ustRegPdf.js'
 import { buildVertragGeschaeftsadresse, gaVertragFilename } from '../../utils/geschaeftsadressePdf.js'
 import { buildAngebotVorratsgesell, vgAngebotFilename } from '../../utils/vorratsgesellPdf.js'
@@ -3277,7 +3277,7 @@ function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete, client, onOpe
 
           {au.typ === 'lohn' && (
             <div style={{ marginBottom: '14px' }}>
-              <LohnMerkzettel eintraege={au.merkzettel ?? []} onChange={next => onUpdate({ merkzettel: next })} />
+              <LohnJahresmappe client={client} au={au} onUpdate={onUpdate} onUpdateClient={onUpdateClient} />
             </div>
           )}
 
@@ -3499,7 +3499,7 @@ function SerienAuftragCard({ au, expanded, onExpand, onUpdate, onDelete }) {
 
           {au.typ === 'lohn' && (
             <div style={{ marginBottom: '14px' }}>
-              <LohnMerkzettel eintraege={au.merkzettel ?? []} onChange={next => onUpdate({ merkzettel: next })} />
+              <LohnJahresmappe client={client} au={au} onUpdate={onUpdate} onUpdateClient={onUpdateClient} />
             </div>
           )}
 

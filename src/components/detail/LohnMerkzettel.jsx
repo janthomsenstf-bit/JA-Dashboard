@@ -31,7 +31,7 @@ function inputToIso(dateStr) {
 function newId() { return 'lm' + Date.now().toString(36) + Math.floor(Math.random() * 1e4).toString(36) }
 
 // ── Diktat → KI: erzeugt strukturierte Merkzettel-Einträge ─────────────────────
-function MerkzettelDiktat({ onEntries }) {
+export function MerkzettelDiktat({ onEntries }) {
   const [isRecording, setIsRecording] = useState(false)
   const [transcript,  setTranscript]  = useState('')
   const [interim,     setInterim]     = useState('')
