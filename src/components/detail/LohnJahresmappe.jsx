@@ -15,6 +15,7 @@ import { useState } from 'react'
 import { generateAufgaben, getStatus, buildTogglePatch } from '../../utils/aufgaben.js'
 import SerieKonfigPanel from './SerieKonfigPanel.jsx'
 import { MerkzettelDiktat } from './LohnMerkzettel.jsx'
+import { zeitraumText } from './LohnStammdaten.jsx'
 
 const ACCENT = '#7c3aed'
 const MONAT_NAMEN = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember']
@@ -208,6 +209,20 @@ export default function LohnJahresmappe({ client, au, onUpdate, onUpdateClient }
                 {/* Monats-Detail (Hinweise) */}
                 {open && (
                   <div style={{ padding: '4px 14px 14px 14px', background: 'var(--surface2)' }}>
+                    {(() => {
+                      const dauer = (au.mitarbeiterAnweisungen ?? []).filter(d => (!d.vonMonat || m >= d.vonMonat) && (!d.bisMonat || m <= d.bisMonat))
+                      if (!dauer.length) return null
+                      return (
+                        <div style={{ marginBottom: '8px', padding: '7px 10px', borderRadius: '6px', background: 'rgba(124,58,237,0.06)', border: '1px solid rgba(124,58,237,0.2)' }}>
+                          <div style={{ fontSize: '10px', fontWeight: 700, color: ACCENT, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>🧷 Diesen Monat zu beachten (Dauer-Anweisungen)</div>
+                          {dauer.map(d => (
+                            <div key={d.id} style={{ fontSize: '12px', color: 'var(--text)', lineHeight: 1.5 }}>
+                              • {d.mitarbeiter ? <b>{d.mitarbeiter}: </b> : ''}{d.anweisung} <span style={{ color: 'var(--text-muted)' }}>({zeitraumText(d.vonMonat, d.bisMonat)})</span>
+                            </div>
+                          ))}
+                        </div>
+                      )
+                    })()}
                     <MonatHinweise hinweise={hinweise} onChange={list => setMonatHinweise(m, list)} />
                   </div>
                 )}

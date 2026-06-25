@@ -1,6 +1,7 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import JAComposePanel from './JAComposePanel.jsx'
 import LohnJahresmappe from './LohnJahresmappe.jsx'
+import LohnStammdaten from './LohnStammdaten.jsx'
 import { buildDoc, downloadPdf, pdfFilename, pdfToBase64 } from '../../utils/ustRegPdf.js'
 import { buildVertragGeschaeftsadresse, gaVertragFilename } from '../../utils/geschaeftsadressePdf.js'
 import { buildAngebotVorratsgesell, vgAngebotFilename } from '../../utils/vorratsgesellPdf.js'
@@ -3276,7 +3277,8 @@ function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete, client, onOpe
           </div>
 
           {au.typ === 'lohn' && (
-            <div style={{ marginBottom: '14px' }}>
+            <div style={{ marginBottom: '14px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <LohnStammdaten au={au} onUpdate={onUpdate} />
               <LohnJahresmappe client={client} au={au} onUpdate={onUpdate} onUpdateClient={onUpdateClient} />
             </div>
           )}
@@ -3498,7 +3500,8 @@ function SerienAuftragCard({ au, expanded, onExpand, onUpdate, onDelete }) {
           </div>
 
           {au.typ === 'lohn' && (
-            <div style={{ marginBottom: '14px' }}>
+            <div style={{ marginBottom: '14px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <LohnStammdaten au={au} onUpdate={onUpdate} />
               <LohnJahresmappe client={client} au={au} onUpdate={onUpdate} onUpdateClient={onUpdateClient} />
             </div>
           )}
