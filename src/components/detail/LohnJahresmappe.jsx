@@ -31,7 +31,7 @@ function fmtDatumZeit(iso) {
 }
 
 // ── Hinweise/Unteraufgaben eines Monats ────────────────────────────────────────
-function MonatHinweise({ hinweise, onChange }) {
+export function MonatHinweise({ hinweise, onChange }) {
   const [text, setText] = useState('')
 
   function add(t) {

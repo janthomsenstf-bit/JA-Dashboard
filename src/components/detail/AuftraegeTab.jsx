@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import JAComposePanel from './JAComposePanel.jsx'
-import LohnJahresmappe from './LohnJahresmappe.jsx'
-import LohnStammdaten from './LohnStammdaten.jsx'
+import { MonatHinweise } from './LohnJahresmappe.jsx'
+import LohnStammdaten, { zeitraumText } from './LohnStammdaten.jsx'
 import { buildDoc, downloadPdf, pdfFilename, pdfToBase64 } from '../../utils/ustRegPdf.js'
 import { buildVertragGeschaeftsadresse, gaVertragFilename } from '../../utils/geschaeftsadressePdf.js'
 import { buildAngebotVorratsgesell, vgAngebotFilename } from '../../utils/vorratsgesellPdf.js'
@@ -3277,9 +3277,8 @@ function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete, client, onOpe
           </div>
 
           {au.typ === 'lohn' && (
-            <div style={{ marginBottom: '14px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <div style={{ marginBottom: '14px' }}>
               <LohnStammdaten au={au} onUpdate={onUpdate} />
-              <LohnJahresmappe client={client} au={au} onUpdate={onUpdate} onUpdateClient={onUpdateClient} />
             </div>
           )}
 
@@ -3379,6 +3378,8 @@ function SerienAuftragCard({ au, expanded, onExpand, onUpdate, onDelete }) {
   const serie     = au.serie ?? {}
   const instanzen = useMemo(() => generateSerieInstanzen(au), [au])
   const [showAll, setShowAll] = useState(false)
+  const [openInst, setOpenInst] = useState(null)
+  const istLohn = au.typ === 'lohn'
 
   const heute = new Date(); heute.setHours(0, 0, 0, 0)
 
@@ -3500,9 +3501,8 @@ function SerienAuftragCard({ au, expanded, onExpand, onUpdate, onDelete }) {
           </div>
 
           {au.typ === 'lohn' && (
-            <div style={{ marginBottom: '14px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <div style={{ marginBottom: '14px' }}>
               <LohnStammdaten au={au} onUpdate={onUpdate} />
-              <LohnJahresmappe client={client} au={au} onUpdate={onUpdate} onUpdateClient={onUpdateClient} />
             </div>
           )}
 
@@ -3526,13 +3526,19 @@ function SerienAuftragCard({ au, expanded, onExpand, onUpdate, onDelete }) {
                 const stCfg      = AUFTRAGS_STATUS_CFG[inst.status] ?? AUFTRAGS_STATUS_CFG.offen
                 const istVergangen = inst.datum < heute
                 const istHeute     = inst.datum.toDateString() === heute.toDateString()
+                const m = inst.datum.getMonth() + 1, y = inst.datum.getFullYear()
+                const mhKey = `${y}-${m}`
+                const mh = (au.monatsHinweise ?? {})[mhKey] ?? []
+                const offenH = mh.filter(h => !h.erledigt).length
+                const dauer = istLohn ? (au.mitarbeiterAnweisungen ?? []).filter(d => (!d.vonMonat || m >= d.vonMonat) && (!d.bisMonat || m <= d.bisMonat)) : []
+                const exp = istLohn && openInst === inst.key
                 return (
                   <div key={inst.key} style={{
-                    display: 'flex', alignItems: 'center', gap: '8px',
-                    padding: '5px 10px', borderRadius: '6px',
+                    borderRadius: '6px',
                     background: istHeute ? 'rgba(59,130,246,0.07)' : inst.status === 'erledigt' ? 'rgba(22,163,74,0.03)' : 'var(--surface2)',
                     border: `1px solid ${istHeute ? 'rgba(59,130,246,0.3)' : 'var(--border)'}`,
                   }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '5px 10px' }}>
                     <span style={{
                       fontSize: '11px', fontFamily: 'monospace', minWidth: '75px', flexShrink: 0,
                       color: istVergangen && inst.status !== 'erledigt' ? '#ef4444' : istHeute ? '#3b82f6' : 'var(--text-muted)',
@@ -3540,9 +3546,19 @@ function SerienAuftragCard({ au, expanded, onExpand, onUpdate, onDelete }) {
                     }}>
                       {fmtDatumShort(inst.datum)}{istHeute ? ' ◀' : ''}
                     </span>
-                    <span style={{ flex: 1, fontSize: '11px', color: inst.status === 'erledigt' ? 'var(--text-muted)' : 'var(--text)', textDecoration: inst.status === 'erledigt' ? 'line-through' : 'none' }}>
-                      {au.bezeichnung || `${typCfg.label} ${MONATE[inst.datum.getMonth()]} ${inst.datum.getFullYear()}`}
-                    </span>
+                    {istLohn ? (
+                      <button onClick={() => setOpenInst(exp ? null : inst.key)}
+                        style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '6px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', padding: 0, fontSize: '11px', color: inst.status === 'erledigt' ? 'var(--text-muted)' : 'var(--text)', textDecoration: inst.status === 'erledigt' ? 'line-through' : 'none' }}>
+                        <span>{au.bezeichnung || `${typCfg.label} ${MONATE[inst.datum.getMonth()]} ${inst.datum.getFullYear()}`}</span>
+                        {offenH > 0 && <span style={{ fontSize: '10px', color: '#ef4444', fontWeight: 700 }}>● {offenH}</span>}
+                        {dauer.length > 0 && <span style={{ fontSize: '10px', color: '#7c3aed' }}>🧷 {dauer.length}</span>}
+                        <span style={{ color: 'var(--text-muted)', transform: exp ? 'rotate(90deg)' : 'none', display: 'inline-block' }}>▸</span>
+                      </button>
+                    ) : (
+                      <span style={{ flex: 1, fontSize: '11px', color: inst.status === 'erledigt' ? 'var(--text-muted)' : 'var(--text)', textDecoration: inst.status === 'erledigt' ? 'line-through' : 'none' }}>
+                        {au.bezeichnung || `${typCfg.label} ${MONATE[inst.datum.getMonth()]} ${inst.datum.getFullYear()}`}
+                      </span>
+                    )}
                     <button onClick={() => cycleInstanzStatus(inst.key, inst.status)} title="Status wechseln"
                       style={{ fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '20px', border: `1px solid ${stCfg.border}`, background: stCfg.bg, color: stCfg.color, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>
                       {stCfg.icon} {stCfg.label}
@@ -3551,6 +3567,22 @@ function SerienAuftragCard({ au, expanded, onExpand, onUpdate, onDelete }) {
                       <span style={{ fontSize: '10px', color: 'var(--text-muted)', flexShrink: 0 }}>
                         {new Date(inst.erledigtAm).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}
                       </span>
+                    )}
+                    </div>
+                    {exp && (
+                      <div style={{ padding: '0 10px 10px 10px' }}>
+                        {dauer.length > 0 && (
+                          <div style={{ marginBottom: '8px', padding: '7px 10px', borderRadius: '6px', background: 'rgba(124,58,237,0.06)', border: '1px solid rgba(124,58,237,0.2)' }}>
+                            <div style={{ fontSize: '10px', fontWeight: 700, color: '#7c3aed', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>🧷 Diesen Monat zu beachten</div>
+                            {dauer.map(d => (
+                              <div key={d.id} style={{ fontSize: '12px', color: 'var(--text)', lineHeight: 1.5 }}>
+                                • {d.mitarbeiter ? <b>{d.mitarbeiter}: </b> : ''}{d.anweisung} <span style={{ color: 'var(--text-muted)' }}>({zeitraumText(d.vonMonat, d.bisMonat)})</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        <MonatHinweise hinweise={mh} onChange={list => onUpdate({ monatsHinweise: { ...(au.monatsHinweise ?? {}), [mhKey]: list } })} />
+                      </div>
                     )}
                   </div>
                 )
