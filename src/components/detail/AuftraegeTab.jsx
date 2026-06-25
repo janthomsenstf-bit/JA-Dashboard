@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import JAComposePanel from './JAComposePanel.jsx'
-import { MonatHinweise } from './LohnJahresmappe.jsx'
+import LohnJahresmappe, { MonatHinweise } from './LohnJahresmappe.jsx'
 import LohnStammdaten, { zeitraumText } from './LohnStammdaten.jsx'
 import { buildDoc, downloadPdf, pdfFilename, pdfToBase64 } from '../../utils/ustRegPdf.js'
 import { buildVertragGeschaeftsadresse, gaVertragFilename } from '../../utils/geschaeftsadressePdf.js'
@@ -3277,8 +3277,9 @@ function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete, client, onOpe
           </div>
 
           {au.typ === 'lohn' && (
-            <div style={{ marginBottom: '14px' }}>
+            <div style={{ marginBottom: '14px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <LohnStammdaten au={au} onUpdate={onUpdate} />
+              <LohnJahresmappe au={au} onUpdate={onUpdate} />
             </div>
           )}
 
