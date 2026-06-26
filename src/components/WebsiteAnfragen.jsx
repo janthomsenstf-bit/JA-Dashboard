@@ -231,7 +231,12 @@ export default function WebsiteAnfragen({ onCreateMandant, onAddAuftragToMandant
                       {a.firma ? a.name : a.email}
                     </div>
                   </div>
-                  <div style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
+                  <div style={{ fontSize: '13px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    {(a.interesse === 'Terminanfrage' || a.formular_daten?.typ === 'termin') && (
+                      <span style={{ background: '#d97706', color: '#fff', fontSize: 11, fontWeight: 700, padding: '1px 8px', borderRadius: 999 }}>
+                        📅 Termin
+                      </span>
+                    )}
                     {a.interesse || '—'}
                   </div>
                   <StatusBadge status={a.status} />
