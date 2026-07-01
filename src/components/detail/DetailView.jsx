@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState } from 'react'
 import { getMandantStatus, MANDANT_STATUS_CONFIG } from '../../utils/progress.js'
 import { saveSessionState } from '../../utils/sessionPersistence.js'
 import StandDerArbeitTab    from './StandDerArbeitTab.jsx'
@@ -70,26 +70,20 @@ export default function DetailView({
   pendingOpenEmailId = null,
   onClearPendingOpenEmailId,
 }) {
-  const [activeTab, setActiveTab]             = useState(initialTab)
+  // Der aktive Tab wird ZENTRAL in App gehalten (Prop initialTab = detailInitialTab).
+  // DetailView hat KEINEN eigenen Tab-State und KEINE Sync-Effekte mehr – dadurch
+  // können sich lokaler Tab und App-Tab nicht mehr gegenseitig umschreiben
+  // (das war die Ursache für das Flackern / Hin-und-Her-Springen zwischen Reitern).
+  const activeTab = initialTab
+  const setActiveTab = (n) => {
+    onTabChange?.(n)
+    saveSessionState({ selectedId: client.id, detailInitialTab: n, activeTab: n })
+  }
+
   const [showEdit, setShowEdit]               = useState(false)
   const [pendingAttachments, setPendingAttachments] = useState(null)
   const [auftraegeFilterTyp, setAuftraegeFilterTyp] = useState('alle')
   const [localPendingEmailId, setLocalPendingEmailId] = useState(null)  // für E-Mail-Öffnung aus Aufträge-Tab
-
-  // Wenn sich initialTab ändert (z.B. durch Suche, Navigation), Tab synchronisieren
-  const prevInitialTab = useRef(initialTab)
-  useEffect(() => {
-    if (initialTab !== prevInitialTab.current) {
-      setActiveTab(initialTab)
-      prevInitialTab.current = initialTab
-    }
-  }, [initialTab])
-
-  // Aktiven Tab nach oben melden (App = alleinige Quelle) + persistieren
-  useEffect(() => {
-    onTabChange?.(activeTab)
-    saveSessionState({ selectedId: client.id, detailInitialTab: activeTab, activeTab })
-  }, [activeTab, client.id])
 
   function handleSendAsAttachment(attachments) {
     setPendingAttachments(attachments)

@@ -342,6 +342,7 @@ export default function App() {
 
   // ── Zeitstempel ───────────────────────────────────────────────────────────────
   const [lastSaveAt,   setLastSaveAt]   = useState(null)
+  const [lastBackupAt, setLastBackupAt] = useState(null)
   const [startupBanner, setStartupBanner] = useState(true)
 
   // ── Toast (E-Mail-Benachrichtigungen etc.) ────────────────────────────────────
