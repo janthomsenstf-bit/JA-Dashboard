@@ -488,6 +488,121 @@ function mkHinweis(text) {
   }
 }
 
+// ── Editierbares Textfeld mit Vorschau vor dem Speichern ──────────────────────
+// Ablauf: Ansicht → ✏️ Bearbeiten → 👁 Vorschau → Speichern / Weiter bearbeiten / Abbrechen
+// Rein additiv: verändert nur den Wert, den onSave() zurückgibt.
+function EditableText({ value = '', placeholder = '', color = '#2563eb', multiline = false, onSave }) {
+  const [mode,  setMode]  = useState('view')   // 'view' | 'edit' | 'preview'
+  const [draft, setDraft] = useState(value ?? '')
+
+  const startEdit = () => { setDraft(value ?? ''); setMode('edit') }
+  const cancel    = () => { setDraft(value ?? ''); setMode('view') }
+  const commit    = () => { onSave((draft ?? '').trim()); setMode('view') }
+
+  const fieldStyle = {
+    width: '100%', border: '1px solid var(--border)', borderRadius: '6px',
+    padding: '7px 10px', fontSize: '12px', fontFamily: 'inherit',
+    background: 'var(--surface)', color: 'var(--text)', boxSizing: 'border-box',
+  }
+  const btn = (bg, fg, bd) => ({
+    padding: '5px 12px', borderRadius: '6px', border: bd || 'none',
+    background: bg, color: fg, fontSize: '11px', fontWeight: 700, cursor: 'pointer',
+  })
+
+  if (mode === 'view') {
+    const empty = !value || !String(value).trim()
+    return (
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
+        <div style={{ flex: 1, minWidth: 0, fontSize: '12px', color: empty ? 'var(--text-muted)' : 'var(--text)', whiteSpace: 'pre-wrap', lineHeight: 1.5, fontStyle: empty ? 'italic' : 'normal' }}>
+          {empty ? (placeholder || '—') : value}
+        </div>
+        <button onClick={startEdit} title="Bearbeiten"
+          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '12px', flexShrink: 0, padding: '0 2px' }}>✏️</button>
+      </div>
+    )
+  }
+
+  if (mode === 'preview') {
+    const empty = !(draft ?? '').trim()
+    return (
+      <div>
+        <div style={{ fontSize: '10px', fontWeight: 700, color: color, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Vorschau</div>
+        <div style={{ padding: '8px 10px', borderRadius: '6px', border: `1px solid ${color}`, background: 'var(--surface2)', fontSize: '12px', whiteSpace: 'pre-wrap', lineHeight: 1.5, color: 'var(--text)', marginBottom: '6px' }}>
+          {empty ? <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>(leerer Text – beim Speichern wird der Eintrag geleert)</span> : draft}
+        </div>
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+          <button onClick={commit}                style={btn(color, '#fff')}>✓ Speichern</button>
+          <button onClick={() => setMode('edit')} style={btn('var(--surface2)', 'var(--text)', '1px solid var(--border)')}>Weiter bearbeiten</button>
+          <button onClick={cancel}                style={btn('none', 'var(--text-muted)', '1px solid var(--border)')}>Abbrechen</button>
+        </div>
+      </div>
+    )
+  }
+
+  // mode === 'edit'
+  return (
+    <div>
+      {multiline
+        ? <textarea value={draft} onChange={e => setDraft(e.target.value)} placeholder={placeholder} rows={3}
+            style={{ ...fieldStyle, resize: 'vertical', minHeight: '56px' }} autoFocus />
+        : <input value={draft} onChange={e => setDraft(e.target.value)} placeholder={placeholder}
+            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); setMode('preview') } if (e.key === 'Escape') cancel() }}
+            style={fieldStyle} autoFocus />
+      }
+      <div style={{ display: 'flex', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
+        <button onClick={() => setMode('preview')} style={btn(color, '#fff')}>👁 Vorschau</button>
+        <button onClick={cancel}                   style={btn('none', 'var(--text-muted)', '1px solid var(--border)')}>Abbrechen</button>
+      </div>
+    </div>
+  )
+}
+
+// ── Ein Hinweis / eine Unteraufgabe: Titel editierbar + Antwort/Notizen (Doku) ─
+function HinweisItem({ h, color, onChange, onToggle, onDelete }) {
+  const [open, setOpen] = useState(false)
+  const hasDoc = (h.antwort && h.antwort.trim()) || (h.notiz && h.notiz.trim())
+  const fmt = iso => { if (!iso) return ''; const d = new Date(iso); return `${d.getDate().toString().padStart(2,'0')}.${(d.getMonth()+1).toString().padStart(2,'0')}.${d.getFullYear()}` }
+
+  return (
+    <div style={{ borderRadius: '6px', background: h.erledigt ? 'rgba(22,163,74,0.04)' : 'var(--surface2)', border: `1px solid ${h.erledigt ? 'rgba(22,163,74,0.2)' : 'var(--border)'}`, padding: '6px 10px' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+        <input type="checkbox" checked={!!h.erledigt} onChange={onToggle}
+          style={{ accentColor: color, cursor: 'pointer', flexShrink: 0, marginTop: '3px' }} />
+        <div style={{ flex: 1, minWidth: 0, opacity: h.erledigt ? 0.6 : 1, textDecoration: h.erledigt ? 'line-through' : 'none' }}>
+          <EditableText value={h.text} placeholder="Hinweis…" color={color} onSave={t => onChange({ text: t })} />
+        </div>
+        <button onClick={() => setOpen(o => !o)} title="Antwort / Notizen"
+          style={{ background: 'none', border: 'none', cursor: 'pointer', color: hasDoc ? color : 'var(--text-muted)', fontSize: '13px', flexShrink: 0, padding: '0 2px' }}>
+          {open ? '▾' : (hasDoc ? '📝' : '▸')}
+        </button>
+        <button onClick={onDelete} title="Löschen"
+          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '12px', padding: '0 2px', flexShrink: 0 }}
+          onMouseEnter={e => e.currentTarget.style.color = '#ef4444'}
+          onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}>✕</button>
+      </div>
+
+      {open && (
+        <div style={{ marginTop: '8px', marginLeft: '24px', display: 'flex', flexDirection: 'column', gap: '10px', borderTop: '1px dashed var(--border)', paddingTop: '8px' }}>
+          <div>
+            <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '3px' }}>Antwort / Bearbeitungsvermerk</div>
+            <EditableText value={h.antwort} placeholder="Noch keine Antwort – klicken zum Ergänzen…" color={color} multiline onSave={t => onChange({ antwort: t })} />
+          </div>
+          <div>
+            <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '3px' }}>Notizen</div>
+            <EditableText value={h.notiz} placeholder="Freie Notizen – z. B. Hinweis für den nächsten Jahresabschluss…" color={color} multiline onSave={t => onChange({ notiz: t })} />
+          </div>
+          {(h.createdAt || h.updatedAt) && (
+            <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+              {h.createdAt && <>angelegt {fmt(h.createdAt)}</>}
+              {h.updatedAt && <> · zuletzt bearbeitet {fmt(h.updatedAt)}</>}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Hilfsfunktionen ───────────────────────────────────────────────────────────
 function fmtFrist(iso) {
   if (!iso) return null
@@ -3115,6 +3230,15 @@ function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete, client, onOpe
     setNewH('')
   }
 
+  // Additiv: nur das getroffene Hinweis-Objekt wird via Spread ergänzt/geändert,
+  // alle übrigen Hinweise und Felder bleiben unverändert erhalten.
+  const updateHinweis = (id, patch) =>
+    onUpdate({ hinweise: hinweise.map(x => x.id === id ? { ...x, ...patch, updatedAt: new Date().toISOString() } : x) })
+  const toggleHinweis = (id) =>
+    onUpdate({ hinweise: hinweise.map(x => x.id === id ? { ...x, erledigt: !x.erledigt } : x) })
+  const deleteHinweis = (id) =>
+    onUpdate({ hinweise: hinweise.filter(x => x.id !== id) })
+
   const isJA        = au.typ === 'jahresabschluss'
   const isErfassung = au.typ === 'erfassung'
   const hasWorkflow = !!WORKFLOW_CONFIGS[au.typ]
@@ -3310,18 +3434,10 @@ function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete, client, onOpe
               {hinweise.length === 0
                 ? <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Noch keine Hinweise.</div>
                 : hinweise.map(h => (
-                  <div key={h.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 10px', borderRadius: '6px', background: h.erledigt ? 'rgba(22,163,74,0.04)' : 'var(--surface2)', border: `1px solid ${h.erledigt ? 'rgba(22,163,74,0.2)' : 'var(--border)'}` }}>
-                    <input type="checkbox" checked={h.erledigt}
-                      onChange={() => onUpdate({ hinweise: hinweise.map(x => x.id === h.id ? { ...x, erledigt: !x.erledigt } : x) })}
-                      style={{ accentColor: typCfg.color, cursor: 'pointer', flexShrink: 0 }} />
-                    <span style={{ flex: 1, fontSize: '12px', color: h.erledigt ? 'var(--text-muted)' : 'var(--text)', textDecoration: h.erledigt ? 'line-through' : 'none' }}>
-                      {h.text}
-                    </span>
-                    <button onClick={() => onUpdate({ hinweise: hinweise.filter(x => x.id !== h.id) })}
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '12px', padding: '0 2px', flexShrink: 0 }}
-                      onMouseEnter={e => e.currentTarget.style.color = '#ef4444'}
-                      onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}>✕</button>
-                  </div>
+                  <HinweisItem key={h.id} h={h} color={typCfg.color}
+                    onChange={patch => updateHinweis(h.id, patch)}
+                    onToggle={() => toggleHinweis(h.id)}
+                    onDelete={() => deleteHinweis(h.id)} />
                 ))
               }
             </div>
