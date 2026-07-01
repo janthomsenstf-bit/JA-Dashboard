@@ -3239,6 +3239,15 @@ function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete, client, onOpe
   const deleteHinweis = (id) =>
     onUpdate({ hinweise: hinweise.filter(x => x.id !== id) })
 
+  // ── Auftrag abschließen / wieder öffnen (rein additiv: nur status + erledigtAm) ──
+  // Setzt ausschließlich den vorhandenen Status; alle übrigen Auftragsdaten
+  // (Hinweise, Checkliste, Honorar, Dokumente, Historie) bleiben unangetastet.
+  const abgeschlossen = au.status === 'erledigt'
+  const [showAbschlussConfirm, setShowAbschlussConfirm] = useState(false)
+  const abschliessen  = () => { onUpdate({ status: 'erledigt', erledigtAm: new Date().toISOString() }); setShowAbschlussConfirm(false) }
+  const wiederOeffnen = () => onUpdate({ status: 'in_bearbeitung', erledigtAm: null })
+  const fmtAbDatum    = iso => { if (!iso) return ''; const d = new Date(iso); return `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}.${d.getFullYear()}` }
+
   const isJA        = au.typ === 'jahresabschluss'
   const isErfassung = au.typ === 'erfassung'
   const hasWorkflow = !!WORKFLOW_CONFIGS[au.typ]
@@ -3250,8 +3259,8 @@ function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete, client, onOpe
 
   return (
     <div style={{
-      border: `1px solid ${expanded ? typCfg.color + '55' : 'var(--border)'}`,
-      borderRadius: '10px', background: 'var(--surface)', overflow: 'hidden',
+      border: `1px solid ${expanded ? typCfg.color + '55' : (abgeschlossen ? 'rgba(22,163,74,0.4)' : 'var(--border)')}`,
+      borderRadius: '10px', background: (abgeschlossen && !expanded) ? 'rgba(22,163,74,0.05)' : 'var(--surface)', overflow: 'hidden',
       transition: 'border-color 0.15s',
     }}>
       <div
@@ -3285,6 +3294,11 @@ function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete, client, onOpe
             )}
             {frist && <span style={{ fontSize: '10px', fontWeight: 600, color: frist.color }}>⏰ {frist.text}</span>}
             {offeneH > 0 && <span style={{ fontSize: '10px', color: '#f97316', fontWeight: 600 }}>· {offeneH} offen</span>}
+            {abgeschlossen && (
+              <span style={{ fontSize: '10px', fontWeight: 700, color: '#16a34a', background: 'rgba(22,163,74,0.12)', padding: '1px 7px', borderRadius: '8px', border: '1px solid rgba(22,163,74,0.35)' }}>
+                ✓ Abgeschlossen
+              </span>
+            )}
           </div>
         </div>
         {/* JA + Workflow-Typen: kein einfacher cycle-Button */}
@@ -3476,6 +3490,49 @@ function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete, client, onOpe
               onedriveTokens={onedriveTokens} onUpdateOnedriveTokens={onUpdateOnedriveTokens}
             />
           )}
+
+          {/* ── Auftrag abschließen / wieder öffnen ── */}
+          <div style={{ marginTop: '16px', paddingTop: '12px', borderTop: '1px solid var(--border)' }}>
+            {abgeschlossen ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', padding: '12px 14px', borderRadius: '8px', background: 'rgba(22,163,74,0.08)', border: '1px solid rgba(22,163,74,0.35)' }}>
+                <span style={{ fontSize: '22px', flexShrink: 0 }}>✅</span>
+                <div style={{ flex: 1, minWidth: '150px' }}>
+                  <div style={{ fontSize: '13px', fontWeight: 700, color: '#16a34a' }}>Auftrag abgeschlossen</div>
+                  {au.erledigtAm && <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>am {fmtAbDatum(au.erledigtAm)} · bleibt vollständig erhalten</div>}
+                </div>
+                <button onClick={wiederOeffnen}
+                  style={{ fontSize: '12px', fontWeight: 600, padding: '7px 14px', borderRadius: '7px', border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text)', cursor: 'pointer', flexShrink: 0 }}>
+                  ↩️ Auftrag wieder öffnen
+                </button>
+              </div>
+            ) : showAbschlussConfirm ? (
+              <div style={{ padding: '14px 16px', borderRadius: '8px', background: 'rgba(22,163,74,0.06)', border: '1px solid rgba(22,163,74,0.35)' }}>
+                <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)', marginBottom: '6px' }}>Auftrag wirklich abschließen?</div>
+                <div style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: 1.6, marginBottom: '12px' }}>
+                  Der Auftrag wird als <b style={{ color: '#16a34a' }}>vollständig abgeschlossen</b> markiert. Er bleibt komplett erhalten – Hinweise, Unteraufgaben, Dokumente, Honorare und Historie – und kann jederzeit wieder geöffnet werden.
+                </div>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  <button onClick={abschliessen}
+                    style={{ fontSize: '12px', fontWeight: 700, padding: '8px 16px', borderRadius: '7px', border: 'none', background: '#16a34a', color: '#fff', cursor: 'pointer' }}>
+                    ✅ Auftrag abschließen
+                  </button>
+                  <button onClick={() => setShowAbschlussConfirm(false)}
+                    style={{ fontSize: '12px', padding: '8px 14px', borderRadius: '7px', border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text)', cursor: 'pointer' }}>
+                    ✏️ Zurück zur Bearbeitung
+                  </button>
+                  <button onClick={() => setShowAbschlussConfirm(false)}
+                    style={{ fontSize: '12px', padding: '8px 14px', borderRadius: '7px', border: '1px solid var(--border)', background: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>
+                    ❌ Abbrechen
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button onClick={() => setShowAbschlussConfirm(true)}
+                style={{ width: '100%', fontSize: '13px', fontWeight: 700, padding: '10px 16px', borderRadius: '8px', border: '1px solid rgba(22,163,74,0.4)', background: 'rgba(22,163,74,0.08)', color: '#16a34a', cursor: 'pointer' }}>
+                ✅ Auftrag abschließen
+              </button>
+            )}
+          </div>
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '14px', paddingTop: '10px', borderTop: '1px solid var(--border)' }}>
             <button onClick={onDelete}
