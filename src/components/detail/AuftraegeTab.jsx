@@ -779,6 +779,93 @@ function JAChecklisteSection({ jaCheckliste = {}, onUpdate }) {
 }
 
 // ── JA: Workflow-Status-Sektion ───────────────────────────────────────────────
+// ── Stammdaten-Block (oben im Jahresabschluss-Auftrag) ────────────────────────
+// Rein additiv: pflegt neue Felder am Auftrag (einkunftsarten, einkunftsartFrei,
+// branche, gewinnermittlung, jaNotiz, kennzeichen) + bereits vorhandene abschlussJahr/frist.
+const JA_EINKUNFTSARTEN = ['Gewerbebetrieb','Selbständige Arbeit','Freiberufliche Tätigkeit','Vermietung und Verpachtung','Nichtselbständige Arbeit','Kapitalvermögen','Land- und Forstwirtschaft','Sonstige Einkünfte']
+const JA_KENNZ_DEFAULT = [{ id:'k1', label:'Besonderer Prüfungsfall', checked:false }, { id:'k2', label:'Erhöhter Beratungsbedarf', checked:false }]
+
+function JAStammdatenBlock({ au, onUpdate }) {
+  const einkArten = Array.isArray(au.einkunftsarten) ? au.einkunftsarten : []
+  const kennz     = Array.isArray(au.kennzeichen)    ? au.kennzeichen    : JA_KENNZ_DEFAULT
+  const toggleEink = a => onUpdate({ einkunftsarten: einkArten.includes(a) ? einkArten.filter(x => x !== a) : [...einkArten, a] })
+  const setKennz   = (id, patch) => onUpdate({ kennzeichen: kennz.map(k => k.id === id ? { ...k, ...patch } : k) })
+  const chip = active => ({ display:'inline-flex', alignItems:'center', gap:'5px', fontSize:'11px', padding:'4px 10px', borderRadius:'20px', cursor:'pointer', border:`1px solid ${active ? '#2563eb' : 'var(--border)'}`, background: active ? 'rgba(37,99,235,0.1)' : 'var(--surface)', color: active ? '#2563eb' : 'var(--text-muted)', fontWeight: active ? 700 : 500, userSelect:'none' })
+
+  return (
+    <div style={{ marginBottom:'14px', padding:'12px 14px', background:'var(--surface2)', borderRadius:'10px', border:'1px solid var(--border-strong, var(--border))' }}>
+      <div style={{ display:'flex', alignItems:'center', gap:'8px', marginBottom:'12px' }}>
+        <span style={{ fontSize:'14px' }}>📋</span>
+        <span style={{ fontSize:'12px', fontWeight:700, color:'var(--text)', textTransform:'uppercase', letterSpacing:'0.05em' }}>Stammdaten Jahresabschluss</span>
+      </div>
+
+      <div style={{ display:'flex', gap:'14px', flexWrap:'wrap', marginBottom:'12px' }}>
+        <div style={{ display:'flex', flexDirection:'column', gap:'4px' }}>
+          <span style={{ ...labelStyle, color:'#2563eb' }}>📅 Veranlagungsjahr</span>
+          <input type="number" min="2010" max="2035" value={au.abschlussJahr ?? new Date().getFullYear() - 1}
+            onChange={e => onUpdate({ abschlussJahr: parseInt(e.target.value) || au.abschlussJahr })}
+            style={{ ...inputStyle, width:'90px', fontWeight:700, fontSize:'16px', textAlign:'center', color:'#2563eb', borderColor:'rgba(37,99,235,0.3)', background:'rgba(37,99,235,0.06)' }} />
+        </div>
+        <div style={{ flex:1, minWidth:'160px', display:'flex', flexDirection:'column', gap:'4px' }}>
+          <span style={labelStyle}>Geplante Fertigstellung</span>
+          <input type="date" value={au.frist ?? ''} onChange={e => onUpdate({ frist: e.target.value })} style={inputStyle} />
+        </div>
+      </div>
+
+      <div style={{ marginBottom:'12px' }}>
+        <span style={{ ...labelStyle, display:'block', marginBottom:'5px' }}>Art der Gewinnermittlung</span>
+        <div style={{ display:'flex', gap:'8px', flexWrap:'wrap' }}>
+          {[{ k:'euer', l:'Einnahmen-Überschussrechnung (EÜR)' }, { k:'bilanz', l:'Bilanzierung' }].map(g => (
+            <span key={g.k} onClick={() => onUpdate({ gewinnermittlung: g.k })} style={chip(au.gewinnermittlung === g.k)}>
+              <span>{au.gewinnermittlung === g.k ? '●' : '○'}</span> {g.l}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ marginBottom:'12px' }}>
+        <span style={{ ...labelStyle, display:'block', marginBottom:'5px' }}>Einkunftsart (Mehrfachauswahl)</span>
+        <div style={{ display:'flex', gap:'6px', flexWrap:'wrap' }}>
+          {JA_EINKUNFTSARTEN.map(a => (
+            <span key={a} onClick={() => toggleEink(a)} style={chip(einkArten.includes(a))}>
+              <span>{einkArten.includes(a) ? '✓' : '+'}</span> {a}
+            </span>
+          ))}
+        </div>
+        <input value={au.einkunftsartFrei ?? ''} onChange={e => onUpdate({ einkunftsartFrei: e.target.value })}
+          placeholder="Weitere Einkunftsart (Freitext)…" style={{ ...inputStyle, marginTop:'6px' }} />
+      </div>
+
+      <div style={{ marginBottom:'12px' }}>
+        <span style={{ ...labelStyle, display:'block', marginBottom:'5px' }}>Tätigkeit / Branche</span>
+        <input value={au.branche ?? ''} onChange={e => onUpdate({ branche: e.target.value })}
+          placeholder="z. B. Physiotherapeut, Kfz-Werkstatt, IT-Dienstleister…" style={inputStyle} />
+      </div>
+
+      <div style={{ marginBottom:'12px' }}>
+        <span style={{ ...labelStyle, display:'block', marginBottom:'5px' }}>Allgemeine Hinweise / freie Notiz</span>
+        <textarea value={au.jaNotiz ?? ''} onChange={e => onUpdate({ jaNotiz: e.target.value })} rows={3}
+          placeholder="Besonderheiten, Betriebsprüfung angekündigt, Gesellschafterwechsel, Umwandlung, Auslandsbezug…"
+          style={{ ...inputStyle, minHeight:'60px', resize:'vertical' }} />
+      </div>
+
+      <div>
+        <span style={{ ...labelStyle, display:'block', marginBottom:'5px' }}>Interne Kennzeichnung (Beschriftung frei änderbar)</span>
+        <div style={{ display:'flex', flexDirection:'column', gap:'6px' }}>
+          {kennz.map(k => (
+            <div key={k.id} style={{ display:'flex', alignItems:'center', gap:'8px' }}>
+              <input type="checkbox" checked={!!k.checked} onChange={() => setKennz(k.id, { checked: !k.checked })}
+                style={{ accentColor:'#2563eb', cursor:'pointer', flexShrink:0 }} />
+              <input value={k.label} onChange={e => setKennz(k.id, { label: e.target.value })}
+                style={{ ...inputStyle, flex:1, fontWeight: k.checked ? 700 : 400 }} />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function JAStatusSection({ au, onUpdate }) {
   const current   = au.jaWorkflowStatus ?? 'neu'
   const currentCfg = JA_WORKFLOW_STATUS[current] ?? JA_WORKFLOW_STATUS.neu
@@ -3317,22 +3404,7 @@ function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete, client, onOpe
           {/* ── JA: Abschluss-Jahr + Workflow-Status prominent oben ── */}
           {isJA && (
             <>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px', padding: '10px 14px', background: 'rgba(37,99,235,0.04)', borderRadius: '8px', border: '1px solid rgba(37,99,235,0.15)', flexWrap: 'wrap' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <span style={{ ...labelStyle, color: '#2563eb' }}>📅 Jahresabschluss für Jahr</span>
-                  <input
-                    type="number"
-                    value={au.abschlussJahr ?? new Date().getFullYear() - 1}
-                    min="2010" max="2035"
-                    onChange={e => onUpdate({ abschlussJahr: parseInt(e.target.value) || au.abschlussJahr })}
-                    style={{ ...inputStyle, width: '80px', fontWeight: 700, fontSize: '18px', textAlign: 'center', color: '#2563eb', borderColor: 'rgba(37,99,235,0.3)', background: 'rgba(37,99,235,0.06)' }}
-                  />
-                </div>
-                <div style={{ flex: 1, minWidth: '180px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <span style={{ ...labelStyle }}>Geplante Fertigstellung</span>
-                  <input type="date" value={au.frist ?? ''} onChange={e => onUpdate({ frist: e.target.value })} style={inputStyle} />
-                </div>
-              </div>
+              <JAStammdatenBlock au={au} onUpdate={onUpdate} />
               <JAStatusSection au={au} onUpdate={onUpdate} />
             </>
           )}
