@@ -2764,10 +2764,10 @@ function EmailDetailPanel({
                     </button>
                     {showVorlagenPicker && (
                       <div style={{
-                        position: 'absolute', bottom: 'calc(100% + 4px)', left: 0, zIndex: 300,
+                        position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 1000,
                         background: 'var(--surface)', border: '1px solid var(--border)',
                         borderRadius: '12px', boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
-                        minWidth: '240px', maxHeight: '260px', overflowY: 'auto', padding: '6px',
+                        minWidth: '260px', maxHeight: '320px', overflowY: 'auto', padding: '6px',
                       }}>
                         {emailVorlagen.map(v => (
                           <button key={v.id}
