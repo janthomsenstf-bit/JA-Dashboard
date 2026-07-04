@@ -4,7 +4,7 @@
  */
 import { useState, useRef } from 'react'
 import { callAI, hasAiKey } from '../../utils/aiClient.js'
-import { buildLeistungsnachweis, downloadPdf, leistungsnachweisFilename } from '../../utils/leistungsnachweisPdf.js'
+import { buildLeistungsnachweis, downloadPdf, leistungsnachweisFilename, buildZeitUebersicht, zeitUebersichtFilename } from '../../utils/leistungsnachweisPdf.js'
 
 // ── Jahresliste ───────────────────────────────────────────────────────────────────
 const CURRENT_YEAR = new Date().getFullYear()
@@ -628,6 +628,7 @@ function ZeiterfassungBlock({ client, onUpdate }) {
   function setStatus(id, s) { onUpdate({ zeiteintraege: eintraege.map(z => z.id === id ? { ...z, status: s } : z) }) }
   function saveSatz()       { const v = Math.max(0, parseFloat(String(satzVal).replace(',', '.')) || 0); onUpdate({ stundensatz: v }); setSatzEdit(false) }
   function pdf()            { if (!offen.length) return; downloadPdf(buildLeistungsnachweis(client, offen, { satz }), leistungsnachweisFilename(client)) }
+  function pdfUebersicht()  { if (!eintraege.length) return; downloadPdf(buildZeitUebersicht(client, eintraege, { satz }), zeitUebersichtFilename(client)) }
 
   return (
     <div style={{ border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden' }}>
@@ -664,10 +665,16 @@ function ZeiterfassungBlock({ client, onUpdate }) {
               {fmtStunden(offenMin)} Std{offenPauschalen.length > 0 ? ` + ${offenPauschalen.length} Pauschale${offenPauschalen.length !== 1 ? 'n' : ''}` : ''}
             </div>
           </div>
-          <button onClick={pdf} disabled={!offen.length} title="Leistungsnachweis der offenen Zeiten als PDF"
-            style={{ padding: '8px 14px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', fontSize: '12px', fontWeight: 600, cursor: offen.length ? 'pointer' : 'not-allowed', opacity: offen.length ? 1 : 0.5, whiteSpace: 'nowrap' }}>
-            🧾 Leistungsnachweis
-          </button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', justifyContent: 'center' }}>
+            <button onClick={pdf} disabled={!offen.length} title="Leistungsnachweis der offenen Zeiten als PDF"
+              style={{ padding: '8px 14px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', fontSize: '12px', fontWeight: 600, cursor: offen.length ? 'pointer' : 'not-allowed', opacity: offen.length ? 1 : 0.5, whiteSpace: 'nowrap' }}>
+              🧾 Leistungsnachweis (offen)
+            </button>
+            <button onClick={pdfUebersicht} disabled={!eintraege.length} title="Gesamtübersicht aller erfassten Zeiten (offen + abgerechnet) als PDF"
+              style={{ padding: '8px 14px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', fontSize: '12px', fontWeight: 600, cursor: eintraege.length ? 'pointer' : 'not-allowed', opacity: eintraege.length ? 1 : 0.5, whiteSpace: 'nowrap' }}>
+              📄 Gesamtübersicht (PDF)
+            </button>
+          </div>
         </div>
 
         {!showForm && <ZeitVoiceBlock onParsed={onParsed} />}
