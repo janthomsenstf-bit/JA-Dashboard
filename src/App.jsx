@@ -5,7 +5,7 @@ import { loadChecklistenTypen, saveChecklistenTypen } from './utils/checklistenS
 import { loadVorlagen, saveVorlagen } from './utils/vorlagenStorage.js'
 import AlertBanner from './components/AlertBanner.jsx'
 import ClientTable from './components/ClientTable.jsx'
-import DetailView from './components/detail/DetailView.jsx'
+import DetailView, { TAB } from './components/detail/DetailView.jsx'
 import NewClientModal from './components/NewClientModal.jsx'
 import ArchiveModal from './components/ArchiveModal.jsx'
 import ChecklistenEditor from './components/ChecklistenEditor.jsx'
@@ -824,7 +824,7 @@ export default function App() {
   }
 
   function openClientAtKomm(clientId) {
-    setDetailInitialTab(2)  // TAB.nachrichten
+    setDetailInitialTab(TAB.nachrichten)
     setSelectedId(clientId)
   }
 
@@ -1170,7 +1170,7 @@ export default function App() {
           onSelectWithTab={(id, tab) => { setDetailInitialTab(tab ?? 0); setSelectedId(id) }}
           onOpenEmail={(id, emailId) => {
             setPendingOpenEmailId(emailId)
-            setDetailInitialTab(2)  // TAB.nachrichten
+            setDetailInitialTab(TAB.nachrichten)
             setSelectedId(id)
           }}
         />

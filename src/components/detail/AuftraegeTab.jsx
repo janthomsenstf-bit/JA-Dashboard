@@ -77,8 +77,18 @@ const VERLAUF_TYPEN = {
   meilenstein:       { label: 'Meilenstein',            icon: '🏁', color: '#2563eb' },
 }
 
-function TypOptions() {
-  const kanzlei = Object.entries(AUFTRAGS_TYP_CFG).filter(([, v]) => !v.gruppe)
+function TypOptions({ bereich = 'allgemein' } = {}) {
+  // In den Spezial-Bereichen nur der jeweilige Typ zur Auswahl.
+  if (bereich === 'jahresabschluss') {
+    const v = AUFTRAGS_TYP_CFG.jahresabschluss
+    return <option value="jahresabschluss">{v.icon} {v.label}</option>
+  }
+  if (bereich === 'lohn') {
+    const v = AUFTRAGS_TYP_CFG.lohn
+    return <option value="lohn">{v.icon} {v.label}</option>
+  }
+  // Allgemein: alles außer Jahresabschluss & Lohn (die haben eigene Reiter).
+  const kanzlei = Object.entries(AUFTRAGS_TYP_CFG).filter(([k, v]) => !v.gruppe && k !== 'jahresabschluss' && k !== 'lohn')
   const etab    = Object.entries(AUFTRAGS_TYP_CFG).filter(([, v]) => v.gruppe === 'etablering')
   return (
     <>
@@ -90,6 +100,20 @@ function TypOptions() {
       </optgroup>
     </>
   )
+}
+
+// ── Reiter-Bereiche: Jahresabschluss & Lohn haben eigene Reiter, alles übrige
+// bleibt im allgemeinen Aufträge-Reiter. Rein anzeigeseitige Filterung – die
+// Daten (client.auftraege) bleiben eine gemeinsame Liste. ──────────────────────
+function auftragInBereich(a, bereich) {
+  if (bereich === 'jahresabschluss') return a.typ === 'jahresabschluss'
+  if (bereich === 'lohn')            return a.typ === 'lohn'
+  return a.typ !== 'jahresabschluss' && a.typ !== 'lohn'  // allgemein
+}
+const BEREICH_CFG = {
+  allgemein:       { icon: '📋', title: 'Aufträge',        neuLabel: '+ Einzelauftrag',  defaultTyp: 'fibu'            },
+  jahresabschluss: { icon: '📁', title: 'Jahresabschluss', neuLabel: '+ Jahresabschluss', defaultTyp: 'jahresabschluss' },
+  lohn:            { icon: '💼', title: 'Lohn',            neuLabel: '+ Lohnauftrag',    defaultTyp: 'lohn'            },
 }
 
 function genVerlaufId() { return 'vl_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5) }
@@ -4085,10 +4109,17 @@ function SerieErstellenPanel({ onCreate, onClose }) {
 }
 
 // ── Hauptkomponente ───────────────────────────────────────────────────────────
-export default function AuftraegeTab({ client, onUpdate, initialFilterTyp = 'alle', onOpenEmail, emailVorlagen = [], emailSignaturen = [], onedriveTokens = null, onUpdateOnedriveTokens }) {
-  const auftraege = client.auftraege ?? []
+export default function AuftraegeTab({ client, onUpdate, initialFilterTyp = 'alle', bereich = 'allgemein', onOpenEmail, emailVorlagen = [], emailSignaturen = [], onedriveTokens = null, onUpdateOnedriveTokens }) {
+  const bereichCfg = BEREICH_CFG[bereich] ?? BEREICH_CFG.allgemein
 
-  // Aufteilen in Einzel- und Serienaufträge
+  // WICHTIG (Datensicherheit): allAuftraege = die VOLLSTÄNDIGE Liste. Sie ist die
+  // Basis für ALLE Speicher-Operationen, damit Aufträge anderer Bereiche niemals
+  // verloren gehen. `auftraege` ist nur die für diesen Reiter sichtbare Teilmenge
+  // (Anzeige, Filter, Zählung) – reine Ansicht, keine Datenänderung.
+  const allAuftraege = client.auftraege ?? []
+  const auftraege = allAuftraege.filter(a => auftragInBereich(a, bereich))
+
+  // Aufteilen in Einzel- und Serienaufträge (nur Anzeige des Bereichs)
   const einzelauftraege = auftraege.filter(a => !a.istSerie)
   const serienauftraege = auftraege.filter(a => a.istSerie)
 
@@ -4097,7 +4128,7 @@ export default function AuftraegeTab({ client, onUpdate, initialFilterTyp = 'all
   const [expandedId,         setExpandedId]         = useState(() => {
     try { return localStorage.getItem(`sda-expanded-auftrag_${client.id}`) ?? null } catch { return null }
   })
-  const [quickTyp,           setQuickTyp]           = useState('lohn')
+  const [quickTyp,           setQuickTyp]           = useState(bereichCfg.defaultTyp)
 
   // Geöffneten Auftrag persistieren
   useEffect(() => {
@@ -4113,7 +4144,7 @@ export default function AuftraegeTab({ client, onUpdate, initialFilterTyp = 'all
 
   function createAuftrag() {
     const au = mkAuftrag(quickTyp)
-    save([au, ...auftraege])
+    save([au, ...allAuftraege])
     setExpandedId(au.id)
     setFilterStatus('aktiv')
     setFilterTyp('alle')
@@ -4126,25 +4157,25 @@ export default function AuftraegeTab({ client, onUpdate, initialFilterTyp = 'all
       jahr, monat,
       frist: calcFrist(jahr, monat, fristKonfig.modus, fristKonfig.tag, fristKonfig.tage),
     }))
-    save([...newAuftraege, ...auftraege])
+    save([...newAuftraege, ...allAuftraege])
     setShowBatch(false)
     setFilterStatus('aktiv')
     setFilterTyp('alle')
   }
 
   function createSerienauftrag(au) {
-    save([au, ...auftraege])
+    save([au, ...allAuftraege])
     setShowSerieErstellen(false)
     setExpandedId(au.id)
   }
 
   function updateAuftrag(id, patch) {
-    save(auftraege.map(a => a.id === id ? { ...a, ...patch } : a))
+    save(allAuftraege.map(a => a.id === id ? { ...a, ...patch } : a))
   }
 
   function deleteAuftrag(id) {
     if (!window.confirm('Auftrag wirklich löschen?')) return
-    save(auftraege.filter(a => a.id !== id))
+    save(allAuftraege.filter(a => a.id !== id))
     if (expandedId === id) setExpandedId(null)
   }
 
@@ -4175,20 +4206,22 @@ export default function AuftraegeTab({ client, onUpdate, initialFilterTyp = 'all
 
       {/* ── Header ── */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px', flexWrap: 'wrap' }}>
-        <h2 style={{ margin: 0, fontSize: '15px', fontWeight: 700 }}>📋 Aufträge</h2>
+        <h2 style={{ margin: 0, fontSize: '15px', fontWeight: 700 }}>{bereichCfg.icon} {bereichCfg.title}</h2>
         {auftraege.length > 0 && (
           <span style={{ fontSize: '11px', color: 'var(--text-muted)', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '20px', padding: '1px 9px' }}>
             {counts.aktiv} aktiv · {counts.erledigt} erledigt{serienauftraege.length > 0 ? ` · ${serienauftraege.length} Serie${serienauftraege.length !== 1 ? 'n' : ''}` : ''}
           </span>
         )}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
-          <select value={quickTyp} onChange={e => setQuickTyp(e.target.value)}
-            style={{ padding: '6px 10px', borderRadius: '7px', border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text)', fontSize: '12px', cursor: 'pointer' }}>
-            <TypOptions />
-          </select>
+          {bereich === 'allgemein' && (
+            <select value={quickTyp} onChange={e => setQuickTyp(e.target.value)}
+              style={{ padding: '6px 10px', borderRadius: '7px', border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text)', fontSize: '12px', cursor: 'pointer' }}>
+              <TypOptions bereich={bereich} />
+            </select>
+          )}
           <button onClick={createAuftrag}
             style={{ padding: '7px 16px', borderRadius: '7px', border: 'none', background: 'var(--accent)', color: '#fff', fontSize: '12px', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
-            + Einzelauftrag
+            {bereichCfg.neuLabel}
           </button>
           <button
             onClick={() => { setShowBatch(v => !v); if (!showBatch) setShowSerieErstellen(false) }}
@@ -4225,7 +4258,8 @@ export default function AuftraegeTab({ client, onUpdate, initialFilterTyp = 'all
         ))}
       </div>
 
-      {/* ── Typ-Filter ── */}
+      {/* ── Typ-Filter (nur im allgemeinen Aufträge-Reiter; JA & Lohn sind einheitlich) ── */}
+      {bereich === 'allgemein' && (
       <div style={{ display: 'flex', gap: '5px', marginBottom: '16px', flexWrap: 'wrap' }}>
         <button onClick={() => setFilterTyp('alle')}
           style={{
@@ -4254,6 +4288,7 @@ export default function AuftraegeTab({ client, onUpdate, initialFilterTyp = 'all
           )
         })}
       </div>
+      )}
 
       {/* ── Serienaufträge ── */}
       {filteredSerien.length > 0 && (

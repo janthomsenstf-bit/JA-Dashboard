@@ -13,23 +13,27 @@ import MobileBottomNav      from '../MobileBottomNav.jsx'
 
 // ── Zentrale Tab-Index-Konstanten (NIE hartcoden – immer diese nutzen) ─────────
 export const TAB = {
-  mandant:     0,
-  auftraege:   1,
-  nachrichten: 2,
-  dokumente:   3,
-  honorare:    4,
-  beratung:    5,
-  historie:    6,
+  mandant:         0,
+  auftraege:       1,
+  jahresabschluss: 2,
+  lohn:            3,
+  nachrichten:     4,
+  dokumente:       5,
+  honorare:        6,
+  beratung:        7,
+  historie:        8,
 }
 
 const TAB_NAV = [
-  { icon: '👤', short: 'Mandant'     },  // 0
-  { icon: '📋', short: 'Aufträge'    },  // 1
-  { icon: '✉️', short: 'Nachrichten' },  // 2
-  { icon: '📂', short: 'Dokumente'   },  // 3
-  { icon: '💰', short: 'Honorare'    },  // 4
-  { icon: '🧠', short: 'Beratung'    },  // 5
-  { icon: '📊', short: 'Historie'    },  // 6
+  { icon: '👤', short: 'Mandant'         },  // 0
+  { icon: '📋', short: 'Aufträge'        },  // 1
+  { icon: '📁', short: 'Jahresabschluss' },  // 2
+  { icon: '💼', short: 'Lohn'            },  // 3
+  { icon: '✉️', short: 'Nachrichten'     },  // 4
+  { icon: '📂', short: 'Dokumente'       },  // 5
+  { icon: '💰', short: 'Honorare'        },  // 6
+  { icon: '🧠', short: 'Beratung'        },  // 7
+  { icon: '📊', short: 'Historie'        },  // 8
 ]
 
 export default function DetailView({
@@ -90,8 +94,11 @@ export default function DetailView({
     setActiveTab(TAB.nachrichten)
   }
 
-  // Typ-gefilterter Sprung in Aufträge (z.B. aus Schnellnavigation oder BotInbox)
+  // Typ-gefilterter Sprung in Aufträge (z.B. aus Schnellnavigation oder BotInbox).
+  // Jahresabschluss & Lohn haben eigene Reiter → dorthin springen.
   function navigateToAuftraegeTyp(typ) {
+    if (typ === 'jahresabschluss') { setActiveTab(TAB.jahresabschluss); return }
+    if (typ === 'lohn')            { setActiveTab(TAB.lohn); return }
     setAuftraegeFilterTyp(typ ?? 'alle')
     setActiveTab(TAB.auftraege)
   }
@@ -244,10 +251,45 @@ export default function DetailView({
 
           {activeTab === TAB.auftraege && (
             <AuftraegeTab
-              key={client.id}
+              key={client.id + '-allgemein'}
               client={client}
               onUpdate={onUpdate}
+              bereich="allgemein"
               initialFilterTyp={auftraegeFilterTyp}
+              onOpenEmail={(emailId) => {
+                setLocalPendingEmailId(emailId)
+                setActiveTab(TAB.nachrichten)
+              }}
+              emailVorlagen={emailVorlagen}
+              emailSignaturen={emailSignaturen}
+              onedriveTokens={onedriveTokens}
+              onUpdateOnedriveTokens={onUpdateOnedriveTokens}
+            />
+          )}
+
+          {activeTab === TAB.jahresabschluss && (
+            <AuftraegeTab
+              key={client.id + '-jahresabschluss'}
+              client={client}
+              onUpdate={onUpdate}
+              bereich="jahresabschluss"
+              onOpenEmail={(emailId) => {
+                setLocalPendingEmailId(emailId)
+                setActiveTab(TAB.nachrichten)
+              }}
+              emailVorlagen={emailVorlagen}
+              emailSignaturen={emailSignaturen}
+              onedriveTokens={onedriveTokens}
+              onUpdateOnedriveTokens={onUpdateOnedriveTokens}
+            />
+          )}
+
+          {activeTab === TAB.lohn && (
+            <AuftraegeTab
+              key={client.id + '-lohn'}
+              client={client}
+              onUpdate={onUpdate}
+              bereich="lohn"
               onOpenEmail={(emailId) => {
                 setLocalPendingEmailId(emailId)
                 setActiveTab(TAB.nachrichten)
