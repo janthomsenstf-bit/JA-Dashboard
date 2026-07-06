@@ -73,9 +73,25 @@ const VERLAUF_TYPEN = {
   ebilanz:           { label: 'E-Bilanz versendet',     icon: '📊', color: '#2563eb' },
   offenlegung:       { label: 'Offenlegung eingereicht', icon: '📰', color: '#7c3aed' },
   rechnung:          { label: 'Rechnung erstellt',      icon: '🧾', color: '#16a34a' },
+  unterlagen_angefordert: { label: 'Unterlagen angefordert',      icon: '📥', color: '#f97316' },
+  fristverlaengerung:{ label: 'Fristverlängerung beantragt', icon: '⏳', color: '#d97706' },
+  freigabe_mandant:  { label: 'Freigabe vom Mandant',    icon: '👍', color: '#16a34a' },
+  bescheid_erhalten: { label: 'Steuerbescheid erhalten', icon: '📬', color: '#0891b2' },
+  bescheid_geprueft: { label: 'Bescheid geprüft',        icon: '🔎', color: '#0f766e' },
+  einspruch:         { label: 'Einspruch eingelegt',     icon: '⚖️', color: '#dc2626' },
+  wiedervorlage:     { label: 'Wiedervorlage',           icon: '📌', color: '#7c3aed' },
   notiz:             { label: 'Interne Notiz',          icon: '📝', color: '#64748b' },
   meilenstein:       { label: 'Meilenstein',            icon: '🏁', color: '#2563eb' },
 }
+
+// Eigene (benutzerdefinierte) Schnellauswahl-Buttons – kanzleiweit in localStorage.
+// Rein additiv, kein Bezug zu Mandanten-/Auftragsdaten.
+const JA_VERLAUF_CUSTOM_KEY = 'ja-verlauf-custom'
+const VERLAUF_FARBEN = ['#2563eb', '#0891b2', '#16a34a', '#f97316', '#d97706', '#7c3aed', '#dc2626', '#0f766e', '#64748b']
+function loadCustomVerlaufTypen() {
+  try { const arr = JSON.parse(localStorage.getItem(JA_VERLAUF_CUSTOM_KEY) || '[]'); return Array.isArray(arr) ? arr.filter(t => t && t.key && t.label) : [] } catch { return [] }
+}
+function saveCustomVerlaufTypen(list) { try { localStorage.setItem(JA_VERLAUF_CUSTOM_KEY, JSON.stringify(list)) } catch {} }
 
 function TypOptions({ bereich = 'allgemein' } = {}) {
   // In den Spezial-Bereichen nur der jeweilige Typ zur Auswahl.
@@ -985,6 +1001,34 @@ function JAVerlaufSection({ au, client, onUpdate, onOpenEmail, onUpdateClient, e
   const [newDatum,    setNewDatum]    = useState(todayISO)
   const [showCompose, setShowCompose] = useState(false)
 
+  // Eigene Schnellauswahl-Buttons (kanzleiweit)
+  const [customTypen, setCustomTypen] = useState(loadCustomVerlaufTypen)
+  const [showCustomForm, setShowCustomForm] = useState(false)
+  const [cLabel, setCLabel] = useState('')
+  const [cIcon,  setCIcon]  = useState('📌')
+  const [cColor, setCColor] = useState(VERLAUF_FARBEN[0])
+  const customMap = Object.fromEntries(customTypen.map(t => [t.key, t]))
+  const TYPEN = { ...VERLAUF_TYPEN, ...customMap }
+  // Darstellung eines Verlaufseintrags – bevorzugt am Eintrag gespeicherte Werte (überlebt Button-Löschung)
+  const cfgFor = (item) => {
+    const t = TYPEN[item.typ]
+    return { icon: item.icon || t?.icon || '📝', color: item.color || t?.color || '#64748b', label: item.label || t?.label || 'Eintrag' }
+  }
+
+  function addCustomTyp() {
+    const label = cLabel.trim()
+    if (!label) return
+    const key = 'custom_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5)
+    const next = [...customTypen, { key, label, icon: (cIcon || '📌').trim().slice(0, 3), color: cColor }]
+    setCustomTypen(next); saveCustomVerlaufTypen(next)
+    setCLabel(''); setCIcon('📌'); setCColor(VERLAUF_FARBEN[0]); setShowCustomForm(false)
+  }
+  function deleteCustomTyp(key) {
+    const next = customTypen.filter(t => t.key !== key)
+    setCustomTypen(next); saveCustomVerlaufTypen(next)
+    if (selectedTyp === key) setSelectedTyp(null)
+  }
+
   // Verknüpfte E-Mails: Events aus globalem Kommunikation mit auftragId === au.id
   const linkedEmails = (client?.kommunikation?.events ?? [])
     .filter(ev => ev.auftragId === au.id)
@@ -1011,12 +1055,13 @@ function JAVerlaufSection({ au, client, onUpdate, onOpenEmail, onUpdateClient, e
 
   function addVerlauf() {
     if (!selectedTyp) return
-    const cfg = VERLAUF_TYPEN[selectedTyp]
+    const cfg = TYPEN[selectedTyp] ?? VERLAUF_TYPEN.notiz
     const item = {
       id: genVerlaufId(),
       typ: selectedTyp,
       datum: newDatum,
       text: newNotiz.trim() || cfg.label,
+      icon: cfg.icon, label: cfg.label, color: cfg.color,   // Darstellung mitspeichern (robust)
       erstelltAm: new Date().toISOString(),
     }
     onUpdate({ verlauf: [item, ...verlauf] })
@@ -1080,30 +1125,66 @@ function JAVerlaufSection({ au, client, onUpdate, onOpenEmail, onUpdateClient, e
 
         {/* Schnellauswahl-Chips */}
         <div style={{ padding: '12px 14px', background: 'var(--surface)' }}>
-          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-            {Object.entries(VERLAUF_TYPEN).map(([key, cfg]) => {
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+            {Object.entries(TYPEN).map(([key, cfg]) => {
               const active = selectedTyp === key
+              const isCustom = !!customMap[key]
               return (
-                <button key={key} onClick={() => handleQuickAction(key)} style={{
-                  display: 'flex', alignItems: 'center', gap: '5px',
-                  padding: '6px 14px', borderRadius: '20px', cursor: 'pointer',
-                  border: `1px solid ${active ? cfg.color : 'var(--border)'}`,
-                  background: active ? cfg.color + '18' : 'var(--surface2)',
-                  color: active ? cfg.color : 'var(--text-secondary)',
-                  fontSize: '12px', fontWeight: active ? 600 : 400,
-                  transition: 'all 0.15s',
-                  boxShadow: active ? `0 0 0 2px ${cfg.color}25` : 'none',
-                }}>
-                  {cfg.icon} {cfg.label}
-                </button>
+                <span key={key} style={{ position: 'relative', display: 'inline-flex' }}>
+                  <button onClick={() => handleQuickAction(key)} style={{
+                    display: 'flex', alignItems: 'center', gap: '5px',
+                    padding: isCustom ? '6px 24px 6px 14px' : '6px 14px', borderRadius: '20px', cursor: 'pointer',
+                    border: `1px solid ${active ? cfg.color : 'var(--border)'}`,
+                    background: active ? cfg.color + '18' : 'var(--surface2)',
+                    color: active ? cfg.color : 'var(--text-secondary)',
+                    fontSize: '12px', fontWeight: active ? 600 : 400, transition: 'all 0.15s',
+                    boxShadow: active ? `0 0 0 2px ${cfg.color}25` : 'none',
+                  }}>
+                    {cfg.icon} {cfg.label}
+                  </button>
+                  {isCustom && (
+                    <button onClick={(e) => { e.stopPropagation(); if (window.confirm(`Eigenen Button „${cfg.label}" entfernen? Bereits erfasste Verlaufseinträge bleiben erhalten.`)) deleteCustomTyp(key) }}
+                      title="Eigenen Button entfernen"
+                      style={{ position: 'absolute', right: '5px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '11px', lineHeight: 1, padding: '2px' }}>✕</button>
+                  )}
+                </span>
               )
             })}
+            <button onClick={() => setShowCustomForm(v => !v)} style={{
+              display: 'flex', alignItems: 'center', gap: '5px', padding: '6px 14px', borderRadius: '20px', cursor: 'pointer',
+              border: `1px dashed ${showCustomForm ? 'var(--accent)' : 'var(--border)'}`, background: 'transparent',
+              color: showCustomForm ? 'var(--accent)' : 'var(--text-muted)', fontSize: '12px', fontWeight: 600,
+            }}>＋ Eigener Button</button>
           </div>
+
+          {/* Eigenen Schnellauswahl-Button anlegen */}
+          {showCustomForm && (
+            <div style={{ marginTop: '10px', padding: '12px', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'flex-end' }}>
+              <div>
+                <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Icon</label>
+                <input value={cIcon} onChange={e => setCIcon(e.target.value)} maxLength={3} style={{ ...iStyle, width: '52px', textAlign: 'center', fontSize: '16px' }} />
+              </div>
+              <div style={{ flex: 1, minWidth: '160px' }}>
+                <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Bezeichnung</label>
+                <input value={cLabel} onChange={e => setCLabel(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') addCustomTyp() }} placeholder="z. B. Belege nachgefordert" style={{ ...iStyle, width: '100%', boxSizing: 'border-box' }} autoFocus />
+              </div>
+              <div>
+                <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Farbe</label>
+                <div style={{ display: 'flex', gap: '4px' }}>
+                  {VERLAUF_FARBEN.map(c => (
+                    <button key={c} onClick={() => setCColor(c)} title={c} style={{ width: '20px', height: '20px', borderRadius: '50%', background: c, cursor: 'pointer', border: cColor === c ? '2px solid var(--text)' : '2px solid transparent' }} />
+                  ))}
+                </div>
+              </div>
+              <button onClick={addCustomTyp} disabled={!cLabel.trim()} style={{ padding: '7px 16px', borderRadius: '6px', border: 'none', background: cLabel.trim() ? cColor : 'var(--border)', color: '#fff', fontSize: '12px', fontWeight: 700, cursor: cLabel.trim() ? 'pointer' : 'not-allowed' }}>Button speichern</button>
+              <div style={{ width: '100%', fontSize: '10px', color: 'var(--text-muted)' }}>Eigene Buttons gelten kanzleiweit (für alle Jahresabschluss-Aufträge) und werden lokal gespeichert.</div>
+            </div>
+          )}
         </div>
 
         {/* Inline-Formular (erscheint bei Schnellauswahl-Klick) */}
         {selectedTyp && (() => {
-          const cfg = VERLAUF_TYPEN[selectedTyp]
+          const cfg = TYPEN[selectedTyp] ?? VERLAUF_TYPEN.notiz
           return (
             <div style={{ padding: '14px', background: cfg.color + '06', borderTop: '1px solid var(--border)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
@@ -1155,7 +1236,7 @@ function JAVerlaufSection({ au, client, onUpdate, onOpenEmail, onUpdateClient, e
         <div>
           {allItems.map((item, idx) => {
             const isEmail = item._source === 'email'
-            const cfg = isEmail ? { icon: '✉️', color: '#16a34a' } : (VERLAUF_TYPEN[item.typ] ?? VERLAUF_TYPEN.notiz)
+            const cfg = isEmail ? { icon: '✉️', color: '#16a34a', label: null } : cfgFor(item)
             const isLast = idx === allItems.length - 1
 
             return (
@@ -1181,12 +1262,12 @@ function JAVerlaufSection({ au, client, onUpdate, onOpenEmail, onUpdateClient, e
                   border: `1px solid ${isEmail ? 'rgba(22,163,74,0.2)' : 'var(--border)'}`,
                   borderRadius: '8px', overflow: 'hidden',
                 }}>
-                  <div style={{ padding: '7px 10px', display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--surface)', borderBottom: item.text && !isEmail && item.text !== (VERLAUF_TYPEN[item.typ]?.label) ? '1px solid var(--border)' : 'none' }}>
+                  <div style={{ padding: '7px 10px', display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--surface)', borderBottom: item.text && !isEmail && item.text !== cfg.label ? '1px solid var(--border)' : 'none' }}>
                     <span style={{
                       fontSize: '10px', fontWeight: 700, color: cfg.color,
                       background: cfg.color + '15', padding: '2px 8px', borderRadius: '10px',
                     }}>
-                      {isEmail ? (item.text?.startsWith('📨') ? 'Empfangen' : 'Gesendet') : (VERLAUF_TYPEN[item.typ]?.label ?? 'Eintrag')}
+                      {isEmail ? (item.text?.startsWith('📨') ? 'Empfangen' : 'Gesendet') : (cfg.label ?? 'Eintrag')}
                     </span>
                     <span style={{ fontSize: '11px', color: 'var(--text-muted)', flex: 1 }}>
                       {fmtShortDate(item.datum)}
@@ -1209,7 +1290,7 @@ function JAVerlaufSection({ au, client, onUpdate, onOpenEmail, onUpdateClient, e
                       <div style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.text}</div>
                       {item.absender && <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '1px' }}>{item.absender}</div>}
                     </div>
-                  ) : item.text && item.text !== (VERLAUF_TYPEN[item.typ]?.label) ? (
+                  ) : item.text && item.text !== cfg.label ? (
                     <div style={{ padding: '5px 10px', fontSize: '11px', color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>
                       {item.text}
                     </div>
