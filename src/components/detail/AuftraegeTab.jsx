@@ -3533,10 +3533,6 @@ function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete, client, onOpe
           {isJA && (
             <>
               <JAHonorarSection au={au} onUpdate={onUpdate} />
-              <JAChecklisteSection
-                jaCheckliste={au.jaCheckliste}
-                onUpdate={patch => onUpdate(patch)}
-              />
               <JAVerlaufSection
                 au={au} client={client} onUpdate={onUpdate} onOpenEmail={onOpenEmail}
                 onUpdateClient={onUpdateClient}
@@ -3544,6 +3540,10 @@ function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete, client, onOpe
                 emailSignaturen={emailSignaturen}
                 onedriveTokens={onedriveTokens}
                 onUpdateOnedriveTokens={onUpdateOnedriveTokens}
+              />
+              <JAChecklisteSection
+                jaCheckliste={au.jaCheckliste}
+                onUpdate={patch => onUpdate(patch)}
               />
             </>
           )}
