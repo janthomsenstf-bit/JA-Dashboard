@@ -11,20 +11,21 @@ const ALL_TABS = [
   { icon: '📋', short: 'Aufträge'        },  // 1
   { icon: '📁', short: 'Jahresabschluss' },  // 2
   { icon: '💼', short: 'Lohn'            },  // 3
-  { icon: '✉️', short: 'Nachrichten'     },  // 4
-  { icon: '📂', short: 'Dokumente'       },  // 5
-  { icon: '💰', short: 'Honorare'        },  // 6
-  { icon: '🧠', short: 'Beratung'        },  // 7
-  { icon: '📊', short: 'Historie'        },  // 8
+  { icon: '🏠', short: 'Immobilien'      },  // 4
+  { icon: '✉️', short: 'Nachrichten'     },  // 5
+  { icon: '📂', short: 'Dokumente'       },  // 6
+  { icon: '💰', short: 'Honorare'        },  // 7
+  { icon: '🧠', short: 'Beratung'        },  // 8
+  { icon: '📊', short: 'Historie'        },  // 9
 ]
 
 // 5 Tabs in der Bottom Bar
 const BOTTOM_TABS = [
-  { icon: '👤', label: 'Mandant',   idx: 0  },
-  { icon: '📋', label: 'Aufträge',  idx: 1  },
-  { icon: '📁', label: 'Abschluss', idx: 2  },
-  { icon: '💼', label: 'Lohn',      idx: 3  },
-  { icon: '⋯',  label: 'Mehr',     idx: -1 },
+  { icon: '👤', label: 'Mandant',    idx: 0  },
+  { icon: '📁', label: 'Abschluss',  idx: 2  },
+  { icon: '💼', label: 'Lohn',       idx: 3  },
+  { icon: '🏠', label: 'Immobilien', idx: 4  },
+  { icon: '⋯',  label: 'Mehr',      idx: -1 },
 ]
 
 export default function MobileBottomNav({ activeTab, setActiveTab }) {

@@ -6,6 +6,7 @@ import AuftragTab           from './AuftragTab.jsx'
 import BeratungTab          from './BeratungTab.jsx'
 import KommunikationTab     from './KommunikationTab.jsx'
 import AuftraegeTab         from './AuftraegeTab.jsx'
+import ImmobilienTab        from './ImmobilienTab.jsx'
 import HonorareTab          from './HonorareTab.jsx'
 import DokumenteTab         from './DokumenteTab.jsx'
 import NewClientModal       from '../NewClientModal.jsx'
@@ -17,11 +18,12 @@ export const TAB = {
   auftraege:       1,
   jahresabschluss: 2,
   lohn:            3,
-  nachrichten:     4,
-  dokumente:       5,
-  honorare:        6,
-  beratung:        7,
-  historie:        8,
+  immobilien:      4,
+  nachrichten:     5,
+  dokumente:       6,
+  honorare:        7,
+  beratung:        8,
+  historie:        9,
 }
 
 const TAB_NAV = [
@@ -29,11 +31,12 @@ const TAB_NAV = [
   { icon: '📋', short: 'Aufträge'        },  // 1
   { icon: '📁', short: 'Jahresabschluss' },  // 2
   { icon: '💼', short: 'Lohn'            },  // 3
-  { icon: '✉️', short: 'Nachrichten'     },  // 4
-  { icon: '📂', short: 'Dokumente'       },  // 5
-  { icon: '💰', short: 'Honorare'        },  // 6
-  { icon: '🧠', short: 'Beratung'        },  // 7
-  { icon: '📊', short: 'Historie'        },  // 8
+  { icon: '🏠', short: 'Immobilien'      },  // 4
+  { icon: '✉️', short: 'Nachrichten'     },  // 5
+  { icon: '📂', short: 'Dokumente'       },  // 6
+  { icon: '💰', short: 'Honorare'        },  // 7
+  { icon: '🧠', short: 'Beratung'        },  // 8
+  { icon: '📊', short: 'Historie'        },  // 9
 ]
 
 export default function DetailView({
@@ -299,6 +302,10 @@ export default function DetailView({
               onedriveTokens={onedriveTokens}
               onUpdateOnedriveTokens={onUpdateOnedriveTokens}
             />
+          )}
+
+          {activeTab === TAB.immobilien && (
+            <ImmobilienTab key={client.id} client={client} onUpdate={onUpdate} />
           )}
 
           {activeTab === TAB.nachrichten && (
