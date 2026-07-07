@@ -93,6 +93,13 @@ function loadCustomVerlaufTypen() {
 }
 function saveCustomVerlaufTypen(list) { try { localStorage.setItem(JA_VERLAUF_CUSTOM_KEY, JSON.stringify(list)) } catch {} }
 
+// Eigene (benutzerdefinierte) Status-Buttons für den Jahresabschluss – kanzleiweit in localStorage.
+const JA_STATUS_CUSTOM_KEY = 'ja-status-custom'
+function loadCustomStatus() {
+  try { const arr = JSON.parse(localStorage.getItem(JA_STATUS_CUSTOM_KEY) || '[]'); return Array.isArray(arr) ? arr.filter(t => t && t.key && t.label) : [] } catch { return [] }
+}
+function saveCustomStatus(list) { try { localStorage.setItem(JA_STATUS_CUSTOM_KEY, JSON.stringify(list)) } catch {} }
+
 function TypOptions({ bereich = 'allgemein' } = {}) {
   // In den Spezial-Bereichen nur der jeweilige Typ zur Auswahl.
   if (bereich === 'jahresabschluss') {
@@ -907,12 +914,37 @@ function JAStammdatenBlock({ au, onUpdate }) {
 }
 
 function JAStatusSection({ au, onUpdate }) {
-  const current   = au.jaWorkflowStatus ?? 'neu'
-  const currentCfg = JA_WORKFLOW_STATUS[current] ?? JA_WORKFLOW_STATUS.neu
+  const [customStatus, setCustomStatus] = useState(loadCustomStatus)
+  const [showForm, setShowForm] = useState(false)
+  const [cLabel, setCLabel] = useState('')
+  const [cIcon,  setCIcon]  = useState('🏷️')
+  const [cColor, setCColor] = useState(VERLAUF_FARBEN[0])
+  const statusInput = { padding: '6px 10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', fontSize: '12px', outline: 'none' }
+
+  // eigene Status inkl. abgeleiteter Hintergrund-/Rahmenfarbe
+  const customMap = Object.fromEntries(customStatus.map(t => [t.key, { ...t, bg: t.color + '18', border: t.color + '55' }]))
+  const STATUS_MAP = { ...JA_WORKFLOW_STATUS, ...customMap }
+  const current    = au.jaWorkflowStatus ?? 'neu'
+  // Snapshot am Auftrag sorgt dafür, dass ein gesetzter (auch eigener) Status korrekt angezeigt wird,
+  // selbst wenn der Button später gelöscht wurde.
+  const currentCfg = STATUS_MAP[current] ?? au.jaStatusSnap ?? JA_WORKFLOW_STATUS.neu
   const statusDatum = au.jaWorkflowStatusDatum ?? ''
 
   function setStatus(key) {
-    onUpdate({ jaWorkflowStatus: key, jaWorkflowStatusDatum: todayISO() })
+    const cfg = STATUS_MAP[key] ?? JA_WORKFLOW_STATUS.neu
+    onUpdate({ jaWorkflowStatus: key, jaWorkflowStatusDatum: todayISO(), jaStatusSnap: { label: cfg.label, icon: cfg.icon, color: cfg.color, bg: cfg.bg, border: cfg.border } })
+  }
+  function addCustom() {
+    const label = cLabel.trim()
+    if (!label) return
+    const key = 'custom_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5)
+    const next = [...customStatus, { key, label, icon: (cIcon || '🏷️').trim().slice(0, 3), color: cColor }]
+    setCustomStatus(next); saveCustomStatus(next)
+    setCLabel(''); setCIcon('🏷️'); setCColor(VERLAUF_FARBEN[0]); setShowForm(false)
+  }
+  function deleteCustom(key) {
+    const next = customStatus.filter(t => t.key !== key)
+    setCustomStatus(next); saveCustomStatus(next)
   }
 
   return (
@@ -926,23 +958,56 @@ function JAStatusSection({ au, onUpdate }) {
           <span style={{ fontSize: '10px', color: 'var(--text-muted)', marginLeft: 'auto' }}>seit {fmtShortDate(statusDatum)}</span>
         )}
       </div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-        {Object.entries(JA_WORKFLOW_STATUS).map(([key, cfg]) => (
-          <button
-            key={key}
-            onClick={() => setStatus(key)}
-            title={cfg.label}
-            style={{
-              padding: '3px 9px', borderRadius: '20px', fontSize: '10px', fontWeight: key === current ? 700 : 400, cursor: 'pointer',
-              border: `1px solid ${key === current ? cfg.color : 'var(--border)'}`,
-              background: key === current ? cfg.bg : 'transparent',
-              color: key === current ? cfg.color : 'var(--text-muted)',
-            }}
-          >
-            {cfg.icon} {cfg.label}
-          </button>
-        ))}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', alignItems: 'center' }}>
+        {Object.entries(STATUS_MAP).map(([key, cfg]) => {
+          const isCustom = !!customMap[key]
+          return (
+            <span key={key} style={{ position: 'relative', display: 'inline-flex' }}>
+              <button onClick={() => setStatus(key)} title={cfg.label} style={{
+                padding: isCustom ? '3px 20px 3px 9px' : '3px 9px', borderRadius: '20px', fontSize: '10px', fontWeight: key === current ? 700 : 400, cursor: 'pointer',
+                border: `1px solid ${key === current ? cfg.color : 'var(--border)'}`,
+                background: key === current ? cfg.bg : 'transparent',
+                color: key === current ? cfg.color : 'var(--text-muted)',
+              }}>
+                {cfg.icon} {cfg.label}
+              </button>
+              {isCustom && (
+                <button onClick={(e) => { e.stopPropagation(); if (window.confirm(`Eigenen Status „${cfg.label}" entfernen? Aufträge, die aktuell diesen Status haben, behalten ihre Anzeige.`)) deleteCustom(key) }}
+                  title="Eigenen Status entfernen"
+                  style={{ position: 'absolute', right: '4px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '10px', lineHeight: 1, padding: '1px' }}>✕</button>
+              )}
+            </span>
+          )
+        })}
+        <button onClick={() => setShowForm(v => !v)} style={{
+          padding: '3px 10px', borderRadius: '20px', fontSize: '10px', fontWeight: 600, cursor: 'pointer',
+          border: `1px dashed ${showForm ? 'var(--accent)' : 'var(--border)'}`, background: 'transparent', color: showForm ? 'var(--accent)' : 'var(--text-muted)',
+        }}>＋ Eigener Status</button>
       </div>
+
+      {/* Eigenen Status anlegen */}
+      {showForm && (
+        <div style={{ marginTop: '10px', padding: '10px', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '8px', display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'flex-end' }}>
+          <div>
+            <label style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Icon</label>
+            <input value={cIcon} onChange={e => setCIcon(e.target.value)} maxLength={3} style={{ ...statusInput, width: '48px', textAlign: 'center', fontSize: '15px' }} />
+          </div>
+          <div style={{ flex: 1, minWidth: '150px' }}>
+            <label style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Bezeichnung</label>
+            <input value={cLabel} onChange={e => setCLabel(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') addCustom() }} placeholder="z. B. Beim Mandant zur Prüfung" style={{ ...statusInput, width: '100%', boxSizing: 'border-box' }} autoFocus />
+          </div>
+          <div>
+            <label style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Farbe</label>
+            <div style={{ display: 'flex', gap: '4px' }}>
+              {VERLAUF_FARBEN.map(c => (
+                <button key={c} onClick={() => setCColor(c)} title={c} style={{ width: '18px', height: '18px', borderRadius: '50%', background: c, cursor: 'pointer', border: cColor === c ? '2px solid var(--text)' : '2px solid transparent' }} />
+              ))}
+            </div>
+          </div>
+          <button onClick={addCustom} disabled={!cLabel.trim()} style={{ padding: '6px 14px', borderRadius: '6px', border: 'none', background: cLabel.trim() ? cColor : 'var(--border)', color: '#fff', fontSize: '11px', fontWeight: 700, cursor: cLabel.trim() ? 'pointer' : 'not-allowed' }}>Status speichern</button>
+          <div style={{ width: '100%', fontSize: '10px', color: 'var(--text-muted)' }}>Eigene Status gelten kanzleiweit (für alle Jahresabschluss-Aufträge) und werden lokal gespeichert.</div>
+        </div>
+      )}
     </div>
   )
 }
