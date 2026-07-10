@@ -3508,7 +3508,9 @@ function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete, client, onOpe
   const isJA        = au.typ === 'jahresabschluss'
   const isErfassung = au.typ === 'erfassung'
   const hasWorkflow = !!WORKFLOW_CONFIGS[au.typ]
-  const jaWfsCfg = isJA ? (JA_WORKFLOW_STATUS[au.jaWorkflowStatus ?? 'neu'] ?? JA_WORKFLOW_STATUS.neu) : null
+  // Eigene (custom_…) Status stehen nicht in JA_WORKFLOW_STATUS → Snapshot am Auftrag als Fallback nutzen,
+  // damit auch selbst angelegte Status oben in der Überschrift korrekt angezeigt werden.
+  const jaWfsCfg = isJA ? (JA_WORKFLOW_STATUS[au.jaWorkflowStatus ?? 'neu'] ?? au.jaStatusSnap ?? JA_WORKFLOW_STATUS.neu) : null
   const wfCurrentStep = hasWorkflow ? (WORKFLOW_CONFIGS[au.typ].steps.find(s => s.key === (au.workflowStatus ?? 'anfrage')) ?? WORKFLOW_CONFIGS[au.typ].steps[0]) : null
   // Für JA: Abschluss-Jahr prominent im Titel zeigen
   const titel = au.bezeichnung
