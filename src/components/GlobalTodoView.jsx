@@ -240,6 +240,39 @@ function MonthTable({ gefiltert, alleAuftraege, onSelectClient, onCycleStatus, o
   )
 }
 
+// ── Eilig-Ansicht ─────────────────────────────────────────────────────────────
+// Zeigt alle als „eilig" markierten Aufträge, sortiert nach Fristdatum (eiligBis).
+function EiligTable({ items, onSelectClient, onCycleStatus, onToggleDone, onNavigateToAuftrag }) {
+  return (
+    <div style={{ flex:1, overflowY:'auto', background:'var(--bg)' }}>
+      {items.length === 0 ? (
+        <div style={{ padding:'48px', textAlign:'center', color:'var(--text-muted)', fontSize:'14px' }}>
+          Keine eiligen Aufträge. Markiere einen Jahresabschluss-Auftrag in den Stammdaten mit „🔥 Eilig".
+        </div>
+      ) : (
+        <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'13px' }}>
+          <thead>
+            <tr style={{ background:'var(--surface)', position:'sticky', top:0, zIndex:1 }}>
+              <th style={thStyle}>Mandant</th>
+              <th style={thStyle}>Typ</th>
+              <th style={thStyle}>Bezeichnung</th>
+              <th style={thStyle}>Zeitraum</th>
+              <th style={thStyle}>Fertigstellung bis</th>
+              <th style={thStyle}>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((au, idx) => (
+              <AuftragRow key={au.id} au={au} idx={idx} onSelectClient={onSelectClient} onCycleStatus={onCycleStatus}
+                onToggleDone={onToggleDone} onNavigateToAuftrag={onNavigateToAuftrag} />
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  )
+}
+
 // ── Wochen-Ansicht ────────────────────────────────────────────────────────────
 function WeekView({ weekDays, onSelectClient, onCycleStatus, onQuickCreate, onNavigateToAuftrag }) {
   const heute = new Date(); heute.setHours(0,0,0,0)
@@ -759,6 +792,15 @@ export default function GlobalTodoView({ clients, onUpdateClient, onSelectClient
     return result
   }, [alleAuftraege, viewMode, navDate, passesCommon])
 
+  // ── Eilig-Ansicht: alle als „eilig" markierten Aufträge, sortiert nach Frist ─
+  const eiligItems = useMemo(() => {
+    if (viewMode !== 'eilig') return []
+    return alleAuftraege
+      .filter(au => au.eilig && passesCommon(au))
+      .map(au => ({ ...au, frist: au.eiligBis || au.frist }))   // Frist-Spalte zeigt „Fertigstellung bis"
+      .sort((a, b) => (a.frist || '9999-12-31').localeCompare(b.frist || '9999-12-31'))
+  }, [alleAuftraege, viewMode, passesCommon])
+
   // ── Statistiken (status-unabhängig für korrekte Übersicht) ────────────────
   const stats = useMemo(() => {
     let basis
@@ -800,13 +842,20 @@ export default function GlobalTodoView({ clients, onUpdateClient, onSelectClient
         if (filterMandatstyp !== 'alle' && (au.client.mandatstyp ?? 'extern') !== filterMandatstyp) return false
         return true
       })
+    } else if (viewMode === 'eilig') {
+      basis = alleAuftraege.filter(au => {
+        if (!au.eilig) return false
+        if (filterTyp !== 'alle' && au.typ !== filterTyp) return false
+        if (filterMandatstyp !== 'alle' && (au.client.mandatstyp ?? 'extern') !== filterMandatstyp) return false
+        return true
+      })
     } else {
       basis = []
     }
     const heute = new Date()
     const ueberfaellig = basis.filter(au => {
       if (au.status === 'erledigt') return false
-      const d = getExactDate(au) ?? au.frist
+      const d = (viewMode === 'eilig' ? au.eiligBis : null) ?? getExactDate(au) ?? au.frist
       if (!d) return false
       return new Date(d + 'T12:00:00') < heute
     }).length
@@ -987,8 +1036,9 @@ export default function GlobalTodoView({ clients, onUpdateClient, onSelectClient
       if (carry > 0) return `${total} Einträge · davon ${carry} mitgenommen`
       return `${total} Einträge`
     }
+    if (viewMode === 'eilig') return `${eiligItems.length} eilige Aufträge`
     return ''
-  }, [viewMode, gefiltert.length, weekDays, dayItems])
+  }, [viewMode, gefiltert.length, weekDays, dayItems, eiligItems.length])
 
   // ── Styles ────────────────────────────────────────────────────────────────
   const btnFilter = (active, accentColor) => ({
@@ -1017,11 +1067,11 @@ export default function GlobalTodoView({ clients, onUpdateClient, onSelectClient
 
           {/* Ansicht-Umschalter */}
           <div style={{ display:'flex', background:'rgba(255,255,255,0.07)', borderRadius:'8px', padding:'2px', border:'1px solid rgba(255,255,255,0.12)', marginLeft:'4px' }}>
-            {[['monat','📅 Monat'],['woche','📆 Woche'],['tag','🗓 Tag']].map(([m,l]) => (
+            {[['monat','📅 Monat'],['woche','📆 Woche'],['tag','🗓 Tag'],['eilig','🔥 Eilig']].map(([m,l]) => (
               <button key={m} onClick={() => switchView(m)} style={{
                 padding:'4px 11px', borderRadius:'6px', fontSize:'11px', fontWeight:600, cursor:'pointer', border:'none',
-                background: viewMode === m ? 'rgba(255,255,255,0.2)' : 'transparent',
-                color: viewMode === m ? '#fff' : 'rgba(255,255,255,0.45)',
+                background: viewMode === m ? (m === 'eilig' ? 'rgba(239,68,68,0.35)' : 'rgba(255,255,255,0.2)') : 'transparent',
+                color: viewMode === m ? '#fff' : (m === 'eilig' ? 'rgba(248,113,113,0.85)' : 'rgba(255,255,255,0.45)'),
                 transition:'background 0.15s',
               }}>{l}</button>
             ))}
@@ -1047,14 +1097,23 @@ export default function GlobalTodoView({ clients, onUpdateClient, onSelectClient
         {/* Zeile 2: Navigation + Filter */}
         <div style={{ display:'flex', gap:'6px', flexWrap:'wrap', alignItems:'center' }}>
 
-          {/* Zeitraum-Navigation */}
-          <button onClick={goPrev} title="Zurück"
-            style={{ ...inputStyle, padding:'4px 11px', fontWeight:800, fontSize:'14px', lineHeight:1 }}>‹</button>
-          <button onClick={goToday}
-            style={{ ...inputStyle, padding:'4px 10px', fontSize:'11px', fontWeight:600 }}>Heute</button>
-          <button onClick={goNext} title="Vor"
-            style={{ ...inputStyle, padding:'4px 11px', fontWeight:800, fontSize:'14px', lineHeight:1 }}>›</button>
-          <span style={{ fontSize:'12px', fontWeight:700, color:'rgba(255,255,255,0.9)', whiteSpace:'nowrap', minWidth:'175px' }}>{navLabel}</span>
+          {/* Zeitraum-Navigation (im Eilig-Modus ausgeblendet) */}
+          {viewMode !== 'eilig' && (
+            <>
+              <button onClick={goPrev} title="Zurück"
+                style={{ ...inputStyle, padding:'4px 11px', fontWeight:800, fontSize:'14px', lineHeight:1 }}>‹</button>
+              <button onClick={goToday}
+                style={{ ...inputStyle, padding:'4px 10px', fontSize:'11px', fontWeight:600 }}>Heute</button>
+              <button onClick={goNext} title="Vor"
+                style={{ ...inputStyle, padding:'4px 11px', fontWeight:800, fontSize:'14px', lineHeight:1 }}>›</button>
+              <span style={{ fontSize:'12px', fontWeight:700, color:'rgba(255,255,255,0.9)', whiteSpace:'nowrap', minWidth:'175px' }}>{navLabel}</span>
+            </>
+          )}
+          {viewMode === 'eilig' && (
+            <span style={{ fontSize:'12px', fontWeight:700, color:'rgba(248,113,113,0.95)', whiteSpace:'nowrap', display:'flex', alignItems:'center', gap:'6px' }}>
+              🔥 Eilige Aufträge · nach Frist sortiert
+            </span>
+          )}
 
           {/* Monatssicht: Jahr-Dropdown + Monats-Chips */}
           {viewMode === 'monat' && (
@@ -1077,7 +1136,7 @@ export default function GlobalTodoView({ clients, onUpdateClient, onSelectClient
           )}
 
           {/* Wochen-/Tagessicht: Datepicker */}
-          {viewMode !== 'monat' && (
+          {(viewMode === 'woche' || viewMode === 'tag') && (
             <input type="date" value={navDate.toISOString().slice(0,10)}
               onChange={e => e.target.value && setNavDate(new Date(e.target.value + 'T00:00:00'))}
               style={{ ...inputStyle, colorScheme:'dark' }} />
@@ -1120,6 +1179,9 @@ export default function GlobalTodoView({ clients, onUpdateClient, onSelectClient
       )}
       {viewMode === 'tag' && dayItems && (
         <DayTable items={dayItems} date={navDate} onSelectClient={onSelectClient} onCycleStatus={cycleStatus} onToggleDone={markDone} onQuickCreate={setQuickCreateDay} onNavigateToAuftrag={onNavigateToAuftrag} />
+      )}
+      {viewMode === 'eilig' && (
+        <EiligTable items={eiligItems} onSelectClient={onSelectClient} onCycleStatus={cycleStatus} onToggleDone={markDone} onNavigateToAuftrag={onNavigateToAuftrag} />
       )}
 
       {/* ── Footer ── */}

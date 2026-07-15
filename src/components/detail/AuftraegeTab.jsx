@@ -846,6 +846,32 @@ function JAStammdatenBlock({ au, onUpdate }) {
         <span style={{ fontSize:'12px', fontWeight:700, color:'var(--text)', textTransform:'uppercase', letterSpacing:'0.05em' }}>Stammdaten Jahresabschluss</span>
       </div>
 
+      {/* Eilig-Markierung – rein additiv (au.eilig / au.eiligBis). Steuert den Filter „🔥 Eilig" in der Auftrags-Übersicht. */}
+      <div style={{ marginBottom:'12px', padding:'10px 12px', borderRadius:'8px',
+        background: au.eilig ? 'rgba(239,68,68,0.08)' : 'var(--surface)',
+        border:`1px solid ${au.eilig ? 'rgba(239,68,68,0.4)' : 'var(--border)'}` }}>
+        <div style={{ display:'flex', alignItems:'center', gap:'12px', flexWrap:'wrap' }}>
+          <label style={{ display:'inline-flex', alignItems:'center', gap:'7px', cursor:'pointer', userSelect:'none' }}>
+            <input type="checkbox" checked={!!au.eilig}
+              onChange={e => onUpdate({ eilig: e.target.checked })}
+              style={{ width:'16px', height:'16px', accentColor:'#ef4444', cursor:'pointer', flexShrink:0 }} />
+            <span style={{ fontSize:'13px', fontWeight:700, color: au.eilig ? '#ef4444' : 'var(--text)' }}>🔥 Eilig</span>
+          </label>
+          {au.eilig && (
+            <div style={{ display:'flex', alignItems:'center', gap:'7px' }}>
+              <span style={{ ...labelStyle, color:'#ef4444' }}>Fertigstellung bis</span>
+              <input type="date" value={au.eiligBis ?? ''} onChange={e => onUpdate({ eiligBis: e.target.value })}
+                style={{ ...inputStyle, width:'160px', borderColor:'rgba(239,68,68,0.35)', fontWeight:700, color:'#ef4444' }} />
+            </div>
+          )}
+        </div>
+        {au.eilig && !au.eiligBis && (
+          <div style={{ fontSize:'10px', color:'#ef4444', marginTop:'6px' }}>
+            Tipp: Fristdatum setzen – der Auftrag erscheint dann in der Auftrags-Übersicht unter „🔥 Eilig", sortiert nach Frist.
+          </div>
+        )}
+      </div>
+
       <div style={{ display:'flex', gap:'14px', flexWrap:'wrap', marginBottom:'12px' }}>
         <div style={{ display:'flex', flexDirection:'column', gap:'4px' }}>
           <span style={{ ...labelStyle, color:'#2563eb' }}>📅 Veranlagungsjahr</span>
