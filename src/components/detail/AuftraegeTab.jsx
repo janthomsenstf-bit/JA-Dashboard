@@ -832,20 +832,43 @@ function JAChecklisteSection({ jaCheckliste = {}, onUpdate }) {
 const JA_EINKUNFTSARTEN = ['Gewerbebetrieb','Selbständige Arbeit','Freiberufliche Tätigkeit','Vermietung und Verpachtung','Nichtselbständige Arbeit','Kapitalvermögen','Land- und Forstwirtschaft','Sonstige Einkünfte']
 const JA_KENNZ_DEFAULT = [{ id:'k1', label:'Besonderer Prüfungsfall', checked:false }, { id:'k2', label:'Erhöhter Beratungsbedarf', checked:false }]
 
+// Ein-/Ausklappzustand des Stammdaten-Blocks (gerätelokal, reine Anzeige-Einstellung; Standard: eingeklappt)
+const JA_STAMM_OPEN_KEY = 'ja-stammdaten-open'
+function loadStammOpen() { try { return localStorage.getItem(JA_STAMM_OPEN_KEY) === '1' } catch { return false } }
+function saveStammOpen(v) { try { localStorage.setItem(JA_STAMM_OPEN_KEY, v ? '1' : '0') } catch {} }
+
 function JAStammdatenBlock({ au, onUpdate }) {
   const einkArten = Array.isArray(au.einkunftsarten) ? au.einkunftsarten : []
   const kennz     = Array.isArray(au.kennzeichen)    ? au.kennzeichen    : JA_KENNZ_DEFAULT
+  const [open, setOpen] = useState(loadStammOpen)
+  const toggleOpen = () => { const n = !open; setOpen(n); saveStammOpen(n) }
   const toggleEink = a => onUpdate({ einkunftsarten: einkArten.includes(a) ? einkArten.filter(x => x !== a) : [...einkArten, a] })
   const setKennz   = (id, patch) => onUpdate({ kennzeichen: kennz.map(k => k.id === id ? { ...k, ...patch } : k) })
   const chip = active => ({ display:'inline-flex', alignItems:'center', gap:'5px', fontSize:'11px', padding:'4px 10px', borderRadius:'20px', cursor:'pointer', border:`1px solid ${active ? '#2563eb' : 'var(--border)'}`, background: active ? 'rgba(37,99,235,0.1)' : 'var(--surface)', color: active ? '#2563eb' : 'var(--text-muted)', fontWeight: active ? 700 : 500, userSelect:'none' })
 
   return (
     <div style={{ marginBottom:'14px', padding:'12px 14px', background:'var(--surface2)', borderRadius:'10px', border:'1px solid var(--border-strong, var(--border))' }}>
-      <div style={{ display:'flex', alignItems:'center', gap:'8px', marginBottom:'12px' }}>
+      {/* Klickbare Kopfzeile – klappt den Block ein/aus. Eingeklappt: Kompakt-Zusammenfassung (Jahr + Eilig). */}
+      <div onClick={toggleOpen} title={open ? 'Stammdaten einklappen' : 'Stammdaten ausklappen'}
+        style={{ display:'flex', alignItems:'center', gap:'8px', cursor:'pointer', userSelect:'none', marginBottom: open ? '12px' : 0, flexWrap:'wrap' }}>
         <span style={{ fontSize:'14px' }}>📋</span>
         <span style={{ fontSize:'12px', fontWeight:700, color:'var(--text)', textTransform:'uppercase', letterSpacing:'0.05em' }}>Stammdaten Jahresabschluss</span>
+        {!open && (
+          <span style={{ display:'flex', gap:'6px', alignItems:'center', flexWrap:'wrap' }}>
+            <span style={{ fontSize:'10px', fontWeight:700, color:'#2563eb', background:'rgba(37,99,235,0.1)', border:'1px solid rgba(37,99,235,0.25)', borderRadius:'8px', padding:'1px 7px' }}>
+              VZ {au.abschlussJahr ?? new Date().getFullYear() - 1}
+            </span>
+            {au.eilig && (
+              <span style={{ fontSize:'10px', fontWeight:700, color:'#ef4444', background:'rgba(239,68,68,0.1)', border:'1px solid rgba(239,68,68,0.3)', borderRadius:'8px', padding:'1px 7px' }}>
+                🔥 Eilig{au.eiligBis ? ` · bis ${fmtShortDate(au.eiligBis)}` : ''}
+              </span>
+            )}
+          </span>
+        )}
+        <span style={{ marginLeft:'auto', fontSize:'13px', color:'var(--text-muted)', transition:'transform 0.15s', transform: open ? 'rotate(90deg)' : 'none', lineHeight:1 }}>▸</span>
       </div>
 
+      {open && (<>
       {/* Eilig-Markierung – rein additiv (au.eilig / au.eiligBis). Steuert den Filter „🔥 Eilig" in der Auftrags-Übersicht. */}
       <div style={{ marginBottom:'12px', padding:'10px 12px', borderRadius:'8px',
         background: au.eilig ? 'rgba(239,68,68,0.08)' : 'var(--surface)',
@@ -935,6 +958,7 @@ function JAStammdatenBlock({ au, onUpdate }) {
           ))}
         </div>
       </div>
+      </>)}
     </div>
   )
 }
