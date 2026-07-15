@@ -89,6 +89,8 @@ function AuftragRow({ au, idx, onSelectClient, onCycleStatus, onToggleDone, onNa
   const frist     = fmtFrist(au.frist)
   const erledigt  = au.status === 'erledigt'
   const bezeichnung = au.bezeichnung || null
+  const istJA       = au.typ === 'jahresabschluss'
+  const vzJahr      = istJA ? (au.abschlussJahr ?? au.jahr ?? null) : null   // Veranlagungsjahr
   const zeitraum    = au.monat ? `${MONAT_KURZ[au.monat-1]} ${au.jahr}` : au.jahr ? String(au.jahr) : '—'
   const dp          = getDisplayPeriod(au)
   const fristAbweicht = !au.istSerie && au.frist && au.monat && (dp.monat !== au.monat || dp.jahr !== au.jahr)
@@ -127,7 +129,12 @@ function AuftragRow({ au, idx, onSelectClient, onCycleStatus, onToggleDone, onNa
               🔁 {au.serieLabel}
             </span>
           )}
-          <span style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{bezeichnung ?? `${typCfg.label} ${zeitraum}`}</span>
+          {vzJahr && (
+            <span title="Veranlagungsjahr" style={{ fontSize:'10px', fontWeight:700, color:'#2563eb', background:'rgba(37,99,235,0.1)', border:'1px solid rgba(37,99,235,0.25)', padding:'1px 6px', borderRadius:'6px', flexShrink:0 }}>
+              VZ {vzJahr}
+            </span>
+          )}
+          <span style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{bezeichnung ?? (istJA ? typCfg.label : `${typCfg.label} ${zeitraum}`)}</span>
         </div>
         {au.emailRef && (
           <div style={{ fontSize:'10px', marginTop:'2px', display:'flex', alignItems:'center', gap:'4px' }}>
