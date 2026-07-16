@@ -908,6 +908,9 @@ function JAStammdatenBlock({ au, onUpdate }) {
         </div>
       </div>
 
+      {/* Vereinbartes Honorar – in die Stammdaten integriert */}
+      <JAHonorarSection au={au} onUpdate={onUpdate} />
+
       <div style={{ marginBottom:'12px' }}>
         <span style={{ ...labelStyle, display:'block', marginBottom:'5px' }}>Art der Gewinnermittlung</span>
         <div style={{ display:'flex', gap:'8px', flexWrap:'wrap' }}>
@@ -3752,9 +3755,9 @@ function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete, client, onOpe
           </div>
 
           {/* ── Jahresabschluss-spezifische Sektionen ── */}
+          {/* Hinweis: „Vereinbartes Honorar" ist in den Stammdaten-Block integriert (JAStammdatenBlock). */}
           {isJA && (
             <>
-              <JAHonorarSection au={au} onUpdate={onUpdate} />
               <JAVerlaufSection
                 au={au} client={client} onUpdate={onUpdate} onOpenEmail={onOpenEmail}
                 onUpdateClient={onUpdateClient}
