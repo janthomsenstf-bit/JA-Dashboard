@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { DashboardStoreProvider, useStore } from '../easyb2b/store.tsx'
 
 /**
  * Bereich „Easy-B2B" – Marktplatz, Suchanzeigen und Partnervermittlung.
@@ -46,10 +47,33 @@ const DATENLAGE = {
            text: 'Zeigt Kennzahlen aus beiden Quellen zusammengefasst.' },
 }
 
+/** Zustand der Datenanbindung, in Klartext. */
+const DB_STATUS = {
+  laden:  { icon: '⏳', farbe: 'var(--text-muted)', text: 'Datenbank wird abgefragt …' },
+  fertig: { icon: '🟢', farbe: '#16a34a',           text: 'Mit der Neon-Datenbank verbunden.' },
+  fehler: { icon: '🔴', farbe: '#dc2626',           text: 'Keine Verbindung zur Neon-Datenbank – es werden nur Beispieldaten angezeigt. Fehlt auf Vercel die Umgebungsvariable DATABASE_URL?' },
+}
+
+/**
+ * Der Bereich stellt die übernommene Datenschicht bereit, damit sie über
+ * alle Unterbereiche hinweg erhalten bleibt – wie im Ursprungsdashboard,
+ * wo sie im Layout lag.
+ */
 export default function EasyB2BBereich() {
+  return (
+    <DashboardStoreProvider>
+      <EasyB2BInhalt />
+    </DashboardStoreProvider>
+  )
+}
+
+function EasyB2BInhalt() {
   const [bereich, setBereich] = useState('uebersicht')
   const aktiv = EB2B_BEREICHE.find(b => b.key === bereich) ?? EB2B_BEREICHE[0]
   const lage  = DATENLAGE[aktiv.daten]
+
+  const { anfragen, unternehmen, kontakte, zuordnungen, dbLadenStatus } = useStore()
+  const db = DB_STATUS[dbLadenStatus] ?? DB_STATUS.laden
 
   const gesamtZeilen = EB2B_BEREICHE.reduce((s, b) => s + b.zeilen, 0)
 
@@ -122,6 +146,45 @@ export default function EasyB2BBereich() {
               <span style={{ color: 'var(--text-muted)' }}>{lage.text}</span>
             </span>
           </div>
+
+          {/* Datenschicht – seit Schritt 2 tatsächlich aktiv */}
+          <h3 style={{ margin: '0 0 12px', fontSize: '15px', fontWeight: 700, color: 'var(--text)' }}>
+            Datenschicht
+          </h3>
+          <div style={{
+            padding: '15px 17px', borderRadius: '11px', marginBottom: '14px',
+            background: 'var(--surface)', border: '1px solid var(--border)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '9px', marginBottom: '13px' }}>
+              <span style={{ fontSize: '15px' }} aria-hidden="true">{db.icon}</span>
+              <span style={{ fontSize: '13px', color: db.farbe, lineHeight: 1.6 }}>{db.text}</span>
+            </div>
+            <div style={{ display: 'flex', gap: '9px', flexWrap: 'wrap' }}>
+              {[
+                { label: 'Anfragen',      wert: anfragen.length },
+                { label: 'Unternehmen',   wert: unternehmen.length },
+                { label: 'Kontakte',      wert: kontakte.length },
+                { label: 'Zuordnungen',   wert: zuordnungen.length },
+              ].map(z => (
+                <div key={z.label} style={{
+                  flex: '1 1 110px', padding: '10px 12px', borderRadius: '9px',
+                  background: 'var(--surface2)', border: '1px solid var(--border)',
+                }}>
+                  <div style={{ fontSize: '19px', fontWeight: 700, color: 'var(--text)', fontFamily: 'var(--font-mono)' }}>
+                    {z.wert}
+                  </div>
+                  <div style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>{z.label}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <p style={{ margin: '0 0 26px', fontSize: '12px', color: 'var(--text-muted)', lineHeight: 1.7 }}>
+            Die Datenschicht des Ursprungsdashboards ist übernommen und aktiv. Sie hält die
+            Bestände über alle Unterbereiche hinweg. Anfragen und Interessenten kommen aus
+            der Neon-Datenbank. Die übrigen Bestände enthalten lediglich je einen
+            Demo-Datensatz – niedrige Zahlen sind hier also kein Fehler, sondern der
+            tatsächliche Stand des Ursprungsprojekts.
+          </p>
 
           {/* Gesamtübersicht */}
           <h3 style={{ margin: '0 0 12px', fontSize: '15px', fontWeight: 700, color: 'var(--text)' }}>
