@@ -36,6 +36,7 @@ import HomepagesBereich from './components/HomepagesBereich.jsx'
 import UebersichtenBereich from './components/UebersichtenBereich.jsx'
 import ProzesseBereich from './components/ProzesseBereich.jsx'
 import InternBereich from './components/InternBereich.jsx'
+import EasyB2BBereich from './components/EasyB2BBereich.jsx'
 
 // ── Website-Lead → Auftrag (geteilt von "Mandant anlegen" + "Auftrag zu Mandant") ──
 const LEAD_TYP_MAP = {
@@ -1501,7 +1502,7 @@ export default function App() {
         const klientOffen = hauptbereich === 'personen' && !!selectedId && clients.some(c => c.id === selectedId)
         const zeigeUebersicht = hauptbereich === 'personen' && !klientOffen
         const zeigeArbeitsbereich = hauptbereich === 'spielbuch' || klientOffen
-        const eigeneBereiche = ['spielbuch', 'personen', 'kommunikation', 'dokumente', 'homepages', 'uebersichten', 'prozesse', 'intern']
+        const eigeneBereiche = ['spielbuch', 'personen', 'kommunikation', 'dokumente', 'homepages', 'uebersichten', 'prozesse', 'intern', 'easyb2b']
         const zeigePlatzhalter = !eigeneBereiche.includes(hauptbereich)
         const offenerKlient = klientOffen ? clients.find(c => c.id === selectedId) : null
 
@@ -1549,6 +1550,10 @@ export default function App() {
 
             {/* Bereich „Intern" – Innovations- und Agentenzentrale (rein lesend) */}
             {hauptbereich === 'intern' && <InternBereich />}
+
+            {/* Bereich „Easy-B2B" – Modul-Gerüst, Übernahme des bestehenden
+                Easy-B2B-Dashboards erfolgt seitenweise (Phase 1: nur Struktur) */}
+            {hauptbereich === 'easyb2b' && <EasyB2BBereich />}
 
             {/* Bereich „Prozesse" – Wissens- und Prozesszentrale (rein lesend) */}
             {hauptbereich === 'prozesse' && (
