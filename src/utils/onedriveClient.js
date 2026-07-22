@@ -116,7 +116,7 @@ export async function callApi(action, params = {}, tokens, onTokenRefresh) {
   }
 
   if (!data.success) {
-    throw new Error(data.error ?? 'Unbekannter Fehler')
+    throw new Error(data.error ?? (res.ok ? 'Unbekannter Fehler' : `Unbekannter Fehler (HTTP ${res.status}).`))
   }
 
   return data

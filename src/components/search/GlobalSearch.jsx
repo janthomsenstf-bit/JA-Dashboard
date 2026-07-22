@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { searchAll, filterByCategory, SEARCH_CATEGORIES, fmtDate } from '../../utils/search.js'
+import { callApi, fmtFileSize } from '../../utils/onedriveClient.js'
 
 function truncate(str, max) {
   const s = String(str ?? '')
@@ -17,7 +18,13 @@ function ResultRow({ result, isActive, onAction }) {
   let meta = ''
   let actionLabel = '→ Öffnen'
 
-  if (result.category === 'personen') {
+  if (result.category === 'onedrive') {
+    const d = result.datei
+    title    = d.name
+    subtitle = d.pfad ? `☁️ ${d.pfad}` : '☁️ OneDrive'
+    meta     = [d.size ? fmtFileSize(d.size) : '', d.geaendert ? fmtDate(d.geaendert) : ''].filter(Boolean).join(' · ')
+    actionLabel = '→ Datei öffnen'
+  } else if (result.category === 'personen') {
     title    = result.person?.name ?? ''
     subtitle = result.person?.rolle ? `${result.person.rolle} bei ${client.name}` : `Kontakt bei ${client.name}`
     meta     = [result.person?.email, result.person?.telefon].filter(Boolean).join(' · ')
@@ -86,7 +93,7 @@ function ResultRow({ result, isActive, onAction }) {
           <span style={{ fontWeight: 600, fontSize: '13px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {title}
           </span>
-          {client.archiviert && (
+          {client?.archiviert && (
             <span style={{ fontSize: '9px', color: 'var(--text-muted)', flexShrink: 0 }}>archiviert</span>
           )}
         </div>
@@ -145,7 +152,7 @@ function CatTab({ cat, label, icon, count, active, onClick }) {
 }
 
 // ── Haupt-Komponente ──────────────────────────────────────────────────────────
-export default function GlobalSearch({ clients, onSelect, onSelectWithTab, onOpenEmail }) {
+export default function GlobalSearch({ clients, onSelect, onSelectWithTab, onOpenEmail, onedriveTokens, onUpdateOnedriveTokens }) {
   const [query,       setQuery]       = useState('')
   const [open,        setOpen]        = useState(false)
   const [activeIndex, setActiveIndex] = useState(-1)
@@ -160,10 +167,50 @@ export default function GlobalSearch({ clients, onSelect, onSelectWithTab, onOpe
     return () => clearTimeout(t)
   }, [query])
 
-  const searchResult = useMemo(() => {
+  const lokal = useMemo(() => {
     if (debouncedQ.trim().length < 2) return { results: [], categories: {}, total: 0 }
     return searchAll(clients, debouncedQ)
   }, [debouncedQ, clients])
+
+  // ── OneDrive-Suche (serverseitig über Microsoft: Dateinamen UND Inhalte) ──
+  // Läuft parallel zur lokalen Suche; Ergebnisse werden anschließend gemischt.
+  const [driveTreffer, setDriveTreffer] = useState([])
+  const [driveLaedt,   setDriveLaedt]   = useState(false)
+  const [driveFehler,  setDriveFehler]  = useState('')
+
+  useEffect(() => {
+    const q = debouncedQ.trim()
+    if (q.length < 2 || !onedriveTokens?.accessToken) {
+      setDriveTreffer([]); setDriveFehler(''); setDriveLaedt(false)
+      return
+    }
+    let abgebrochen = false
+    setDriveLaedt(true); setDriveFehler('')
+    callApi('searchDrive', { q }, onedriveTokens, onUpdateOnedriveTokens)
+      .then(res => {
+        if (abgebrochen) return
+        setDriveTreffer((res.items ?? []).filter(i => !i.istOrdner))
+      })
+      .catch(err => { if (!abgebrochen) { setDriveTreffer([]); setDriveFehler(err.message || 'OneDrive-Suche fehlgeschlagen') } })
+      .finally(() => { if (!abgebrochen) setDriveLaedt(false) })
+    return () => { abgebrochen = true }
+  }, [debouncedQ, onedriveTokens, onUpdateOnedriveTokens])
+
+  // Lokale und OneDrive-Ergebnisse zu EINER Trefferliste zusammenführen
+  const searchResult = useMemo(() => {
+    const driveResults = driveTreffer.map(d => ({
+      category: 'onedrive',
+      client: null,
+      datei: d,
+      matches: [{ field: 'dateiname', label: 'Datei', value: d.name, weight: 90 }],
+      weight: 90,
+      action: { type: 'openFile', webUrl: d.webUrl },
+    }))
+    const results = [...lokal.results, ...driveResults].sort((a, b) => b.weight - a.weight)
+    const categories = { ...lokal.categories }
+    if (driveResults.length) categories.onedrive = driveResults.length
+    return { results, categories, total: (lokal.total ?? lokal.results.length) + driveResults.length }
+  }, [lokal, driveTreffer])
 
   const filteredResults = useMemo(() =>
     filterByCategory(searchResult.results, activeCat),
@@ -223,6 +270,12 @@ export default function GlobalSearch({ clients, onSelect, onSelectWithTab, onOpe
 
   function execAction(result) {
     const { action } = result
+    if (action.type === 'openFile') {
+      // Direkt die Datei in OneDrive öffnen
+      if (action.webUrl) window.open(action.webUrl, '_blank', 'noopener')
+      setOpen(false); setQuery('')
+      return
+    }
     if (action.type === 'openEmail') {
       if (onOpenEmail) onOpenEmail(action.clientId, action.emailId)
       else if (onSelectWithTab) onSelectWithTab(action.clientId, 6)
@@ -235,7 +288,7 @@ export default function GlobalSearch({ clients, onSelect, onSelectWithTab, onOpe
   }
 
   // Kategorie-Tabs
-  const catOrder = ['personen', 'mandanten', 'nachrichten', 'dokumente', 'auftraege', 'aufgaben', 'notizen']
+  const catOrder = ['onedrive', 'personen', 'mandanten', 'nachrichten', 'dokumente', 'auftraege', 'aufgaben', 'notizen']
   const activeCats = catOrder.filter(c => (searchResult.categories[c] ?? 0) > 0)
 
   return (
@@ -318,12 +371,30 @@ export default function GlobalSearch({ clients, onSelect, onSelectWithTab, onOpe
             ) : (
               filteredResults.map((result, i) => (
                 <ResultRow
-                  key={`${result.category}-${result.client.id}-${i}`}
+                  key={`${result.category}-${result.client?.id ?? result.datei?.id ?? 'x'}-${i}`}
                   result={result}
                   isActive={i === activeIndex}
                   onAction={() => execAction(result)}
                 />
               ))
+            )}
+
+            {/* OneDrive-Suche läuft / meldet einen Fehler */}
+            {driveLaedt && (
+              <div style={{
+                padding: '8px 14px', fontSize: '11px', color: 'var(--text-muted)',
+                borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: '6px',
+              }}>
+                <span>☁️</span> OneDrive wird durchsucht …
+              </div>
+            )}
+            {!driveLaedt && driveFehler && (
+              <div style={{
+                padding: '8px 14px', fontSize: '11px', color: '#dc2626',
+                borderTop: '1px solid var(--border)',
+              }}>
+                ☁️ OneDrive-Suche nicht möglich: {driveFehler}
+              </div>
             )}
           </div>
 

@@ -315,6 +315,41 @@ export default async function handler(req, res) {
       return fail(r.status, d.error?.message ?? 'delete failed')
     }
 
+    // ── searchDrive ──────────────────────────────────────────────────────────
+    // Durchsucht das gesamte OneDrive. Microsoft indiziert dabei Dateinamen UND
+    // Dateiinhalte (inkl. Text aus gescannten PDFs) – dadurch ist keine eigene
+    // Volltext-Indizierung nötig und es müssen keine Dokumentinhalte in einer
+    // zweiten Datenbank gespeichert werden.
+    if (action === 'searchDrive') {
+      const { q, maxResults = 40 } = params
+      const suche = String(q ?? '').trim()
+      if (!suche) return ok({ items: [] })
+
+      const top = Math.min(maxResults, 100)
+      const select = 'id,name,size,file,folder,lastModifiedDateTime,webUrl,parentReference'
+      const url = `${GRAPH}/me/drive/root/search(q='${encodeURIComponent(suche.replace(/'/g, "''"))}')?$top=${top}&$select=${select}`
+
+      const r = await graphFetch(url, {}, tokens)
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok) return fail(r.status, d.error?.message ?? 'searchDrive failed')
+
+      const items = (d.value ?? []).map(i => {
+        // Pfad aus parentReference ableiten (…/drive/root:/Ordner/Unterordner)
+        const roh = i.parentReference?.path ?? ''
+        const pfad = roh.includes('root:') ? decodeURIComponent(roh.split('root:')[1] ?? '').replace(/^\/+/, '') : ''
+        return {
+          id: i.id,
+          name: i.name,
+          istOrdner: !!i.folder,
+          size: i.size ?? 0,
+          geaendert: i.lastModifiedDateTime ?? null,
+          webUrl: i.webUrl ?? null,
+          pfad,
+        }
+      })
+      return ok({ items })
+    }
+
     // ── renameItem ───────────────────────────────────────────────────────────
     // Benennt Datei ODER Ordner um (Graph: PATCH auf das Item mit neuem Namen).
     // Erfordert nur Files.ReadWrite – also keine zusätzliche Zustimmung nötig.

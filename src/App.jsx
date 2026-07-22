@@ -1273,6 +1273,8 @@ export default function App() {
         {/* ── Intelligente Suche ── */}
         <GlobalSearch
           clients={clients}
+          onedriveTokens={onedriveTokens}
+          onUpdateOnedriveTokens={setOnedriveTokens}
           onSelect={id => { setDetailInitialTab(0); setSelectedId(id) }}
           onSelectWithTab={(id, tab) => { setDetailInitialTab(tab ?? 0); setSelectedId(id) }}
           onOpenEmail={(id, emailId) => {
