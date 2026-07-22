@@ -27,6 +27,13 @@ import WebsiteAnfragen from './components/WebsiteAnfragen.jsx'
 import ZeiterfassungView from './components/ZeiterfassungView.jsx'
 import DatenRettung from './components/DatenRettung.jsx'
 import { AUFTRAGS_TYP_CFG, WORKFLOW_CONFIGS } from './components/detail/AuftraegeTab.jsx'
+import HauptNavigation from './components/HauptNavigation.jsx'
+import BereichPlatzhalter from './components/BereichPlatzhalter.jsx'
+import PersonenBereich from './components/PersonenBereich.jsx'
+import KommunikationBereich from './components/KommunikationBereich.jsx'
+import DokumenteBereich from './components/DokumenteBereich.jsx'
+import HomepagesBereich from './components/HomepagesBereich.jsx'
+import UebersichtenBereich from './components/UebersichtenBereich.jsx'
 
 // ── Website-Lead → Auftrag (geteilt von "Mandant anlegen" + "Auftrag zu Mandant") ──
 const LEAD_TYP_MAP = {
@@ -294,6 +301,16 @@ function isEmailOpen(incomingEvent, allEvents) {
 }
 
 export default function App() {
+  // Hauptbereich der neuen Navigation. 'spielbuch' = der bisherige Arbeitsbereich
+  // (unverändert). Die übrigen Bereiche sind vorbereitet und noch leer.
+  const [hauptbereich, setHauptbereich] = useState(() => {
+    try { return localStorage.getItem('spielbuch-hauptbereich') || 'spielbuch' } catch { return 'spielbuch' }
+  })
+  const wechselBereich = (key) => {
+    setHauptbereich(key)
+    try { localStorage.setItem('spielbuch-hauptbereich', key) } catch {}
+  }
+
   const [authUser,      setAuthUser]      = useState(undefined)  // undefined=laden, null=abgemeldet, obj=eingeloggt
   const [dataLoading,   setDataLoading]   = useState(false)
   const [migrationData, setMigrationData] = useState(null)       // localStorage-Daten gefunden nach Login
@@ -1137,6 +1154,94 @@ export default function App() {
     )
   }
 
+  // Bot-Inbox und Website-Anfragen einmalig erzeugen – werden sowohl im bisherigen
+  // Arbeitsbereich als auch im Bereich „Kommunikation" verwendet. So bleibt die
+  // Logik an einer Stelle (keine Dopplung, kein abweichendes Verhalten).
+  const botInboxEl = (
+    <BotInbox
+      clients={clients}
+      onUpdateClient={updateClient}
+      onNavigateToClient={(id, tab) => { setDetailInitialTab(tab ?? 0); setSelectedId(id) }}
+    />
+  )
+
+  // Aufgaben-, Kalender- und Honorar-Ansicht einmalig erzeugen – werden im
+  // bisherigen Arbeitsbereich UND im Bereich „Übersichten" verwendet.
+  const aufgabenEl = (
+    <GlobalTodoView
+      clients={clients}
+      onUpdateClient={updateClient}
+      onSelectClient={id => setSelectedId(id)}
+      onNavigateToAuftrag={(clientId, auftragId) => {
+        localStorage.setItem('sda-expanded-auftrag_' + clientId, auftragId)
+        setDetailInitialTab(1)
+        setSelectedId(clientId)
+      }}
+    />
+  )
+
+  const honorareEl = (
+    <BudgetView
+      clients={clients}
+      onSelectClient={(id) => { setDetailInitialTab(4); setSelectedId(id) }}
+    />
+  )
+
+  const kalenderEl = (
+    <KalenderSection
+      termine={termine}
+      clients={clients}
+      onAdd={addTermin}
+      onUpdate={updateTermin}
+      onDelete={deleteTermin}
+    />
+  )
+
+  const websiteAnfragenEl = (
+    <WebsiteAnfragen
+      clients={clients}
+      onCreateMandant={(data) => {
+        const kontakt = {
+          id: 'p' + Date.now().toString(36),
+          name: data.ansprechpartner || data.name || '',
+          rolle: 'Ansprechpartner',
+          email: data.email || '',
+          telefon: data.telefon || '',
+        }
+
+        const auftrag = buildAuftragFromLead(data)
+        const auftragLabel = leadAuftragLabel(data.interesse)
+        const confirmMsg = auftragLabel
+          ? `Mandant „${data.name}" anlegen und Auftrag „${auftragLabel}" automatisch erstellen?`
+          : `Mandant „${data.name}" anlegen?`
+        if (!window.confirm(confirmMsg)) return
+
+        addClient({
+          name: data.name,
+          notizen: data.notizen || '',
+          kontakte: [kontakt],
+          land: data.land || '',
+          websiteAnfrageId: data.websiteAnfrageId || null,
+          ...(auftrag ? { auftraege: [auftrag] } : {}),
+        })
+        return true
+      }}
+      onAddAuftragToMandant={(clientId, data) => {
+        const client = clients.find(c => c.id === clientId)
+        if (!client) return null
+        const auftrag = buildAuftragFromLead(data)
+        if (auftrag) {
+          updateClient(clientId, { auftraege: [ ...(client.auftraege || []), auftrag ] })
+        }
+        return {
+          clientName: client.name,
+          auftragId: auftrag ? auftrag.id : null,
+          auftragLabel: leadAuftragLabel(data.interesse),
+        }
+      }}
+    />
+  )
+
   return (
     <div className="app-layout">
       {/* Header */}
@@ -1159,7 +1264,7 @@ export default function App() {
             <h1>Jan's Spielbuch</h1>
           </div>
           <span className="header-subtitle" style={{color:'var(--text-muted)', fontSize:'12px', marginLeft:'4px'}}>
-            Jahresabschluss-Dashboard
+            Spielbuch
           </span>
         </div>
 
@@ -1300,6 +1405,16 @@ export default function App() {
         </div>
       </header>
 
+      {/* ── Hauptnavigation ── */}
+      <HauptNavigation
+        aktiv={hauptbereich}
+        onWechsel={key => {
+          wechselBereich(key)
+          // Im Bereich „Personen" immer auf der Übersicht starten
+          if (key === 'personen') setSelectedId(null)
+        }}
+      />
+
       {/* ── Migrations-Banner (lokale Daten gefunden) ── */}
       {migrationData && (
         <div style={{
@@ -1374,17 +1489,140 @@ export default function App() {
         </div>
       )}
 
-      {/* Body */}
-      <div className="app-body">
+      {/* ── Bereich „Personen" ──
+          Erste Ebene: modernisierte Mandantenübersicht.
+          Zweite Ebene: ein geöffneter Mandant zeigt die bestehende Detailansicht
+          (der Arbeitsbereich unten wird dafür wieder eingeblendet). */}
+      {(() => {
+        const klientOffen = hauptbereich === 'personen' && !!selectedId && clients.some(c => c.id === selectedId)
+        const zeigeUebersicht = hauptbereich === 'personen' && !klientOffen
+        const zeigeArbeitsbereich = hauptbereich === 'spielbuch' || klientOffen
+        const eigeneBereiche = ['spielbuch', 'personen', 'kommunikation', 'dokumente', 'homepages', 'uebersichten']
+        const zeigePlatzhalter = !eigeneBereiche.includes(hauptbereich)
+        const offenerKlient = klientOffen ? clients.find(c => c.id === selectedId) : null
+
+        return (
+          <>
+            {zeigePlatzhalter && <BereichPlatzhalter bereich={hauptbereich} />}
+
+            {zeigeUebersicht && (
+              <PersonenBereich
+                clients={clients}
+                onOpen={(id, tab) => { setDetailInitialTab(tab ?? 0); setSelectedId(id) }}
+                onNeu={() => setShowNewModal(true)}
+              />
+            )}
+
+            {/* Bereich „Kommunikation" – liest bestehende Events, ändert nichts */}
+            {hauptbereich === 'kommunikation' && (
+              <KommunikationBereich
+                clients={clients}
+                unbekannteEmails={unbekannteEmails}
+                onOeffneMandant={(id, tab) => {
+                  setDetailInitialTab(tab ?? TAB.nachrichten)
+                  setSelectedId(id)
+                  wechselBereich('personen')
+                }}
+                onPosteingangOeffnen={() => setPosteingangOpen(true)}
+                slotWebsiteAnfragen={websiteAnfragenEl}
+                slotBotInbox={botInboxEl}
+              />
+            )}
+
+            {/* Bereich „Dokumente" – nutzt die bestehende OneDrive-Anbindung */}
+            {hauptbereich === 'dokumente' && (
+              <DokumenteBereich
+                clients={clients}
+                onedriveTokens={onedriveTokens}
+                onUpdateOnedriveTokens={setOnedriveTokens}
+                onOeffneMandant={(id, tab) => {
+                  setDetailInitialTab(tab ?? TAB.dokumente)
+                  setSelectedId(id)
+                  wechselBereich('personen')
+                }}
+              />
+            )}
+
+            {/* Bereich „Übersichten" – Cockpit aus vorhandenen Bausteinen */}
+            {hauptbereich === 'uebersichten' && (
+              <UebersichtenBereich
+                clients={clients}
+                termine={termine}
+                onOeffneMandant={(id, tab) => {
+                  setDetailInitialTab(tab ?? 0)
+                  setSelectedId(id)
+                  wechselBereich('personen')
+                }}
+                slotAufgaben={aufgabenEl}
+                slotKalender={kalenderEl}
+                slotHonorare={honorareEl}
+              />
+            )}
+
+            {/* Bereich „Homepages" – liest Website-Anfragen, ändert nichts */}
+            {hauptbereich === 'homepages' && (
+              <HomepagesBereich
+                onOeffneAnfragen={() => {
+                  wechselBereich('kommunikation')
+                }}
+              />
+            )}
+
+            {/* Brotkrumen über der Mandanten-Detailansicht */}
+            {klientOffen && (
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: '7px', flexWrap: 'wrap',
+                padding: '9px 16px', fontSize: '12px', color: 'var(--text-muted)',
+                background: 'var(--surface)', borderBottom: '1px solid var(--border)',
+              }}>
+                <span>Spielbuch</span>
+                <span style={{ opacity: 0.5 }}>›</span>
+                <button
+                  onClick={() => setSelectedId(null)}
+                  style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: '#0891b2', fontWeight: 700, fontSize: '12px' }}
+                >
+                  Personen
+                </button>
+                <span style={{ opacity: 0.5 }}>›</span>
+                <button
+                  onClick={() => setSelectedId(null)}
+                  style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--text-muted)', fontSize: '12px' }}
+                >
+                  Mandantenübersicht
+                </button>
+                <span style={{ opacity: 0.5 }}>›</span>
+                <span style={{ color: 'var(--text)', fontWeight: 700 }}>{offenerKlient?.name || 'Mandant'}</span>
+                <button
+                  onClick={() => setSelectedId(null)}
+                  style={{
+                    marginLeft: 'auto', padding: '4px 11px', borderRadius: '7px', cursor: 'pointer',
+                    border: '1px solid var(--border)', background: 'var(--surface2)',
+                    color: 'var(--text-muted)', fontSize: '11.5px', fontWeight: 600,
+                  }}
+                >
+                  ← Zur Übersicht
+                </button>
+              </div>
+            )}
+
+            {/* Body – bisheriger Arbeitsbereich, unverändert.
+                Wird nur ausgeblendet (nicht ausgehängt), damit Zustand und
+                geladene Daten erhalten bleiben. */}
+            <div className="app-body" style={zeigeArbeitsbereich ? undefined : { display: 'none' }}>
         {/* Mobile Sidebar-Backdrop */}
         {sidebarOpen && (
           <div className="mobile-sidebar-backdrop" onClick={() => setSidebarOpen(false)} />
         )}
 
-        {/* Left column – einklappbar */}
+        {/* Left column – einklappbar.
+            Im Bereich „Personen" komplett ausgeblendet: dort übernimmt die
+            Mandanten-Navigation links im Detailbereich die Führung.
+            Bleibt gerendert (nicht ausgehängt), damit nichts neu lädt. */}
         <div
           className={`col-left${sidebarOpen ? ' open' : ''}`}
-          style={sidebarOpen ? {} : { width: '44px', minWidth: '44px', overflow: 'hidden' }}
+          style={klientOffen
+            ? { display: 'none' }
+            : (sidebarOpen ? {} : { width: '44px', minWidth: '44px', overflow: 'hidden' })}
         >
           {/* Toggle-Button */}
           <button
@@ -1488,76 +1726,19 @@ export default function App() {
         <div className="col-right">
           {selectedId === '__todo__' ? (
             <div style={{ flex: 1, overflowY: 'auto' }}>
-              <GlobalTodoView
-                clients={clients}
-                onUpdateClient={updateClient}
-                onSelectClient={id => setSelectedId(id)}
-                onNavigateToAuftrag={(clientId, auftragId) => {
-                  localStorage.setItem('sda-expanded-auftrag_' + clientId, auftragId)
-                  setDetailInitialTab(1)
-                  setSelectedId(clientId)
-                }}
-              />
+              {aufgabenEl}
             </div>
           ) : selectedId === '__bot_inbox__' ? (
             <div style={{ flex: 1, overflowY: 'auto' }}>
-              <BotInbox
-                clients={clients}
-                onUpdateClient={updateClient}
-                onNavigateToClient={(id, tab) => { setDetailInitialTab(tab ?? 0); setSelectedId(id) }}
-              />
+              {botInboxEl}
             </div>
           ) : selectedId === '__budget__' ? (
             <div style={{ flex: 1, overflowY: 'auto' }}>
-              <BudgetView
-                clients={clients}
-                onSelectClient={(id) => { setDetailInitialTab(4); setSelectedId(id) }}
-              />
+              {honorareEl}
             </div>
           ) : selectedId === '__website_anfragen__' ? (
             <div style={{ flex: 1, overflowY: 'auto' }}>
-              <WebsiteAnfragen
-                clients={clients}
-                onCreateMandant={(data) => {
-                  const kontakt = {
-                    id: 'p' + Date.now().toString(36),
-                    name: data.ansprechpartner || data.name || '',
-                    rolle: 'Ansprechpartner',
-                    email: data.email || '',
-                    telefon: data.telefon || '',
-                  }
-
-                  const auftrag = buildAuftragFromLead(data)
-                  const auftragLabel = leadAuftragLabel(data.interesse)
-                  const confirmMsg = auftragLabel
-                    ? `Mandant „${data.name}" anlegen und Auftrag „${auftragLabel}" automatisch erstellen?`
-                    : `Mandant „${data.name}" anlegen?`
-                  if (!window.confirm(confirmMsg)) return
-
-                  addClient({
-                    name: data.name,
-                    notizen: data.notizen || '',
-                    kontakte: [kontakt],
-                    land: data.land || '',
-                    websiteAnfrageId: data.websiteAnfrageId || null,
-                    ...(auftrag ? { auftraege: [auftrag] } : {}),
-                  })
-                  return true
-                }}
-                onAddAuftragToMandant={(clientId, data) => {
-                  const client = clients.find(c => c.id === clientId)
-                  if (!client) return null
-                  const auftrag = buildAuftragFromLead(data)
-                  if (auftrag) {
-                    updateClient(clientId, { auftraege: [ ...(client.auftraege || []), auftrag ] })
-                  }
-                  return {
-                    clientName: client.name,
-                    auftragId: auftrag ? auftrag.id : null,
-                    auftragLabel: leadAuftragLabel(data.interesse),
-                  }
-                }}
-              />
+              {websiteAnfragenEl}
             </div>
           ) : selectedId === '__zeiterfassung__' ? (
             <div style={{ flex: 1, overflowY: 'auto' }}>
@@ -1637,7 +1818,10 @@ export default function App() {
         </div>
 
         {/* col-calendar entfernt – Termine-Logik bleibt erhalten für spätere Nutzung */}
-      </div>
+            </div>
+          </>
+        )
+      })()}
 
       {/* Command Palette */}
       {cmdPaletteOpen && (

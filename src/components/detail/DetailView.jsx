@@ -231,8 +231,25 @@ export default function DetailView({
         })()}
       </div>
 
-      {/* ── Body: Inhalt + Tab-Navigation ── */}
+      {/* ── Body: Mandanten-Navigation links + Inhalt rechts ── */}
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
+
+        {/* ── Mandanten-Navigation (links) ── */}
+        <nav className="tab-nav-left" aria-label="Mandanten-Bereiche">
+          <div className="tab-nav-heading">Mandant</div>
+          {TAB_NAV.map((tab, i) => (
+            <button
+              key={i}
+              className={`tab-nav-btn${activeTab === i ? ' active' : ''}`}
+              onClick={() => setActiveTab(i)}
+              title={tab.short}
+              aria-current={activeTab === i ? 'page' : undefined}
+            >
+              <span className="tab-nav-icon">{tab.icon}</span>
+              <span className="tab-nav-label">{tab.short}</span>
+            </button>
+          ))}
+        </nav>
 
         {/* Tab-Inhalt */}
         <div style={{ flex: 1, overflowY: 'auto', minWidth: 0 }}>
@@ -354,21 +371,6 @@ export default function DetailView({
           )}
 
         </div>
-
-        {/* ── Vertikale Tab-Navigation rechts ── */}
-        <nav className="tab-nav-right" aria-label="Reiter">
-          {TAB_NAV.map((tab, i) => (
-            <button
-              key={i}
-              className={`tab-nav-btn${activeTab === i ? ' active' : ''}`}
-              onClick={() => setActiveTab(i)}
-              title={tab.short}
-            >
-              <span className="tab-nav-icon">{tab.icon}</span>
-              <span className="tab-nav-label">{tab.short}</span>
-            </button>
-          ))}
-        </nav>
 
       </div>
 

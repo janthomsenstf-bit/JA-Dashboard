@@ -88,7 +88,23 @@ export async function callApi(action, params = {}, tokens, onTokenRefresh) {
     body:    JSON.stringify({ action, tokens, ...params }),
   })
 
-  const data = await res.json()
+  // Antwort robust auswerten: Nicht jede Fehlerantwort ist JSON (z. B. 404 mit
+  // leerem Körper, HTML-Fehlerseite eines Proxys, Zeitüberschreitung). Ohne
+  // diese Prüfung entstünde die unverständliche Meldung
+  // „JSON.parse: unexpected end of data".
+  const rohtext = await res.text()
+  let data
+  try {
+    data = rohtext ? JSON.parse(rohtext) : {}
+  } catch {
+    if (res.status === 404) {
+      throw new Error('Die OneDrive-Schnittstelle ist unter dieser Adresse nicht erreichbar. In einer rein lokalen Vorschau fehlen die Server-Funktionen – bitte die veröffentlichte Version verwenden.')
+    }
+    throw new Error(`Unerwartete Antwort der OneDrive-Schnittstelle (HTTP ${res.status}).`)
+  }
+  if (res.status === 404 && !rohtext) {
+    throw new Error('Die OneDrive-Schnittstelle ist unter dieser Adresse nicht erreichbar. In einer rein lokalen Vorschau fehlen die Server-Funktionen – bitte die veröffentlichte Version verwenden.')
+  }
 
   // Tokens wurden server-seitig refreshed → Callback ausführen
   if (data.newTokens && onTokenRefresh) {

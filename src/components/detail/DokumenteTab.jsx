@@ -257,7 +257,9 @@ function PreviewModal({ item, previewUrl, downloadUrl, webUrl, loading, error, o
 }
 
 // ── OneDrive Section ──────────────────────────────────────────────────────────
-function OneDriveSection({ client, tokens, onUpdateTokens, onSendAsAttachment, onUpdate }) {
+// `rootOverride` (optional) verlegt den Wurzelordner – wird von der zentralen
+// Dokumentenverwaltung genutzt. Ohne Angabe unverändertes Verhalten (Mandant).
+export function OneDriveSection({ client, tokens, onUpdateTokens, onSendAsAttachment, onUpdate, rootOverride = null }) {
   const [connecting, setConnecting]         = useState(false)
   const [loading, setLoading]               = useState(false)
   const [error, setError]                   = useState('')
@@ -277,7 +279,13 @@ function OneDriveSection({ client, tokens, onUpdateTokens, onSendAsAttachment, o
   const [showFolderPicker, setShowFolderPicker]   = useState(false)
 
   // Ordner-Navigation
-  const { pathParts, folderPath, folderName, isCustom } = getMandantPath(client)
+  // Startpfad: normalerweise der Mandanten-Ordner. Für die zentrale
+  // Dokumentenverwaltung kann über `rootOverride` ein anderer Wurzelordner
+  // gesetzt werden (rein additiv – ohne Angabe bleibt alles wie bisher).
+  const mandantPath = getMandantPath(client)
+  const { pathParts, folderPath, folderName, isCustom } = rootOverride
+    ? { pathParts: rootOverride.pathParts ?? [], folderPath: rootOverride.folderPath ?? '', folderName: rootOverride.folderName ?? 'OneDrive', isCustom: false }
+    : mandantPath
   const [currentPath, setCurrentPath]       = useState(folderPath)
   const [breadcrumb, setBreadcrumb]         = useState([{ path: folderPath, name: folderName }])
 
@@ -620,11 +628,17 @@ function OneDriveSection({ client, tokens, onUpdateTokens, onSendAsAttachment, o
         <div style={{ fontSize: '36px', marginBottom: '12px' }}>☁️</div>
         <div style={{ fontWeight: 700, fontSize: '14px', marginBottom: '6px' }}>OneDrive verbinden</div>
         <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '16px', maxWidth: '380px', margin: '0 auto 16px' }}>
-          Speichere Dokumente dieses Mandanten direkt in deinem OneDrive unter
-          <br/><code style={{ fontSize: '11px', background: 'var(--bg)', padding: '2px 6px', borderRadius: '4px', marginTop: '4px', display: 'inline-block' }}>
-            {folderPath}
-          </code>
-          {isCustom && <span style={{ fontSize: '10px', display: 'block', marginTop: '4px', color: '#0891b2' }}>☁️ Individueller Pfad</span>}
+          {rootOverride
+            ? 'Verbinde dein OneDrive, um deine Ordnerstruktur direkt hier zu durchsuchen.'
+            : <>Speichere Dokumente dieses Mandanten direkt in deinem OneDrive unter</>}
+          {!rootOverride && (
+            <>
+              <br/><code style={{ fontSize: '11px', background: 'var(--bg)', padding: '2px 6px', borderRadius: '4px', marginTop: '4px', display: 'inline-block' }}>
+                {folderPath}
+              </code>
+              {isCustom && <span style={{ fontSize: '10px', display: 'block', marginTop: '4px', color: '#0891b2' }}>☁️ Individueller Pfad</span>}
+            </>
+          )}
         </div>
         {error && <div style={{ color: '#ef4444', fontSize: '12px', marginBottom: '12px' }}>{error}</div>}
         <button className="btn btn-primary" onClick={handleConnect} disabled={connecting} style={{ fontSize: '13px', display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
@@ -697,7 +711,8 @@ function OneDriveSection({ client, tokens, onUpdateTokens, onSendAsAttachment, o
         ))}
       </div>
 
-      {/* ── Speicherort-Info ── */}
+      {/* ── Speicherort-Info (nur im Mandanten-Modus) ── */}
+      {!rootOverride && (
       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', marginBottom: '8px', padding: '5px 10px', background: isCustom ? 'rgba(8,145,178,0.06)' : 'var(--surface)', borderRadius: '6px', border: `1px solid ${isCustom ? 'rgba(8,145,178,0.25)' : 'var(--border)'}`, flexWrap: 'wrap' }}>
         <span style={{ color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
           {isCustom ? '☁️ Individueller Pfad:' : '📁 Standard-Pfad:'}
@@ -713,9 +728,10 @@ function OneDriveSection({ client, tokens, onUpdateTokens, onSendAsAttachment, o
           ⚙️ {showPathSettings ? 'Schließen' : 'Ändern'}
         </button>
       </div>
+      )}
 
       {/* ── Pfad-Einstellungen ── */}
-      {showPathSettings && (
+      {!rootOverride && showPathSettings && (
         <div style={{ marginBottom: '10px', padding: '12px', background: 'var(--surface)', borderRadius: '8px', border: '1px solid var(--border)' }}>
           <div style={{ fontSize: '12px', fontWeight: 700, marginBottom: '6px' }}>📂 Speicherpfad konfigurieren</div>
           <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '10px' }}>

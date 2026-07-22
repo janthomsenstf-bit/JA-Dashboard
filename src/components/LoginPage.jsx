@@ -30,7 +30,7 @@ export default function LoginPage() {
         <div style={{ textAlign: 'center', marginBottom: '28px' }}>
           <div style={{ fontSize: '36px', marginBottom: '8px' }}>📊</div>
           <div style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text)' }}>Jan's Spielbuch</div>
-          <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>Jahresabschluss-Dashboard</div>
+          <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>Spielbuch</div>
         </div>
 
         <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
