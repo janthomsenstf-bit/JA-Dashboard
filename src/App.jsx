@@ -34,6 +34,8 @@ import KommunikationBereich from './components/KommunikationBereich.jsx'
 import DokumenteBereich from './components/DokumenteBereich.jsx'
 import HomepagesBereich from './components/HomepagesBereich.jsx'
 import UebersichtenBereich from './components/UebersichtenBereich.jsx'
+import ProzesseBereich from './components/ProzesseBereich.jsx'
+import InternBereich from './components/InternBereich.jsx'
 
 // ── Website-Lead → Auftrag (geteilt von "Mandant anlegen" + "Auftrag zu Mandant") ──
 const LEAD_TYP_MAP = {
@@ -1497,7 +1499,7 @@ export default function App() {
         const klientOffen = hauptbereich === 'personen' && !!selectedId && clients.some(c => c.id === selectedId)
         const zeigeUebersicht = hauptbereich === 'personen' && !klientOffen
         const zeigeArbeitsbereich = hauptbereich === 'spielbuch' || klientOffen
-        const eigeneBereiche = ['spielbuch', 'personen', 'kommunikation', 'dokumente', 'homepages', 'uebersichten']
+        const eigeneBereiche = ['spielbuch', 'personen', 'kommunikation', 'dokumente', 'homepages', 'uebersichten', 'prozesse', 'intern']
         const zeigePlatzhalter = !eigeneBereiche.includes(hauptbereich)
         const offenerKlient = klientOffen ? clients.find(c => c.id === selectedId) : null
 
@@ -1540,6 +1542,18 @@ export default function App() {
                   setSelectedId(id)
                   wechselBereich('personen')
                 }}
+              />
+            )}
+
+            {/* Bereich „Intern" – Innovations- und Agentenzentrale (rein lesend) */}
+            {hauptbereich === 'intern' && <InternBereich />}
+
+            {/* Bereich „Prozesse" – Wissens- und Prozesszentrale (rein lesend) */}
+            {hauptbereich === 'prozesse' && (
+              <ProzesseBereich
+                clients={clients}
+                checklistenTypen={checklistenTypen}
+                onOeffneChecklistenEditor={() => setShowChecklistEditor(true)}
               />
             )}
 
