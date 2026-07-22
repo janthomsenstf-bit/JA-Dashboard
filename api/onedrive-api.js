@@ -315,6 +315,33 @@ export default async function handler(req, res) {
       return fail(r.status, d.error?.message ?? 'delete failed')
     }
 
+    // ── renameItem ───────────────────────────────────────────────────────────
+    // Benennt Datei ODER Ordner um (Graph: PATCH auf das Item mit neuem Namen).
+    // Erfordert nur Files.ReadWrite – also keine zusätzliche Zustimmung nötig.
+    if (action === 'renameItem') {
+      const { itemId, newName } = params
+      const name = String(newName ?? '').trim()
+      if (!itemId) return fail(400, 'itemId fehlt')
+      if (!name) return fail(400, 'Neuer Name darf nicht leer sein')
+      if (/[\\/:*?"<>|]/.test(name)) return fail(400, 'Der Name enthält unzulässige Zeichen ( \\ / : * ? " < > | )')
+
+      const r = await graphFetch(`${GRAPH}/me/drive/items/${itemId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      }, tokens)
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok) {
+        const msg = d.error?.message ?? 'rename failed'
+        // Namenskonflikt verständlich melden
+        if (r.status === 409 || /already exists|nameAlreadyExists/i.test(msg)) {
+          return fail(409, `„${name}" existiert in diesem Ordner bereits.`)
+        }
+        return fail(r.status, msg)
+      }
+      return ok({ item: d })
+    }
+
     // ── listRootContents ─────────────────────────────────────────────────────
     if (action === 'listRootContents') {
       const r = await graphFetch(`${GRAPH}/me/drive/root/children?$select=id,name,folder,size,lastModifiedDateTime`, {}, tokens)

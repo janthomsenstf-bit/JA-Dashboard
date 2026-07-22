@@ -266,6 +266,10 @@ function OneDriveSection({ client, tokens, onUpdateTokens, onSendAsAttachment, o
   const [uploadingFile, setUploadingFile]   = useState(null)
   const [deleteConfirm, setDeleteConfirm]   = useState(null)
   const [successMsg, setSuccessMsg]         = useState('')
+  // Umbenennen (Dateien und Ordner) – Inline-Bearbeitung in der Namensspalte
+  const [renamingId, setRenamingId]         = useState(null)
+  const [renameValue, setRenameValue]       = useState('')
+  const [renameLoading, setRenameLoading]   = useState(false)
 
   // Pfad-Einstellungen
   const [showPathSettings, setShowPathSettings]   = useState(false)
@@ -459,6 +463,41 @@ function OneDriveSection({ client, tokens, onUpdateTokens, onSendAsAttachment, o
     } catch (err) {
       setError(err.message)
       setLoading(false)
+    }
+  }
+
+  // ── Umbenennen (Datei ODER Ordner) ─────────────────────────────────────────
+  function startRename(item) {
+    setDeleteConfirm(null)
+    setError('')
+    setRenamingId(item.id)
+    setRenameValue(item.name)
+  }
+
+  function cancelRename() {
+    setRenamingId(null)
+    setRenameValue('')
+  }
+
+  async function handleRename(item) {
+    const neu = renameValue.trim()
+    if (!neu || neu === item.name) { cancelRename(); return }
+    if (/[\\/:*?"<>|]/.test(neu)) {
+      setError('Der Name enthält unzulässige Zeichen ( \\ / : * ? " < > | )')
+      return
+    }
+    setRenameLoading(true)
+    setError('')
+    try {
+      await apiCall('renameItem', { itemId: item.id, newName: neu })
+      setSuccessMsg(`✓ „${item.name}" umbenannt in „${neu}"`)
+      setTimeout(() => setSuccessMsg(''), 4000)
+      cancelRename()
+      await loadItems()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setRenameLoading(false)
     }
   }
 
@@ -784,7 +823,7 @@ function OneDriveSection({ client, tokens, onUpdateTokens, onSendAsAttachment, o
       {!loading && items && items.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
           {/* Spaltenheader */}
-          <div style={{ display: 'grid', gridTemplateColumns: '22px 22px 28px 1fr 60px 100px 80px 100px', gap: '6px', padding: '4px 8px', fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--border)' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '22px 22px 28px 1fr 60px 100px 80px 128px', gap: '6px', padding: '4px 8px', fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--border)' }}>
             <span>
               <input
                 type="checkbox"
@@ -807,7 +846,7 @@ function OneDriveSection({ client, tokens, onUpdateTokens, onSendAsAttachment, o
           {inSubfolder && (
             <div
               onClick={navigateBack}
-              style={{ display: 'grid', gridTemplateColumns: '22px 22px 28px 1fr 60px 100px 80px 100px', gap: '6px', padding: '6px 8px', alignItems: 'center', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '5px', fontSize: '12px', cursor: 'pointer', opacity: 0.7 }}
+              style={{ display: 'grid', gridTemplateColumns: '22px 22px 28px 1fr 60px 100px 80px 128px', gap: '6px', padding: '6px 8px', alignItems: 'center', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '5px', fontSize: '12px', cursor: 'pointer', opacity: 0.7 }}
               onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--accent)'}
               onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}
             >
@@ -826,7 +865,7 @@ function OneDriveSection({ client, tokens, onUpdateTokens, onSendAsAttachment, o
               <div
                 key={item.id}
                 style={{
-                  display: 'grid', gridTemplateColumns: '22px 22px 28px 1fr 60px 100px 80px 100px',
+                  display: 'grid', gridTemplateColumns: '22px 22px 28px 1fr 60px 100px 80px 128px',
                   gap: '6px', padding: '6px 8px', alignItems: 'center',
                   background: isSelected ? 'rgba(8,145,178,0.07)' : 'var(--surface)',
                   border: `1px solid ${isSelected ? 'rgba(8,145,178,0.4)' : 'var(--border)'}`,
@@ -860,14 +899,40 @@ function OneDriveSection({ client, tokens, onUpdateTokens, onSendAsAttachment, o
                   {isFolder ? '📁' : fileIcon(item.name, item.file?.mimeType)}
                 </span>
 
-                {/* Name */}
-                <span
-                  style={{ fontWeight: isFolder ? 700 : 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: isFolder ? 'var(--accent)' : 'var(--text)', cursor: !isFolder ? 'pointer' : undefined }}
-                  title={isFolder ? `Ordner öffnen: ${item.name}` : `Vorschau: ${item.name}`}
-                  onClick={!isFolder ? (e => { e.stopPropagation(); handlePreview(item) }) : undefined}
-                >
-                  {item.name}
-                </span>
+                {/* Name – im Umbenennen-Modus als Eingabefeld */}
+                {renamingId === item.id ? (
+                  <span onClick={e => e.stopPropagation()} style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                    <input
+                      value={renameValue}
+                      onChange={e => setRenameValue(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') { e.preventDefault(); handleRename(item) }
+                        if (e.key === 'Escape') { e.preventDefault(); cancelRename() }
+                      }}
+                      disabled={renameLoading}
+                      autoFocus
+                      onFocus={e => {
+                        // Bei Dateien nur den Namen ohne Endung vorauswählen
+                        const p = item.name.lastIndexOf('.')
+                        if (!isFolder && p > 0) e.target.setSelectionRange(0, p)
+                        else e.target.select()
+                      }}
+                      style={{ flex: 1, minWidth: 0, padding: '3px 6px', borderRadius: '4px', border: '1px solid var(--accent)', background: 'var(--surface2)', color: 'var(--text)', fontSize: '12px', fontWeight: 600 }}
+                    />
+                    <button className="btn btn-sm" onClick={() => handleRename(item)} disabled={renameLoading}
+                      title="Speichern (Enter)" style={{ fontSize: '10px', padding: '2px 5px', color: '#16a34a' }}>✓</button>
+                    <button className="btn btn-ghost btn-sm" onClick={cancelRename} disabled={renameLoading}
+                      title="Abbrechen (Esc)" style={{ fontSize: '10px', padding: '2px 5px' }}>✕</button>
+                  </span>
+                ) : (
+                  <span
+                    style={{ fontWeight: isFolder ? 700 : 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: isFolder ? 'var(--accent)' : 'var(--text)', cursor: !isFolder ? 'pointer' : undefined }}
+                    title={isFolder ? `Ordner öffnen: ${item.name}` : `Vorschau: ${item.name}`}
+                    onClick={!isFolder ? (e => { e.stopPropagation(); handlePreview(item) }) : undefined}
+                  >
+                    {item.name}
+                  </span>
+                )}
 
                 {/* Typ */}
                 <span style={{ fontSize: '10px', fontWeight: 700, padding: '1px 5px', borderRadius: '8px', background: isFolder ? 'rgba(8,145,178,0.1)' : 'rgba(100,116,139,0.1)', color: isFolder ? '#0891b2' : 'var(--text-muted)', whiteSpace: 'nowrap' }}>
@@ -891,6 +956,17 @@ function OneDriveSection({ client, tokens, onUpdateTokens, onSendAsAttachment, o
                       <button className="btn btn-ghost btn-sm" onClick={() => handlePreview(item)} title="Vorschau" style={{ fontSize: '10px', padding: '2px 5px' }}>👁</button>
                       <button className="btn btn-ghost btn-sm" onClick={() => handleDownload(item)} title="Herunterladen" style={{ fontSize: '10px', padding: '2px 5px' }}>⬇️</button>
                     </>
+                  )}
+                  {/* Umbenennen – für Dateien und Ordner */}
+                  {renamingId !== item.id && (
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => startRename(item)}
+                      title={isFolder ? 'Ordner umbenennen' : 'Datei umbenennen'}
+                      style={{ fontSize: '10px', padding: '2px 5px' }}
+                    >
+                      ✏️
+                    </button>
                   )}
                   <button
                     className={`btn btn-sm ${deleteConfirm === item.id ? 'btn-danger' : 'btn-ghost'}`}
