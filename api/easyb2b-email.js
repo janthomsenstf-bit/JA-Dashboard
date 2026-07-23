@@ -16,31 +16,46 @@
  * Bedienhandlung im Dashboard ausgelöst. Diese Funktion versendet nichts von
  * sich aus.
  *
- * Voraussetzung für echten Versand: Umgebungsvariable RESEND_API_KEY.
- * Fehlt sie, wird NICHT gesendet und ein klarer Hinweis zurückgegeben – wie
- * im Ursprungsprojekt.
+ * Versand über Brevo. Voraussetzung: Umgebungsvariable BREVO_API_KEY,
+ * optional BREVO_FROM_EMAIL / BREVO_FROM_NAME (Standard: verifizierter
+ * Absender). Fehlt der Key, wird NICHT gesendet und ein klarer Hinweis
+ * zurückgegeben.
  */
 
-import { Resend } from 'resend'
+// Versand über Brevo (transaktionale E-Mail-API). Kein SDK nötig – ein
+// einfacher HTTPS-Aufruf. Domain-Verifikation ist bei Brevo nicht zwingend;
+// ein verifizierter Absender genügt (siehe BREVO_FROM_EMAIL).
+const BREVO_API_KEY = process.env.BREVO_API_KEY || null
+const FROM_EMAIL = process.env.BREVO_FROM_EMAIL || 'jan.thomsen.stf@gmail.com'
+const FROM_NAME  = process.env.BREVO_FROM_NAME  || 'Easy-B2B'
 
-const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null
-const FROM = process.env.RESEND_FROM_EMAIL || 'Easy-B2B <noreply@easyb2b.de>'
-
-// Empfänger der Test-Vorlagen (Resend-Free-Tier: nur verifizierte Adresse)
+// Empfänger der Test-Vorlagen (Standard: die verifizierte Absenderadresse)
 const TEST_EMPFAENGER = process.env.EASYB2B_TEST_EMAIL || 'jan.thomsen.stf@gmail.com'
 
 async function sendeEmail(to, subject, html, typ) {
-  if (!resend) {
-    console.warn(`[Easy-B2B Email] RESEND_API_KEY nicht gesetzt – "${typ}" NICHT gesendet an ${to}`)
+  if (!BREVO_API_KEY) {
+    console.warn(`[Easy-B2B Email] BREVO_API_KEY nicht gesetzt – "${typ}" NICHT gesendet an ${to}`)
     return { success: false, error: 'kein_api_key' }
   }
   try {
-    const { error } = await resend.emails.send({ from: FROM, to, subject, html })
-    if (error) {
-      console.error(`[Easy-B2B Email] Fehler (${typ}):`, error)
-      return { success: false, error }
-    }
-    return { success: true }
+    const r = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: {
+        'api-key': BREVO_API_KEY,
+        'content-type': 'application/json',
+        'accept': 'application/json',
+      },
+      body: JSON.stringify({
+        sender: { name: FROM_NAME, email: FROM_EMAIL },
+        to: [{ email: to }],
+        subject,
+        htmlContent: html,
+      }),
+    })
+    if (r.ok) return { success: true }
+    const fehler = await r.json().catch(() => ({}))
+    console.error(`[Easy-B2B Email] Fehler (${typ}):`, r.status, fehler)
+    return { success: false, error: fehler.message || `HTTP ${r.status}` }
   } catch (err) {
     console.error(`[Easy-B2B Email] Exception (${typ}):`, err)
     return { success: false, error: String(err) }
