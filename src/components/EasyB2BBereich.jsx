@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { DashboardStoreProvider, useStore } from '@easyb2b/lib/store.tsx'
 
 import Uebersicht     from '@easyb2b/seiten/Uebersicht.tsx'
@@ -52,16 +52,25 @@ export const EB2B_BEREICHE = [
  * alle Unterbereiche hinweg erhalten bleibt – wie im Ursprungsdashboard,
  * wo sie im Layout lag.
  */
-export default function EasyB2BBereich() {
+export default function EasyB2BBereich({ initialBereich = null, onInitialVerbraucht }) {
   return (
     <DashboardStoreProvider>
-      <EasyB2BInhalt />
+      <EasyB2BInhalt initialBereich={initialBereich} onInitialVerbraucht={onInitialVerbraucht} />
     </DashboardStoreProvider>
   )
 }
 
-function EasyB2BInhalt() {
-  const [bereich, setBereich] = useState('uebersicht')
+function EasyB2BInhalt({ initialBereich, onInitialVerbraucht }) {
+  const [bereich, setBereich] = useState(
+    () => (initialBereich && EB2B_BEREICHE.some(b => b.key === initialBereich)) ? initialBereich : 'uebersicht',
+  )
+
+  // Aus der globalen Suche nachträglich vorgewählter Unterbereich.
+  useEffect(() => {
+    if (!initialBereich) return
+    if (EB2B_BEREICHE.some(b => b.key === initialBereich)) setBereich(initialBereich)
+    onInitialVerbraucht?.()
+  }, [initialBereich])
   const aktiv = EB2B_BEREICHE.find(b => b.key === bereich) ?? EB2B_BEREICHE[0]
   const Seite = aktiv.seite
 

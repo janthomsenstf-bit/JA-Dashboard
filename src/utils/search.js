@@ -8,6 +8,7 @@ export const SEARCH_CATEGORIES = {
   mandanten:  { label: 'Mandanten',         icon: '🏢', color: '#2563eb', bg: 'rgba(37,99,235,0.08)' },
   nachrichten:{ label: 'Nachrichten',       icon: '✉️', color: '#16a34a', bg: 'rgba(22,163,74,0.08)' },
   onedrive:   { label: 'OneDrive-Dokumente', icon: '☁️', color: '#dc2626', bg: 'rgba(220,38,38,0.08)' },
+  easyb2b:    { label: 'Easy-B2B',           icon: '🤝', color: '#ea580c', bg: 'rgba(234,88,12,0.08)' },
   dokumente:  { label: 'E-Mail-Anhänge',    icon: '📎', color: '#f59e0b', bg: 'rgba(245,158,11,0.08)' },
   auftraege:  { label: 'Aufträge',          icon: '📋', color: '#0891b2', bg: 'rgba(8,145,178,0.08)' },
   aufgaben:   { label: 'Aufgaben',          icon: '📌', color: '#ef4444', bg: 'rgba(239,68,68,0.08)' },

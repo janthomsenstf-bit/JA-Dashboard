@@ -317,6 +317,14 @@ export default function App() {
     try { localStorage.setItem('spielbuch-hauptbereich', key) } catch {}
   }
 
+  // Aus der globalen Suche vorgewählter Easy-B2B-Unterbereich (einmalig,
+  // wird nach dem Öffnen wieder zurückgesetzt).
+  const [easyb2bInitial, setEasyb2bInitial] = useState(null)
+  const oeffneEasyB2B = (bereich) => {
+    setEasyb2bInitial(bereich ?? null)
+    wechselBereich('easyb2b')
+  }
+
   const [authUser,      setAuthUser]      = useState(undefined)  // undefined=laden, null=abgemeldet, obj=eingeloggt
   const [dataLoading,   setDataLoading]   = useState(false)
   const [migrationData, setMigrationData] = useState(null)       // localStorage-Daten gefunden nach Login
@@ -1286,6 +1294,7 @@ export default function App() {
             setDetailInitialTab(TAB.nachrichten)
             setSelectedId(id)
           }}
+          onOpenEasyB2B={oeffneEasyB2B}
         />
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -1565,7 +1574,10 @@ export default function App() {
                   Easy-B2B wird geladen …
                 </div>
               }>
-                <EasyB2BBereich />
+                <EasyB2BBereich
+                  initialBereich={easyb2bInitial}
+                  onInitialVerbraucht={() => setEasyb2bInitial(null)}
+                />
               </Suspense>
             )}
 
