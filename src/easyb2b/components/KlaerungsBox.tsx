@@ -44,7 +44,7 @@ export default function KlaerungsBox({ stand, typ, onBestaetigen, onEntfernen, v
       {/* Bereiche */}
       <div style={{ padding: variante === 'voll' ? '14px 18px' : '12px 14px' }}>
         {zeigeVorschauHinweis && (
-          <div style={{ marginBottom: '12px', padding: '8px 12px', backgroundColor: '#f0f4ff', borderRadius: '6px', fontSize: '11px', color: '#003366' }}>
+          <div style={{ marginBottom: '12px', padding: '8px 12px', backgroundColor: '#f0f4ff', borderRadius: '6px', fontSize: '11px', color: 'var(--text)' }}>
             💡 Diese Punkte signalisieren Interessenten, dass die Anfrage durchdacht ist und sich ihre Zeit lohnt.
           </div>
         )}
@@ -82,7 +82,7 @@ function BereichBlock({ icon, label, erfuellt, gesamt, punkte, typ, onBestaetige
   return (
     <div style={{ marginBottom: '14px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px', paddingBottom: '4px', borderBottom: '1px solid #f0f0f0' }}>
-        <div style={{ fontSize: '13px', fontWeight: 700, color: '#003366' }}>
+        <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)' }}>
           {icon} {label}
         </div>
         <div style={{ fontSize: '11px', color: alleErfuellt ? '#2e7d32' : '#888', fontWeight: 600 }}>

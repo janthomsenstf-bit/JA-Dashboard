@@ -93,7 +93,7 @@ export default function NetzwerkPage() {
       {toast && (
         <div style={{
           position: 'fixed', bottom: '24px', right: '24px', zIndex: 1000,
-          backgroundColor: '#003366', color: 'white', padding: '14px 20px',
+          backgroundColor: 'var(--accent)', color: 'white', padding: '14px 20px',
           borderRadius: '8px', boxShadow: '0 4px 16px rgba(0,0,0,0.2)', fontSize: '14px', fontWeight: 600,
         }}>{toast}</div>
       )}
@@ -109,7 +109,7 @@ export default function NetzwerkPage() {
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
         <div>
-          <h1 style={{ margin: 0, color: '#003366', fontSize: '24px' }}>Netzwerk</h1>
+          <h1 style={{ margin: 0, color: 'var(--text)', fontSize: '24px' }}>Netzwerk</h1>
           <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#666' }}>
             Das Gedächtnis des deutsch-dänischen Easy-B2B-Netzwerks
           </p>
@@ -122,7 +122,7 @@ export default function NetzwerkPage() {
             <button key={t} onClick={() => setTabMain(t)} style={{
               padding: '8px 16px', borderRadius: '6px', border: 'none', cursor: 'pointer',
               fontWeight: 600, fontSize: '12px',
-              backgroundColor: tabMain === t ? '#003366' : '#f0f0f0',
+              backgroundColor: tabMain === t ? 'var(--accent)' : '#f0f0f0',
               color: tabMain === t ? 'white' : '#666',
             }}>
               {t === 'kontakte' ? 'Kontakte' : t === 'empfehlungen' ? 'Empfehlungen' : 'Analytics'}
@@ -220,7 +220,7 @@ function KontaktKarte({ kontakt, selected, onClick }: {
       style={{
         backgroundColor: 'white', borderRadius: '10px', padding: '16px 20px',
         cursor: 'pointer',
-        border: selected ? '2px solid #003366' : '2px solid transparent',
+        border: selected ? '2px solid var(--accent)' : '2px solid transparent',
         boxShadow: '0 2px 6px rgba(0,0,0,0.07)',
         transition: 'all 0.15s',
       }}
@@ -241,7 +241,7 @@ function KontaktKarte({ kontakt, selected, onClick }: {
           </div>
           <div style={{ flex: 1 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '3px' }}>
-              <span style={{ fontWeight: 700, fontSize: '15px', color: '#003366' }}>{kontakt.name}</span>
+              <span style={{ fontWeight: 700, fontSize: '15px', color: 'var(--text)' }}>{kontakt.name}</span>
               {offeneAktionen > 0 && (
                 <span style={{ backgroundColor: '#FF9900', color: 'white', borderRadius: '10px', padding: '1px 7px', fontSize: '10px', fontWeight: 700 }}>
                   {offeneAktionen} offen
@@ -326,7 +326,7 @@ function KontaktDetailPanel({ kontakt, activeTab, setActiveTab, onClose, onActio
             {getKontaktKategorieIcon(kontakt.kategorie)}
           </div>
           <div style={{ flex: 1 }}>
-            <h2 style={{ margin: 0, fontSize: '17px', color: '#003366' }}>{kontakt.name}</h2>
+            <h2 style={{ margin: 0, fontSize: '17px', color: 'var(--text)' }}>{kontakt.name}</h2>
             <div style={{ fontSize: '13px', color: '#555', marginTop: '2px' }}>{kontakt.position}</div>
             <div style={{ fontSize: '12px', color: '#666', marginTop: '2px' }}>{kontakt.organisation}</div>
           </div>
@@ -371,8 +371,8 @@ function KontaktDetailPanel({ kontakt, activeTab, setActiveTab, onClose, onActio
             <button key={t.id} onClick={() => setActiveTab(t.id)} style={{
               padding: '8px 12px', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 600,
               backgroundColor: 'transparent',
-              color: activeTab === t.id ? '#003366' : '#666',
-              borderBottom: activeTab === t.id ? '2px solid #003366' : '2px solid transparent',
+              color: activeTab === t.id ? 'var(--accent)' : '#666',
+              borderBottom: activeTab === t.id ? '2px solid var(--accent)' : '2px solid transparent',
               marginBottom: '-2px',
             }}>
               {t.label}
@@ -387,7 +387,7 @@ function KontaktDetailPanel({ kontakt, activeTab, setActiveTab, onClose, onActio
           <div>
             {/* Kontaktdaten */}
             <SectionTitle>Kontaktdaten</SectionTitle>
-            {kontakt.email && <InfoZeile icon="📧" value={<a href={`mailto:${kontakt.email}`} style={{ color: '#003366' }}>{kontakt.email}</a>} />}
+            {kontakt.email && <InfoZeile icon="📧" value={<a href={`mailto:${kontakt.email}`} style={{ color: 'var(--text)' }}>{kontakt.email}</a>} />}
             {kontakt.telefon && <InfoZeile icon="📞" value={kontakt.telefon} />}
             {kontakt.linkedin && <InfoZeile icon="💼" value={`linkedin.com/in/${kontakt.linkedin}`} />}
             {kontakt.website && <InfoZeile icon="🌐" value={kontakt.website} />}
@@ -414,10 +414,10 @@ function KontaktDetailPanel({ kontakt, activeTab, setActiveTab, onClose, onActio
               <button onClick={onEdit} style={{ padding: '10px', backgroundColor: '#FF9900', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}>
                 ✏️ Bearbeiten
               </button>
-              <button onClick={() => onAction(`Kontakt mit ${kontakt.name} dokumentiert`)} style={{ padding: '10px', backgroundColor: '#003366', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}>
+              <button onClick={() => onAction(`Kontakt mit ${kontakt.name} dokumentiert`)} style={{ padding: '10px', backgroundColor: 'var(--accent)', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}>
                 + Kontakt dokumentieren
               </button>
-              <button onClick={() => onAction(`Empfehlung von ${kontakt.name} erfasst`)} style={{ padding: '10px', backgroundColor: 'transparent', color: '#003366', border: '1px solid #003366', borderRadius: '6px', cursor: 'pointer', fontSize: '13px' }}>
+              <button onClick={() => onAction(`Empfehlung von ${kontakt.name} erfasst`)} style={{ padding: '10px', backgroundColor: 'transparent', color: 'var(--text)', border: '1px solid var(--accent)', borderRadius: '6px', cursor: 'pointer', fontSize: '13px' }}>
                 Empfehlung erfassen
               </button>
             </div>
@@ -438,7 +438,7 @@ function KontaktDetailPanel({ kontakt, activeTab, setActiveTab, onClose, onActio
                   <div style={{
                     width: '36px', height: '36px', borderRadius: '50%', flexShrink: 0,
                     backgroundColor: h.erledigt ? '#f0f0f0' : '#e8f0fe',
-                    border: `2px solid ${h.erledigt ? '#ddd' : '#003366'}`,
+                    border: `2px solid ${h.erledigt ? '#ddd' : 'var(--accent)'}`,
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     fontSize: '16px', zIndex: 1, position: 'relative',
                   }}>
@@ -448,7 +448,7 @@ function KontaktDetailPanel({ kontakt, activeTab, setActiveTab, onClose, onActio
                   {/* Content */}
                   <div style={{ flex: 1, paddingTop: '2px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                      <span style={{ fontWeight: 600, fontSize: '13px', color: h.erledigt ? '#666' : '#003366' }}>
+                      <span style={{ fontWeight: 600, fontSize: '13px', color: h.erledigt ? '#666' : 'var(--accent)' }}>
                         {getHistorieTypLabel(h.typ)}
                       </span>
                       <span style={{ fontSize: '11px', color: '#666' }}>{h.datum}</span>
@@ -488,7 +488,7 @@ function KontaktDetailPanel({ kontakt, activeTab, setActiveTab, onClose, onActio
                   borderRadius: '8px', padding: '12px', marginBottom: '10px',
                 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                    <span style={{ fontWeight: 600, fontSize: '13px', color: '#003366' }}>{e.empfohleneName}</span>
+                    <span style={{ fontWeight: 600, fontSize: '13px', color: 'var(--text)' }}>{e.empfohleneName}</span>
                     <span style={{ padding: '2px 8px', borderRadius: '10px', fontSize: '10px', fontWeight: 600, color: 'white', backgroundColor: getEmpfehlungsStatusColor(e.status) }}>
                       {getEmpfehlungsStatusLabel(e.status)}
                     </span>
@@ -517,7 +517,7 @@ function EmpfehlungsUebersicht({ empfehlungen }: { empfehlungen: any[] }) {
       {/* Stats */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '14px', marginBottom: '28px' }}>
         {[
-          { label: 'Empfehlungen gesamt', value: empfehlungen.length, color: '#003366' },
+          { label: 'Empfehlungen gesamt', value: empfehlungen.length, color: 'var(--text)' },
           { label: 'Erfolgreich', value: erfolgreich.length, color: '#4CAF50' },
           { label: 'Offen', value: offen.length, color: '#FF9900' },
           { label: 'Erfolgsquote', value: empfehlungen.length > 0 ? `${Math.round((erfolgreich.length / empfehlungen.length) * 100)}%` : '–', color: '#9C27B0' },
@@ -533,7 +533,7 @@ function EmpfehlungsUebersicht({ empfehlungen }: { empfehlungen: any[] }) {
       <div style={{ backgroundColor: 'white', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)', overflow: 'hidden' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
           <thead>
-            <tr style={{ backgroundColor: '#003366', color: 'white' }}>
+            <tr style={{ backgroundColor: 'var(--accent)', color: 'white' }}>
               <th style={{ padding: '12px', textAlign: 'left' }}>Empfehler</th>
               <th style={{ padding: '12px', textAlign: 'left' }}>Empfohlenes Unternehmen</th>
               <th style={{ padding: '12px', textAlign: 'left' }}>Kontext</th>
@@ -548,7 +548,7 @@ function EmpfehlungsUebersicht({ empfehlungen }: { empfehlungen: any[] }) {
                   <div style={{ fontWeight: 600 }}>{e.kontaktName}</div>
                   <div style={{ fontSize: '11px', color: '#666' }}>{e.kontaktOrg}</div>
                 </td>
-                <td style={{ padding: '12px', fontWeight: 600, color: '#003366' }}>{e.empfohleneName}</td>
+                <td style={{ padding: '12px', fontWeight: 600, color: 'var(--text)' }}>{e.empfohleneName}</td>
                 <td style={{ padding: '12px', fontSize: '12px', color: '#555', maxWidth: '220px' }}>{e.kontext || '–'}</td>
                 <td style={{ padding: '12px', textAlign: 'center' }}>
                   <span style={{ padding: '3px 8px', borderRadius: '10px', fontSize: '11px', fontWeight: 600, color: 'white', backgroundColor: getEmpfehlungsStatusColor(e.status) }}>
@@ -586,7 +586,7 @@ function NetzwerkAnalytics({ kontakte }: { kontakte: MockNetzwerkkontakt[] }) {
       {/* KPIs */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '14px', marginBottom: '28px' }}>
         {[
-          { label: 'Netzwerkkontakte', value: kontakte.length, color: '#003366' },
+          { label: 'Netzwerkkontakte', value: kontakte.length, color: 'var(--text)' },
           { label: '🟢 Aktive Kontakte', value: aktiv, color: '#4CAF50' },
           { label: '🇩🇪 Deutschland', value: landDE, color: '#2196F3' },
           { label: '🇩🇰 Dänemark', value: landDK, color: '#E91E63' },
@@ -603,7 +603,7 @@ function NetzwerkAnalytics({ kontakte }: { kontakte: MockNetzwerkkontakt[] }) {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
         {/* Top 5 nach Netzwerkwert */}
         <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '8px', boxShadow: '0 2px 6px rgba(0,0,0,0.07)' }}>
-          <h3 style={{ marginTop: 0, color: '#003366', fontSize: '15px', marginBottom: '16px' }}>Top-Netzwerkpartner</h3>
+          <h3 style={{ marginTop: 0, color: 'var(--text)', fontSize: '15px', marginBottom: '16px' }}>Top-Netzwerkpartner</h3>
           {top5.map((k, i) => (
             <div key={k.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
               <span style={{ fontSize: '16px', fontWeight: 700, color: '#999', minWidth: '20px' }}>#{i + 1}</span>
@@ -624,7 +624,7 @@ function NetzwerkAnalytics({ kontakte }: { kontakte: MockNetzwerkkontakt[] }) {
 
         {/* Kategorien-Verteilung */}
         <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '8px', boxShadow: '0 2px 6px rgba(0,0,0,0.07)' }}>
-          <h3 style={{ marginTop: 0, color: '#003366', fontSize: '15px', marginBottom: '16px' }}>Kontakt-Kategorien</h3>
+          <h3 style={{ marginTop: 0, color: 'var(--text)', fontSize: '15px', marginBottom: '16px' }}>Kontakt-Kategorien</h3>
           {Object.entries(katCount).sort((a, b) => b[1] - a[1]).map(([kat, count]) => (
             <div key={kat} style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
               <span style={{ fontSize: '16px', minWidth: '20px' }}>{getKontaktKategorieIcon(kat)}</span>
@@ -640,16 +640,16 @@ function NetzwerkAnalytics({ kontakte }: { kontakte: MockNetzwerkkontakt[] }) {
 
       {/* Netzwerk-Herkunft der Vermittlungen */}
       <div style={{ marginTop: '24px', backgroundColor: 'white', padding: '20px', borderRadius: '8px', boxShadow: '0 2px 6px rgba(0,0,0,0.07)' }}>
-        <h3 style={{ marginTop: 0, color: '#003366', fontSize: '15px', marginBottom: '4px' }}>Netzwerk-Herkunft der Kontakte</h3>
+        <h3 style={{ marginTop: 0, color: 'var(--text)', fontSize: '15px', marginBottom: '4px' }}>Netzwerk-Herkunft der Kontakte</h3>
         <p style={{ fontSize: '12px', color: '#666', margin: '0 0 16px 0' }}>Wer hat wie viele erfolgreiche Empfehlungen gebracht?</p>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '10px' }}>
           {kontakte.filter(k => k.empfehlungen.length > 0).map(k => (
             <div key={k.id} style={{ padding: '12px', borderRadius: '8px', backgroundColor: '#f9f9f9', border: '1px solid #eee' }}>
-              <div style={{ fontWeight: 600, fontSize: '13px', color: '#003366' }}>{k.name}</div>
+              <div style={{ fontWeight: 600, fontSize: '13px', color: 'var(--text)' }}>{k.name}</div>
               <div style={{ fontSize: '11px', color: '#666', marginTop: '2px', marginBottom: '8px' }}>{k.organisation}</div>
               <div style={{ display: 'flex', gap: '8px' }}>
                 <div style={{ textAlign: 'center', flex: 1, backgroundColor: '#e8f0fe', borderRadius: '6px', padding: '6px' }}>
-                  <div style={{ fontWeight: 700, color: '#003366', fontSize: '16px' }}>{k.empfehlungen.length}</div>
+                  <div style={{ fontWeight: 700, color: 'var(--text)', fontSize: '16px' }}>{k.empfehlungen.length}</div>
                   <div style={{ fontSize: '10px', color: '#666' }}>Gesamt</div>
                 </div>
                 <div style={{ textAlign: 'center', flex: 1, backgroundColor: '#e8f5e9', borderRadius: '6px', padding: '6px' }}>

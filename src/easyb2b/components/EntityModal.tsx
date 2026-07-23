@@ -55,7 +55,7 @@ export default function EntityModal({ titel, felder, initial, onSpeichern, onSch
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
           position: 'sticky', top: 0, backgroundColor: 'white', borderRadius: '12px 12px 0 0',
         }}>
-          <h2 style={{ margin: 0, fontSize: '18px', color: '#003366' }}>{titel}</h2>
+          <h2 style={{ margin: 0, fontSize: '18px', color: 'var(--text)' }}>{titel}</h2>
           <button onClick={onSchliessen} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '22px', color: '#999' }}>×</button>
         </div>
 
@@ -104,7 +104,7 @@ export default function EntityModal({ titel, felder, initial, onSpeichern, onSch
           <button onClick={onSchliessen} style={{ padding: '10px 20px', backgroundColor: 'transparent', color: '#666', border: '1px solid #ddd', borderRadius: '6px', cursor: 'pointer', fontSize: '14px' }}>
             Abbrechen
           </button>
-          <button onClick={speichern} style={{ padding: '10px 24px', backgroundColor: '#003366', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '14px', fontWeight: 600 }}>
+          <button onClick={speichern} style={{ padding: '10px 24px', backgroundColor: 'var(--accent)', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '14px', fontWeight: 600 }}>
             Speichern
           </button>
         </div>

@@ -52,7 +52,7 @@ export default function SuccessStoriesPage() {
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
         <div>
-          <h1 style={{ margin: 0, color: '#003366', fontSize: '24px' }}>Success Stories</h1>
+          <h1 style={{ margin: 0, color: 'var(--text)', fontSize: '24px' }}>Success Stories</h1>
           <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#666' }}>
             Erfolgreiche Vermittlungen — Vertrauen durch echte Ergebnisse
           </p>
@@ -62,7 +62,7 @@ export default function SuccessStoriesPage() {
             <button key={t} onClick={() => setTabMain(t)} style={{
               padding: '8px 18px', borderRadius: '6px', border: 'none', cursor: 'pointer',
               fontWeight: 600, fontSize: '13px',
-              backgroundColor: tabMain === t ? '#003366' : '#f0f0f0',
+              backgroundColor: tabMain === t ? 'var(--accent)' : '#f0f0f0',
               color: tabMain === t ? 'white' : '#666',
             }}>
               {t === 'liste' ? 'Stories' : 'Statistiken'}
@@ -141,7 +141,7 @@ function StoryCard({ story, selected, onClick }: {
       style={{
         backgroundColor: 'white', borderRadius: '10px', padding: '20px',
         cursor: 'pointer',
-        border: selected ? '2px solid #003366' : '2px solid transparent',
+        border: selected ? '2px solid var(--accent)' : '2px solid transparent',
         boxShadow: '0 2px 8px rgba(0,0,0,0.07)',
         transition: 'all 0.15s',
       }}
@@ -153,7 +153,7 @@ function StoryCard({ story, selected, onClick }: {
           {/* Header */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
             <span style={{ fontSize: '16px' }}>{getEntstehungswegIcon(story.entstehungsweg)}</span>
-            <span style={{ fontWeight: 700, fontSize: '15px', color: '#003366' }}>{story.titel}</span>
+            <span style={{ fontWeight: 700, fontSize: '15px', color: 'var(--text)' }}>{story.titel}</span>
           </div>
           <p style={{ fontSize: '13px', color: '#555', lineHeight: 1.5, margin: '0 0 10px 0' }}>
             {story.kurzbeschreibung}
@@ -233,7 +233,7 @@ function StoryDetailPanel({ story, activeTab, setActiveTab, onClose, onKiGenerie
       {toast && (
         <div style={{
           position: 'fixed', bottom: '24px', right: '24px', zIndex: 1000,
-          backgroundColor: '#003366', color: 'white', padding: '14px 20px',
+          backgroundColor: 'var(--accent)', color: 'white', padding: '14px 20px',
           borderRadius: '8px', boxShadow: '0 4px 16px rgba(0,0,0,0.2)', fontSize: '14px', fontWeight: 600,
         }}>{toast}</div>
       )}
@@ -241,7 +241,7 @@ function StoryDetailPanel({ story, activeTab, setActiveTab, onClose, onKiGenerie
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
           <div style={{ flex: 1 }}>
             <span style={{ fontSize: '16px', marginRight: '8px' }}>{getEntstehungswegIcon(story.entstehungsweg)}</span>
-            <h2 style={{ margin: '4px 0 0 0', color: '#003366', fontSize: '16px', lineHeight: 1.3 }}>{story.titel}</h2>
+            <h2 style={{ margin: '4px 0 0 0', color: 'var(--text)', fontSize: '16px', lineHeight: 1.3 }}>{story.titel}</h2>
           </div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '20px', color: '#666', flexShrink: 0 }}>×</button>
         </div>
@@ -256,8 +256,8 @@ function StoryDetailPanel({ story, activeTab, setActiveTab, onClose, onKiGenerie
             <button key={t.id} onClick={() => setActiveTab(t.id)} style={{
               padding: '8px 12px', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 600,
               backgroundColor: 'transparent',
-              color: activeTab === t.id ? '#003366' : '#666',
-              borderBottom: activeTab === t.id ? '2px solid #003366' : '2px solid transparent',
+              color: activeTab === t.id ? 'var(--accent)' : '#666',
+              borderBottom: activeTab === t.id ? '2px solid var(--accent)' : '2px solid transparent',
               marginBottom: '-2px',
             }}>
               {t.label}
@@ -272,7 +272,7 @@ function StoryDetailPanel({ story, activeTab, setActiveTab, onClose, onKiGenerie
           <div>
             {/* Firmen */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: '8px', alignItems: 'center', marginBottom: '20px', padding: '12px', backgroundColor: '#f9f9f9', borderRadius: '8px' }}>
-              <div style={{ textAlign: 'center', fontSize: '13px', fontWeight: 600, color: '#003366', padding: '6px', backgroundColor: '#e3f2fd', borderRadius: '6px' }}>{story.firma1Name}</div>
+              <div style={{ textAlign: 'center', fontSize: '13px', fontWeight: 600, color: 'var(--text)', padding: '6px', backgroundColor: '#e3f2fd', borderRadius: '6px' }}>{story.firma1Name}</div>
               <div style={{ textAlign: 'center', color: '#9C27B0', fontSize: '18px' }}>⟷</div>
               <div style={{ textAlign: 'center', fontSize: '13px', fontWeight: 600, color: '#880e4f', padding: '6px', backgroundColor: '#fce4ec', borderRadius: '6px' }}>{story.firma2Name}</div>
             </div>
@@ -289,7 +289,7 @@ function StoryDetailPanel({ story, activeTab, setActiveTab, onClose, onKiGenerie
               <div key={f.label} style={{ marginBottom: '14px' }}>
                 <div style={{ fontSize: '11px', fontWeight: 700, color: '#666', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>{f.label}</div>
                 <div style={{
-                  fontSize: '13px', color: f.highlight ? '#003366' : '#444', lineHeight: 1.6,
+                  fontSize: '13px', color: f.highlight ? 'var(--accent)' : '#444', lineHeight: 1.6,
                   backgroundColor: f.highlight ? '#e8f5e9' : 'transparent',
                   padding: f.highlight ? '10px' : '0',
                   borderRadius: f.highlight ? '6px' : '0',
@@ -383,7 +383,7 @@ function StoryDetailPanel({ story, activeTab, setActiveTab, onClose, onKiGenerie
               disabled={kiLaedt}
               style={{
                 width: '100%', padding: '12px', marginBottom: '20px',
-                backgroundColor: kiLaedt ? '#ccc' : '#003366',
+                backgroundColor: kiLaedt ? '#ccc' : 'var(--accent)',
                 color: 'white', border: 'none', borderRadius: '6px',
                 cursor: kiLaedt ? 'wait' : 'pointer', fontSize: '13px', fontWeight: 600,
               }}
@@ -399,7 +399,7 @@ function StoryDetailPanel({ story, activeTab, setActiveTab, onClose, onKiGenerie
                     <button key={f} onClick={() => setSelectedKiFormat(f)} style={{
                       flex: 1, padding: '8px', border: 'none', borderRadius: '6px', cursor: 'pointer',
                       fontSize: '11px', fontWeight: 600,
-                      backgroundColor: selectedKiFormat === f ? '#003366' : '#f0f0f0',
+                      backgroundColor: selectedKiFormat === f ? 'var(--accent)' : '#f0f0f0',
                       color: selectedKiFormat === f ? 'white' : '#666',
                     }}>
                       {f === 'homepage' ? '🌐 Homepage' : f === 'linkedin' ? '💼 LinkedIn' : '📧 Newsletter'}
@@ -414,7 +414,7 @@ function StoryDetailPanel({ story, activeTab, setActiveTab, onClose, onKiGenerie
                   </div>
                 )}
 
-                <button onClick={() => { navigator.clipboard?.writeText(mergedKi[selectedKiFormat] || ''); zeigeToast('In Zwischenablage kopiert 📋'); }} style={{ width: '100%', padding: '10px', marginTop: '10px', backgroundColor: 'transparent', color: '#003366', border: '1px solid #003366', borderRadius: '6px', cursor: 'pointer', fontSize: '13px' }}>
+                <button onClick={() => { navigator.clipboard?.writeText(mergedKi[selectedKiFormat] || ''); zeigeToast('In Zwischenablage kopiert 📋'); }} style={{ width: '100%', padding: '10px', marginTop: '10px', backgroundColor: 'transparent', color: 'var(--text)', border: '1px solid var(--accent)', borderRadius: '6px', cursor: 'pointer', fontSize: '13px' }}>
                   📋 In Zwischenablage kopieren
                 </button>
               </>
@@ -454,7 +454,7 @@ function StoryStatistiken({ stories }: { stories: MockSuccessStory[] }) {
       {/* KPIs */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '14px', marginBottom: '32px' }}>
         {[
-          { label: 'Stories gesamt', value: stories.length, color: '#003366' },
+          { label: 'Stories gesamt', value: stories.length, color: 'var(--text)' },
           { label: '🌐 Freigegeben', value: freigegeben, color: '#4CAF50' },
           { label: '👤 Anonymisiert', value: anon, color: '#FF9900' },
           { label: '🔒 Intern', value: intern, color: '#999' },
@@ -471,13 +471,13 @@ function StoryStatistiken({ stories }: { stories: MockSuccessStory[] }) {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginBottom: '24px' }}>
         {/* Entstehungsweg */}
         <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '8px', boxShadow: '0 2px 6px rgba(0,0,0,0.07)' }}>
-          <h3 style={{ marginTop: 0, color: '#003366', fontSize: '15px', marginBottom: '16px' }}>Entstehungswege</h3>
+          <h3 style={{ marginTop: 0, color: 'var(--text)', fontSize: '15px', marginBottom: '16px' }}>Entstehungswege</h3>
           {Object.entries(wegCount).sort((a, b) => b[1] - a[1]).map(([weg, count]) => (
             <div key={weg} style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
               <span style={{ fontSize: '16px', minWidth: '20px' }}>{getEntstehungswegIcon(weg)}</span>
               <span style={{ flex: 1, fontSize: '13px' }}>{getEntstehungswegLabel(weg)}</span>
               <div style={{ width: '70px', height: '8px', backgroundColor: '#f0f0f0', borderRadius: '4px', overflow: 'hidden' }}>
-                <div style={{ height: '100%', backgroundColor: '#003366', width: `${(count / stories.length) * 100}%`, borderRadius: '4px' }} />
+                <div style={{ height: '100%', backgroundColor: 'var(--accent)', width: `${(count / stories.length) * 100}%`, borderRadius: '4px' }} />
               </div>
               <span style={{ fontSize: '12px', color: '#666', minWidth: '20px' }}>{count}×</span>
             </div>
@@ -486,7 +486,7 @@ function StoryStatistiken({ stories }: { stories: MockSuccessStory[] }) {
 
         {/* Ergebnis-Typen */}
         <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '8px', boxShadow: '0 2px 6px rgba(0,0,0,0.07)' }}>
-          <h3 style={{ marginTop: 0, color: '#003366', fontSize: '15px', marginBottom: '16px' }}>Ergebnis-Typen</h3>
+          <h3 style={{ marginTop: 0, color: 'var(--text)', fontSize: '15px', marginBottom: '16px' }}>Ergebnis-Typen</h3>
           {Object.entries(ergebnisCount).sort((a, b) => b[1] - a[1]).map(([typ, count]) => (
             <div key={typ} style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
               <span style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: getErgebnisTypColor(typ), flexShrink: 0 }} />
@@ -502,12 +502,12 @@ function StoryStatistiken({ stories }: { stories: MockSuccessStory[] }) {
 
       {/* Branchenverteilung */}
       <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '8px', boxShadow: '0 2px 6px rgba(0,0,0,0.07)' }}>
-        <h3 style={{ marginTop: 0, color: '#003366', fontSize: '15px', marginBottom: '16px' }}>Branchenverteilung</h3>
+        <h3 style={{ marginTop: 0, color: 'var(--text)', fontSize: '15px', marginBottom: '16px' }}>Branchenverteilung</h3>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '10px' }}>
           {Object.entries(brancheCount).map(([branche, count]) => (
             <div key={branche} style={{ padding: '10px 14px', borderRadius: '8px', backgroundColor: '#f9f9f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontSize: '13px', color: '#333' }}>{branche}</span>
-              <span style={{ fontSize: '13px', fontWeight: 700, color: '#003366' }}>{count}</span>
+              <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)' }}>{count}</span>
             </div>
           ))}
         </div>

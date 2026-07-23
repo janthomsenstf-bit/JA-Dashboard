@@ -41,13 +41,13 @@ export default function KiZentralePage() {
     <div style={{ display: 'flex', gap: '0', minHeight: 'calc(100vh - 40px)' }}>
       {/* ── LINKE SIDEBAR ── */}
       <div style={{ width: '220px', flexShrink: 0, borderRight: '1px solid #e0e0e0', paddingRight: '20px', marginRight: '28px' }}>
-        <h2 style={{ margin: '0 0 4px 0', color: '#003366', fontSize: '18px' }}>KI-Zentrale</h2>
+        <h2 style={{ margin: '0 0 4px 0', color: 'var(--text)', fontSize: '18px' }}>KI-Zentrale</h2>
         <p style={{ margin: '0 0 20px 0', fontSize: '12px', color: '#666' }}>Operator-Assistent</p>
 
         <button onClick={() => setActiveTool('home')} style={{
           width: '100%', padding: '10px 14px', marginBottom: '4px', borderRadius: '6px',
           border: 'none', cursor: 'pointer', textAlign: 'left', fontSize: '13px', fontWeight: 600,
-          backgroundColor: activeTool === 'home' ? '#003366' : 'transparent',
+          backgroundColor: activeTool === 'home' ? 'var(--accent)' : 'transparent',
           color: activeTool === 'home' ? 'white' : '#666',
           display: 'flex', alignItems: 'center', gap: '8px',
         }}>
@@ -63,7 +63,7 @@ export default function KiZentralePage() {
             style={{
               width: '100%', padding: '10px 14px', marginBottom: '4px', borderRadius: '6px',
               border: 'none', cursor: 'pointer', textAlign: 'left', fontSize: '13px',
-              backgroundColor: activeTool === t.id ? '#003366' : 'transparent',
+              backgroundColor: activeTool === t.id ? 'var(--accent)' : 'transparent',
               color: activeTool === t.id ? 'white' : '#444',
               display: 'flex', alignItems: 'center', gap: '8px',
               transition: 'all 0.15s',
@@ -98,7 +98,7 @@ function KiHome({ onSelectTool }: { onSelectTool: (t: Tool) => void }) {
   return (
     <div>
       <div style={{ marginBottom: '28px' }}>
-        <h1 style={{ margin: '0 0 8px 0', color: '#003366', fontSize: '24px' }}>Willkommen, Operator 👋</h1>
+        <h1 style={{ margin: '0 0 8px 0', color: 'var(--text)', fontSize: '24px' }}>Willkommen, Operator 👋</h1>
         <p style={{ margin: 0, fontSize: '14px', color: '#555', lineHeight: 1.6 }}>
           Hier sind alle KI-Werkzeuge gebündelt. Wähle ein Tool, gib deine Daten ein und lass die KI einen ersten Entwurf erstellen.
           Du behältst die Kontrolle — die KI bereitet vor, du entscheidest.
@@ -118,7 +118,7 @@ function KiHome({ onSelectTool }: { onSelectTool: (t: Tool) => void }) {
             }}
             onMouseEnter={e => {
               const el = e.currentTarget as HTMLDivElement;
-              el.style.borderColor = '#003366';
+              el.style.borderColor = 'var(--accent)';
               el.style.boxShadow = '0 4px 12px rgba(0,51,102,0.12)';
             }}
             onMouseLeave={e => {
@@ -128,14 +128,14 @@ function KiHome({ onSelectTool }: { onSelectTool: (t: Tool) => void }) {
             }}
           >
             <div style={{ fontSize: '32px', marginBottom: '10px' }}>{t.icon}</div>
-            <h3 style={{ margin: '0 0 6px 0', color: '#003366', fontSize: '16px' }}>{t.label}</h3>
+            <h3 style={{ margin: '0 0 6px 0', color: 'var(--text)', fontSize: '16px' }}>{t.label}</h3>
             <p style={{ margin: 0, fontSize: '13px', color: '#666', lineHeight: 1.5 }}>{t.beschreibung}</p>
           </div>
         ))}
       </div>
 
       <div style={{ marginTop: '32px', backgroundColor: '#f9f9f9', borderRadius: '10px', padding: '20px', border: '1px solid #e0e0e0' }}>
-        <h3 style={{ margin: '0 0 8px 0', color: '#003366', fontSize: '15px' }}>💡 Nutzungshinweis</h3>
+        <h3 style={{ margin: '0 0 8px 0', color: 'var(--text)', fontSize: '15px' }}>💡 Nutzungshinweis</h3>
         <p style={{ margin: 0, fontSize: '13px', color: '#555', lineHeight: 1.7 }}>
           Alle Ergebnisse sind Entwürfe. Immer nochmals prüfen, bevor etwas veröffentlicht oder versandt wird.
           Die KI kennt das Easy-B2B-Konzept und hält sich an die Sprachregeln — aber du kennst die Menschen dahinter.
@@ -175,14 +175,14 @@ function ToolAnfrage({ laedt, setLaedt }: ToolProps) {
     <ToolLayout icon="📝" titel="Anfrage verbessern" beschreibung="Aus einer Rohfassung eine strukturierte Easy-B2B-Anfrage erstellen.">
       {/* Aus bestehender Anfrage laden */}
       <div style={{ backgroundColor: '#e8f0fe', borderRadius: '8px', padding: '12px', marginBottom: '20px', display: 'flex', gap: '10px', alignItems: 'center' }}>
-        <span style={{ fontSize: '13px', color: '#003366', fontWeight: 600 }}>Aus Anfrage laden:</span>
+        <span style={{ fontSize: '13px', color: 'var(--text)', fontWeight: 600 }}>Aus Anfrage laden:</span>
         <select value={ausAnfrage} onChange={e => setAusAnfrage(e.target.value)}
           style={{ flex: 1, padding: '6px 10px', borderRadius: '6px', border: '1px solid #c5d3f0', fontSize: '13px' }}>
           <option value="">— Anfrage wählen —</option>
           {MOCK_ANFRAGEN.map(a => <option key={a.id} value={a.id}>{a.firmenname} ({a.anzeigenId})</option>)}
         </select>
         <button onClick={handleAusAnfrageLaden} disabled={!ausAnfrage}
-          style={{ padding: '6px 14px', backgroundColor: '#003366', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px' }}>
+          style={{ padding: '6px 14px', backgroundColor: 'var(--accent)', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px' }}>
           Laden
         </button>
       </div>
@@ -219,7 +219,7 @@ function ToolAnfrage({ laedt, setLaedt }: ToolProps) {
 
       {ergebnis && !laedt && (
         <div style={{ marginTop: '24px' }}>
-          <div style={{ fontSize: '13px', fontWeight: 700, color: '#003366', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '14px' }}>Ergebnis</div>
+          <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '14px' }}>Ergebnis</div>
           {[
             { label: 'Ziel', value: ergebnis.ziel },
             { label: 'Ausgangssituation', value: ergebnis.ausgangssituation },
@@ -310,14 +310,14 @@ function ToolIntroMail({ laedt, setLaedt }: ToolProps) {
 
       {ergebnis && !laedt && (
         <div style={{ marginTop: '24px', backgroundColor: '#f9f9f9', border: '1px solid #e0e0e0', borderRadius: '8px', padding: '16px', fontFamily: 'Georgia, serif' }}>
-          <div style={{ fontSize: '11px', fontWeight: 700, color: '#003366', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.5px', fontFamily: 'system-ui' }}>
+          <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text)', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.5px', fontFamily: 'system-ui' }}>
             Ergebnis ({sprache.toUpperCase()})
           </div>
           <div style={{ fontSize: '13px', lineHeight: 1.9, whiteSpace: 'pre-wrap', color: '#333' }}>
             {formatIntroMail(ergebnis)}
           </div>
           <button onClick={() => navigator.clipboard?.writeText(formatIntroMail(ergebnis))}
-            style={{ marginTop: '14px', padding: '8px 16px', backgroundColor: 'transparent', color: '#003366', border: '1px solid #003366', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>
+            style={{ marginTop: '14px', padding: '8px 16px', backgroundColor: 'transparent', color: 'var(--text)', border: '1px solid var(--accent)', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>
             📋 Kopieren
           </button>
         </div>
@@ -378,7 +378,7 @@ function ToolLinkedIn({ laedt, setLaedt }: ToolProps) {
       {ergebnis && !laedt && (
         <div style={{ marginTop: '24px' }}>
           <div style={{ backgroundColor: '#f0f4ff', border: '1px solid #c5d3f0', borderRadius: '8px', padding: '16px', marginBottom: '12px' }}>
-            <div style={{ fontSize: '11px', fontWeight: 700, color: '#003366', marginBottom: '10px', textTransform: 'uppercase' }}>
+            <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text)', marginBottom: '10px', textTransform: 'uppercase' }}>
               Post ({ergebnis.zeichenAnzahl} Zeichen)
             </div>
             <div style={{ fontSize: '14px', lineHeight: 1.8, whiteSpace: 'pre-wrap', color: '#333' }}>
@@ -392,7 +392,7 @@ function ToolLinkedIn({ laedt, setLaedt }: ToolProps) {
           </div>
           <div style={{ display: 'flex', gap: '8px' }}>
             <button onClick={() => navigator.clipboard?.writeText(ergebnis.text + (ergebnis.hashtags.length ? '\n\n' + ergebnis.hashtags.join(' ') : ''))}
-              style={{ padding: '8px 14px', backgroundColor: '#003366', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>
+              style={{ padding: '8px 14px', backgroundColor: 'var(--accent)', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>
               📋 Kopieren
             </button>
             <div style={{ fontSize: '12px', color: ergebnis.zeichenAnzahl > 2000 ? '#f44336' : '#4CAF50', alignSelf: 'center' }}>
@@ -448,7 +448,7 @@ function ToolVoiceCheck({ laedt, setLaedt }: ToolProps) {
               <div style={{ fontSize: '10px', color: '#666' }}>/ 100</div>
             </div>
             <div>
-              <div style={{ fontWeight: 700, fontSize: '15px', color: '#003366', marginBottom: '4px' }}>
+              <div style={{ fontWeight: 700, fontSize: '15px', color: 'var(--text)', marginBottom: '4px' }}>
                 {ergebnis.score >= 80 ? '✅ Gut!' : ergebnis.score >= 60 ? '⚠️ Überarbeitbar' : '🚫 Überarbeitung nötig'}
               </div>
               <div style={{ fontSize: '13px', color: '#555' }}>{ergebnis.empfehlung}</div>
@@ -518,8 +518,8 @@ function ToolKultur({ laedt, setLaedt }: ToolProps) {
             <button key={kat} onClick={() => toggleKat(kat)} style={{
               padding: '6px 12px', borderRadius: '20px', border: '1px solid',
               cursor: 'pointer', fontSize: '12px', fontWeight: 600, transition: 'all 0.15s',
-              borderColor: selectedKats.includes(kat) ? '#003366' : '#ddd',
-              backgroundColor: selectedKats.includes(kat) ? '#003366' : 'white',
+              borderColor: selectedKats.includes(kat) ? 'var(--accent)' : '#ddd',
+              backgroundColor: selectedKats.includes(kat) ? 'var(--accent)' : 'white',
               color: selectedKats.includes(kat) ? 'white' : '#666',
             }}>
               {KULTUR_HINWEISE_DATENBANK.find(k => k.kategorie === kat)?.icon} {kat}
@@ -536,7 +536,7 @@ function ToolKultur({ laedt, setLaedt }: ToolProps) {
         <div style={{ marginTop: '24px' }}>
           {ergebnis.hinweise.map((h: any) => (
             <div key={h.kategorie} style={{ backgroundColor: '#f9f9f9', borderRadius: '10px', padding: '16px', marginBottom: '12px', border: '1px solid #eee' }}>
-              <div style={{ fontWeight: 700, fontSize: '15px', color: '#003366', marginBottom: '12px' }}>
+              <div style={{ fontWeight: 700, fontSize: '15px', color: 'var(--text)', marginBottom: '12px' }}>
                 {h.icon} {h.kategorie}
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
@@ -557,8 +557,8 @@ function ToolKultur({ laedt, setLaedt }: ToolProps) {
           ))}
           {ergebnis.gesamtempfehlung && (
             <div style={{ backgroundColor: '#e8f0fe', border: '1px solid #c5d3f0', borderRadius: '10px', padding: '16px' }}>
-              <div style={{ fontSize: '11px', fontWeight: 700, color: '#003366', marginBottom: '6px', textTransform: 'uppercase' }}>Gesamtempfehlung</div>
-              <div style={{ fontSize: '13px', color: '#003366', lineHeight: 1.6 }}>{ergebnis.gesamtempfehlung}</div>
+              <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text)', marginBottom: '6px', textTransform: 'uppercase' }}>Gesamtempfehlung</div>
+              <div style={{ fontSize: '13px', color: 'var(--text)', lineHeight: 1.6 }}>{ergebnis.gesamtempfehlung}</div>
             </div>
           )}
         </div>
@@ -683,7 +683,7 @@ function ToolLayout({ icon, titel, beschreibung, children }: { icon: string; tit
   return (
     <div>
       <div style={{ marginBottom: '24px' }}>
-        <h2 style={{ margin: '0 0 4px 0', color: '#003366', fontSize: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <h2 style={{ margin: '0 0 4px 0', color: 'var(--text)', fontSize: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
           <span>{icon}</span>{titel}
         </h2>
         <p style={{ margin: 0, fontSize: '13px', color: '#666' }}>{beschreibung}</p>
@@ -700,14 +700,14 @@ function KiButton({ onClick, laedt, disabled, children }: { onClick: () => void;
       disabled={laedt || disabled}
       style={{
         padding: '12px 24px', fontSize: '14px', fontWeight: 700,
-        backgroundColor: laedt || disabled ? '#ccc' : '#003366',
+        backgroundColor: laedt || disabled ? '#ccc' : 'var(--accent)',
         color: 'white', border: 'none', borderRadius: '8px',
         cursor: laedt || disabled ? 'not-allowed' : 'pointer',
         display: 'flex', alignItems: 'center', gap: '8px',
         transition: 'background-color 0.2s',
       }}
       onMouseEnter={e => { if (!laedt && !disabled) (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#001a4d'; }}
-      onMouseLeave={e => { if (!laedt && !disabled) (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#003366'; }}
+      onMouseLeave={e => { if (!laedt && !disabled) (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'var(--accent)'; }}
     >
       {laedt ? (
         <>

@@ -52,7 +52,7 @@ export default function EditableSection<T extends Record<string, any>>({
 
   const titelStyle: React.CSSProperties = variante === 'kompakt'
     ? { fontSize: '11px', fontWeight: 700, color: '#444', textTransform: 'uppercase', letterSpacing: '0.5px' }
-    : { fontSize: '12px', fontWeight: 700, color: '#003366', textTransform: 'uppercase', letterSpacing: '0.5px' };
+    : { fontSize: '12px', fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.5px' };
 
   return (
     <div
@@ -78,7 +78,7 @@ export default function EditableSection<T extends Record<string, any>>({
                 fontSize: '13px', color: '#666', padding: '4px 8px', borderRadius: '4px',
                 display: 'inline-flex', alignItems: 'center', gap: '4px',
               }}
-              onMouseEnter={e => { e.currentTarget.style.backgroundColor = '#f0f4ff'; e.currentTarget.style.color = '#003366'; }}
+              onMouseEnter={e => { e.currentTarget.style.backgroundColor = '#f0f4ff'; e.currentTarget.style.color = 'var(--accent)'; }}
               onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = '#666'; }}
             >
               ✏️ <span style={{ fontSize: '11px' }}>Bearbeiten</span>

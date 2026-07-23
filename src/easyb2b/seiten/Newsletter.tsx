@@ -19,14 +19,14 @@ export default function NewsletterPage() {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
         <div>
-          <h1 style={{ margin: 0, color: '#003366', fontSize: '24px' }}>Newsletter</h1>
+          <h1 style={{ margin: 0, color: 'var(--text)', fontSize: '24px' }}>Newsletter</h1>
           <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#666' }}>Neues aus dem deutsch-dänischen Netzwerk</p>
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
           {([['uebersicht', 'Übersicht'], ['editor', '✏️ Erstellen'], ['abonnenten', 'Abonnenten'], ['statistiken', 'Statistiken']] as [TabMain, string][]).map(([id, label]) => (
             <button key={id} onClick={() => setTab(id)} style={{
               padding: '8px 16px', borderRadius: '6px', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: '12px',
-              backgroundColor: tab === id ? '#003366' : '#f0f0f0', color: tab === id ? 'white' : '#666',
+              backgroundColor: tab === id ? 'var(--accent)' : '#f0f0f0', color: tab === id ? 'white' : '#666',
             }}>{label}</button>
           ))}
         </div>
@@ -46,7 +46,7 @@ function NewsletterUebersicht({ onCreate }: { onCreate: () => void }) {
   return (
     <div>
       <button onClick={onCreate} style={{
-        padding: '12px 24px', backgroundColor: '#003366', color: 'white', border: 'none',
+        padding: '12px 24px', backgroundColor: 'var(--accent)', color: 'white', border: 'none',
         borderRadius: '8px', cursor: 'pointer', fontSize: '14px', fontWeight: 700, marginBottom: '24px',
       }}>
         ✏️ Neuen Newsletter erstellen
@@ -60,7 +60,7 @@ function NewsletterUebersicht({ onCreate }: { onCreate: () => void }) {
           }}>
             <div style={{ flex: 1 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
-                <span style={{ fontWeight: 700, fontSize: '15px', color: '#003366' }}>{nl.titel}</span>
+                <span style={{ fontWeight: 700, fontSize: '15px', color: 'var(--text)' }}>{nl.titel}</span>
                 <span style={{ padding: '3px 10px', borderRadius: '12px', fontSize: '11px', fontWeight: 600, color: 'white', backgroundColor: getNewsletterStatusColor(nl.status) }}>
                   {getNewsletterStatusLabel(nl.status)}
                 </span>
@@ -69,7 +69,7 @@ function NewsletterUebersicht({ onCreate }: { onCreate: () => void }) {
               <div style={{ fontSize: '12px', color: '#666' }}>{nl.vorschautext}</div>
               <div style={{ display: 'flex', gap: '6px', marginTop: '8px', flexWrap: 'wrap' }}>
                 {nl.zielgruppen.map(z => (
-                  <span key={z} style={{ padding: '2px 8px', borderRadius: '10px', fontSize: '10px', backgroundColor: '#e8f0fe', color: '#003366' }}>{z}</span>
+                  <span key={z} style={{ padding: '2px 8px', borderRadius: '10px', fontSize: '10px', backgroundColor: '#e8f0fe', color: 'var(--text)' }}>{z}</span>
                 ))}
               </div>
             </div>
@@ -149,7 +149,7 @@ function NewsletterEditor() {
       {toast && (
         <div style={{
           position: 'fixed', bottom: '24px', right: '24px', zIndex: 1000,
-          backgroundColor: '#003366', color: 'white', padding: '14px 20px',
+          backgroundColor: 'var(--accent)', color: 'white', padding: '14px 20px',
           borderRadius: '8px', boxShadow: '0 4px 16px rgba(0,0,0,0.2)', fontSize: '14px', fontWeight: 600,
         }}>{toast}</div>
       )}
@@ -158,15 +158,15 @@ function NewsletterEditor() {
         {/* KI-Aktionen */}
         <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', flexWrap: 'wrap' }}>
           <button onClick={handleKiGenerieren} disabled={kiLaedt} style={{
-            padding: '12px 20px', backgroundColor: kiLaedt ? '#ccc' : '#003366', color: 'white',
+            padding: '12px 20px', backgroundColor: kiLaedt ? '#ccc' : 'var(--accent)', color: 'white',
             border: 'none', borderRadius: '8px', cursor: kiLaedt ? 'wait' : 'pointer', fontSize: '13px', fontWeight: 700,
           }}>
             {kiLaedt ? '✨ Generiert...' : '✨ Newsletter automatisch erstellen'}
           </button>
           {bloecke.length > 0 && (
             <button onClick={handleVerbessern} disabled={kiLaedt} style={{
-              padding: '12px 20px', backgroundColor: 'transparent', color: '#003366',
-              border: '1px solid #003366', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: 600,
+              padding: '12px 20px', backgroundColor: 'transparent', color: 'var(--text)',
+              border: '1px solid var(--accent)', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: 600,
             }}>
               🎙 Voice-Check & Verbessern
             </button>
@@ -199,9 +199,9 @@ function NewsletterEditor() {
             {bloecke.map((b, idx) => {
               const meta = getBlockMeta(b.typ);
               return (
-                <div key={b.id} style={{ backgroundColor: 'white', borderRadius: '10px', padding: '16px', boxShadow: '0 2px 6px rgba(0,0,0,0.07)', borderLeft: '4px solid #003366' }}>
+                <div key={b.id} style={{ backgroundColor: 'white', borderRadius: '10px', padding: '16px', boxShadow: '0 2px 6px rgba(0,0,0,0.07)', borderLeft: '4px solid var(--accent)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                    <span style={{ fontSize: '12px', fontWeight: 700, color: '#003366' }}>{meta.icon} {meta.label}</span>
+                    <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text)' }}>{meta.icon} {meta.label}</span>
                     <div style={{ display: 'flex', gap: '4px' }}>
                       <button onClick={() => moveBlock(idx, -1)} style={miniBtn}>↑</button>
                       <button onClick={() => moveBlock(idx, 1)} style={miniBtn}>↓</button>
@@ -235,7 +235,7 @@ function NewsletterEditor() {
       {/* Block-Bibliothek rechts */}
       <div style={{ width: '280px', flexShrink: 0 }}>
         <div style={{ backgroundColor: 'white', borderRadius: '10px', padding: '18px', boxShadow: '0 2px 6px rgba(0,0,0,0.07)', position: 'sticky', top: '20px' }}>
-          <h3 style={{ marginTop: 0, fontSize: '14px', color: '#003366', marginBottom: '14px' }}>Block hinzufügen</h3>
+          <h3 style={{ marginTop: 0, fontSize: '14px', color: 'var(--text)', marginBottom: '14px' }}>Block hinzufügen</h3>
 
           {/* Anfragen-Filter */}
           <div style={{ backgroundColor: '#f9f9f9', borderRadius: '6px', padding: '10px', marginBottom: '12px' }}>
@@ -259,22 +259,22 @@ function NewsletterEditor() {
             >
               <span style={{ fontSize: '16px' }}>{b.icon}</span>
               <div>
-                <div style={{ fontWeight: 600, color: '#003366' }}>{b.label}</div>
+                <div style={{ fontWeight: 600, color: 'var(--text)' }}>{b.label}</div>
                 <div style={{ fontSize: '10px', color: '#666' }}>{b.beschreibung}</div>
               </div>
             </button>
           ))}
 
           {/* Zielgruppen */}
-          <h3 style={{ fontSize: '14px', color: '#003366', marginTop: '20px', marginBottom: '10px' }}>Zielgruppen</h3>
+          <h3 style={{ fontSize: '14px', color: 'var(--text)', marginTop: '20px', marginBottom: '10px' }}>Zielgruppen</h3>
           <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
             {INTERESSENGRUPPEN.map(g => (
               <button key={g} onClick={() => setZielgruppen(prev => prev.includes(g) ? prev.filter(x => x !== g) : [...prev, g])}
                 style={{
                   padding: '4px 10px', borderRadius: '12px', border: '1px solid',
                   cursor: 'pointer', fontSize: '11px', fontWeight: 600,
-                  borderColor: zielgruppen.includes(g) ? '#003366' : '#ddd',
-                  backgroundColor: zielgruppen.includes(g) ? '#003366' : 'white',
+                  borderColor: zielgruppen.includes(g) ? 'var(--accent)' : '#ddd',
+                  backgroundColor: zielgruppen.includes(g) ? 'var(--accent)' : 'white',
                   color: zielgruppen.includes(g) ? 'white' : '#666',
                 }}>{g}</button>
             ))}
@@ -303,7 +303,7 @@ function AbonnentenVerwaltung() {
     <div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '14px', marginBottom: '24px' }}>
         {[
-          { label: 'Abonnenten', value: MOCK_ABONNENTEN.length, color: '#003366' },
+          { label: 'Abonnenten', value: MOCK_ABONNENTEN.length, color: 'var(--text)' },
           { label: '🟢 Aktiv', value: aktiv, color: '#4CAF50' },
           { label: '🇩🇪 Deutschland', value: de, color: '#2196F3' },
           { label: '🇩🇰 Dänemark', value: dk, color: '#E91E63' },
@@ -327,7 +327,7 @@ function AbonnentenVerwaltung() {
       <div style={{ backgroundColor: 'white', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)', overflow: 'hidden' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
           <thead>
-            <tr style={{ backgroundColor: '#003366', color: 'white' }}>
+            <tr style={{ backgroundColor: 'var(--accent)', color: 'white' }}>
               <th style={{ padding: '12px', textAlign: 'left' }}>Name</th>
               <th style={{ padding: '12px', textAlign: 'left' }}>Unternehmen</th>
               <th style={{ padding: '12px', textAlign: 'left' }}>Interessen</th>
@@ -343,7 +343,7 @@ function AbonnentenVerwaltung() {
                 <td style={{ padding: '12px' }}>
                   <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
                     {a.interessen.slice(0, 3).map(int => (
-                      <span key={int} style={{ padding: '2px 6px', borderRadius: '8px', fontSize: '10px', backgroundColor: '#e8f0fe', color: '#003366' }}>{int}</span>
+                      <span key={int} style={{ padding: '2px 6px', borderRadius: '8px', fontSize: '10px', backgroundColor: '#e8f0fe', color: 'var(--text)' }}>{int}</span>
                     ))}
                   </div>
                 </td>
@@ -375,7 +375,7 @@ function NewsletterStatistiken() {
     <div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '14px', marginBottom: '28px' }}>
         {[
-          { label: 'Newsletter gesamt', value: MOCK_NEWSLETTER.length, color: '#003366' },
+          { label: 'Newsletter gesamt', value: MOCK_NEWSLETTER.length, color: 'var(--text)' },
           { label: 'Versendet', value: versendet.length, color: '#4CAF50' },
           { label: 'Abonnenten', value: MOCK_ABONNENTEN.length, color: '#9C27B0' },
           { label: 'Ø Öffnungsrate', value: `${avgOeffnung}%`, color: '#FF9900' },
@@ -389,11 +389,11 @@ function NewsletterStatistiken() {
       </div>
 
       <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '8px', boxShadow: '0 2px 6px rgba(0,0,0,0.07)', marginBottom: '24px' }}>
-        <h3 style={{ marginTop: 0, color: '#003366', fontSize: '15px', marginBottom: '16px' }}>Versendete Newsletter — Performance</h3>
+        <h3 style={{ marginTop: 0, color: 'var(--text)', fontSize: '15px', marginBottom: '16px' }}>Versendete Newsletter — Performance</h3>
         {versendet.map(n => (
           <div key={n.id} style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '14px', paddingBottom: '14px', borderBottom: '1px solid #f0f0f0' }}>
             <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 600, fontSize: '13px', color: '#003366' }}>{n.titel}</div>
+              <div style={{ fontWeight: 600, fontSize: '13px', color: 'var(--text)' }}>{n.titel}</div>
               <div style={{ fontSize: '11px', color: '#666' }}>{n.versendetAm} · {n.empfaengerCount} Empfänger</div>
             </div>
             <div style={{ textAlign: 'center' }}>
@@ -409,7 +409,7 @@ function NewsletterStatistiken() {
       </div>
 
       <div style={{ backgroundColor: '#e8f0fe', border: '1px solid #c5d3f0', borderRadius: '10px', padding: '20px' }}>
-        <h3 style={{ marginTop: 0, color: '#003366', fontSize: '15px', marginBottom: '8px' }}>📊 Erkenntnis</h3>
+        <h3 style={{ marginTop: 0, color: 'var(--text)', fontSize: '15px', marginBottom: '8px' }}>📊 Erkenntnis</h3>
         <p style={{ fontSize: '13px', color: '#3c4043', lineHeight: 1.6, margin: 0 }}>
           Newsletter mit Event-Bezug (April: Failure Night) erzielen die höchste Klickrate (15,8%). Kultur-Momente und konkrete Anfragen
           treiben das Engagement. Die durchschnittliche Öffnungsrate von ~50% liegt deutlich über dem B2B-Branchenschnitt (~21%) —

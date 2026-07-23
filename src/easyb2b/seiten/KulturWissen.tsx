@@ -40,7 +40,7 @@ export default function KulturWissenPage() {
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
         <div>
-          <h1 style={{ margin: 0, color: '#003366', fontSize: '24px' }}>Kultur & Wissen</h1>
+          <h1 style={{ margin: 0, color: 'var(--text)', fontSize: '24px' }}>Kultur & Wissen</h1>
           <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#666' }}>
             Die Wissensbibliothek deutsch-dänischer Zusammenarbeit
           </p>
@@ -50,7 +50,7 @@ export default function KulturWissenPage() {
             <button key={id} onClick={() => setTab(id)} style={{
               padding: '8px 16px', borderRadius: '6px', border: 'none', cursor: 'pointer',
               fontWeight: 600, fontSize: '12px',
-              backgroundColor: tab === id ? '#003366' : '#f0f0f0',
+              backgroundColor: tab === id ? 'var(--accent)' : '#f0f0f0',
               color: tab === id ? 'white' : '#666',
             }}>{label}</button>
           ))}
@@ -127,7 +127,7 @@ function MomentKarte({ m, selected, onClick }: { m: MockKulturMoment; selected: 
   return (
     <div onClick={onClick} style={{
       backgroundColor: 'white', borderRadius: '10px', padding: '16px', cursor: 'pointer',
-      border: selected ? '2px solid #003366' : '2px solid transparent',
+      border: selected ? '2px solid var(--accent)' : '2px solid transparent',
       boxShadow: '0 2px 6px rgba(0,0,0,0.07)', transition: 'all 0.15s',
     }}
       onMouseEnter={e => { if (!selected) (e.currentTarget as HTMLDivElement).style.borderColor = '#ccc'; }}
@@ -140,7 +140,7 @@ function MomentKarte({ m, selected, onClick }: { m: MockKulturMoment; selected: 
           <span style={{ fontSize: '14px' }}>{getLandFlagKultur(m.land)}</span>
         </div>
       </div>
-      <div style={{ fontWeight: 700, fontSize: '15px', color: '#003366', marginBottom: '6px', fontStyle: m.originalSprache ? 'italic' : 'normal' }}>
+      <div style={{ fontWeight: 700, fontSize: '15px', color: 'var(--text)', marginBottom: '6px', fontStyle: m.originalSprache ? 'italic' : 'normal' }}>
         {m.titel}
       </div>
       <p style={{ fontSize: '12px', color: '#555', lineHeight: 1.5, margin: '0 0 10px 0' }}>
@@ -170,14 +170,14 @@ function MomentDetail({ m, onClose }: { m: MockKulturMoment; onClose: () => void
       {toast && (
         <div style={{
           position: 'fixed', bottom: '24px', right: '24px', zIndex: 1000,
-          backgroundColor: '#003366', color: 'white', padding: '14px 20px',
+          backgroundColor: 'var(--accent)', color: 'white', padding: '14px 20px',
           borderRadius: '8px', boxShadow: '0 4px 16px rgba(0,0,0,0.2)', fontSize: '14px', fontWeight: 600,
         }}>{toast}</div>
       )}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
         <div>
           <div style={{ fontSize: '22px', marginBottom: '4px' }}>{getKategorieIcon(m.kategorie)} {getLandFlagKultur(m.land)}</div>
-          <h2 style={{ margin: 0, fontSize: '18px', color: '#003366', fontStyle: m.originalSprache ? 'italic' : 'normal' }}>{m.titel}</h2>
+          <h2 style={{ margin: 0, fontSize: '18px', color: 'var(--text)', fontStyle: m.originalSprache ? 'italic' : 'normal' }}>{m.titel}</h2>
         </div>
         <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '20px', color: '#666' }}>×</button>
       </div>
@@ -203,7 +203,7 @@ function MomentDetail({ m, onClose }: { m: MockKulturMoment; onClose: () => void
             <button key={z} onClick={() => zeigeToast(`Für ${z.split(' ')[1]} übernommen`)} style={{ padding: '8px', backgroundColor: '#f9f9f9', border: '1px solid #e0e0e0', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', color: '#444' }}>{z}</button>
           ))}
         </div>
-        <button onClick={() => { navigator.clipboard?.writeText(`${m.titel}\n\n${m.lernmoment}`); zeigeToast('Text kopiert 📋'); }} style={{ width: '100%', marginTop: '8px', padding: '10px', backgroundColor: '#003366', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}>
+        <button onClick={() => { navigator.clipboard?.writeText(`${m.titel}\n\n${m.lernmoment}`); zeigeToast('Text kopiert 📋'); }} style={{ width: '100%', marginTop: '8px', padding: '10px', backgroundColor: 'var(--accent)', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}>
           📋 Text kopieren
         </button>
       </div>
@@ -217,7 +217,7 @@ function GeschichteKarte({ g, selected, onClick }: { g: MockGrenzgeschichte; sel
   return (
     <div onClick={onClick} style={{
       backgroundColor: 'white', borderRadius: '10px', padding: '18px', cursor: 'pointer',
-      border: selected ? '2px solid #003366' : '2px solid transparent',
+      border: selected ? '2px solid var(--accent)' : '2px solid transparent',
       boxShadow: '0 2px 6px rgba(0,0,0,0.07)', transition: 'all 0.15s',
     }}
       onMouseEnter={e => { if (!selected) (e.currentTarget as HTMLDivElement).style.borderColor = '#ccc'; }}
@@ -227,7 +227,7 @@ function GeschichteKarte({ g, selected, onClick }: { g: MockGrenzgeschichte; sel
         <div style={{ flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
             <span style={{ fontSize: '18px' }}>{getGeschichteTypIcon(g.typ)}</span>
-            <span style={{ fontWeight: 700, fontSize: '15px', color: '#003366' }}>{g.titel}</span>
+            <span style={{ fontWeight: 700, fontSize: '15px', color: 'var(--text)' }}>{g.titel}</span>
           </div>
           <p style={{ fontSize: '13px', color: '#555', lineHeight: 1.5, margin: '0 0 10px 0' }}>{g.situation}</p>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -256,14 +256,14 @@ function GeschichteDetail({ g, onClose }: { g: MockGrenzgeschichte; onClose: () 
       {toast && (
         <div style={{
           position: 'fixed', bottom: '24px', right: '24px', zIndex: 1000,
-          backgroundColor: '#003366', color: 'white', padding: '14px 20px',
+          backgroundColor: 'var(--accent)', color: 'white', padding: '14px 20px',
           borderRadius: '8px', boxShadow: '0 4px 16px rgba(0,0,0,0.2)', fontSize: '14px', fontWeight: 600,
         }}>{toast}</div>
       )}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
         <div>
           <div style={{ fontSize: '22px', marginBottom: '4px' }}>{getGeschichteTypIcon(g.typ)}</div>
-          <h2 style={{ margin: 0, fontSize: '17px', color: '#003366' }}>{g.titel}</h2>
+          <h2 style={{ margin: 0, fontSize: '17px', color: 'var(--text)' }}>{g.titel}</h2>
         </div>
         <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '20px', color: '#666' }}>×</button>
       </div>
@@ -312,7 +312,7 @@ function KulturAnalytics() {
     <div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '14px', marginBottom: '28px' }}>
         {[
-          { label: 'Kultur-Momente', value: MOCK_KULTUR_MOMENTE.length, color: '#003366' },
+          { label: 'Kultur-Momente', value: MOCK_KULTUR_MOMENTE.length, color: 'var(--text)' },
           { label: 'Grenzgeschichten', value: MOCK_GRENZGESCHICHTEN.length, color: '#9C27B0' },
           { label: '🌐 Öffentlich nutzbar', value: oeffentlich, color: '#4CAF50' },
           { label: 'Verwendungen gesamt', value: gesamtVerwendung, color: '#FF9900' },
@@ -326,7 +326,7 @@ function KulturAnalytics() {
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
         <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '8px', boxShadow: '0 2px 6px rgba(0,0,0,0.07)' }}>
-          <h3 style={{ marginTop: 0, color: '#003366', fontSize: '15px', marginBottom: '16px' }}>Häufigste Kategorien</h3>
+          <h3 style={{ marginTop: 0, color: 'var(--text)', fontSize: '15px', marginBottom: '16px' }}>Häufigste Kategorien</h3>
           {Object.entries(katCount).sort((a, b) => b[1] - a[1]).map(([kat, count]) => (
             <div key={kat} style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
               <span style={{ fontSize: '16px', minWidth: '20px' }}>{getKategorieIcon(kat)}</span>
@@ -340,7 +340,7 @@ function KulturAnalytics() {
         </div>
 
         <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '8px', boxShadow: '0 2px 6px rgba(0,0,0,0.07)' }}>
-          <h3 style={{ marginTop: 0, color: '#003366', fontSize: '15px', marginBottom: '16px' }}>Meistgenutzte Inhalte</h3>
+          <h3 style={{ marginTop: 0, color: 'var(--text)', fontSize: '15px', marginBottom: '16px' }}>Meistgenutzte Inhalte</h3>
           {topGenutzt.map((m, i) => (
             <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
               <span style={{ fontSize: '14px', fontWeight: 700, color: '#999', minWidth: '18px' }}>#{i + 1}</span>
@@ -354,7 +354,7 @@ function KulturAnalytics() {
 
       {/* KI-Integration Hinweis */}
       <div style={{ marginTop: '24px', backgroundColor: '#e8f0fe', border: '1px solid #c5d3f0', borderRadius: '10px', padding: '20px' }}>
-        <h3 style={{ marginTop: 0, color: '#003366', fontSize: '15px', marginBottom: '8px' }}>🤖 KI-Anbindung</h3>
+        <h3 style={{ marginTop: 0, color: 'var(--text)', fontSize: '15px', marginBottom: '8px' }}>🤖 KI-Anbindung</h3>
         <p style={{ fontSize: '13px', color: '#3c4043', lineHeight: 1.6, margin: 0 }}>
           Diese Wissensbibliothek dient als Datenquelle für die KI-Zentrale. Bei einem Match zwischen einem deutschen und einem dänischen Unternehmen
           kann die KI automatisch passende Kultur-Momente in Intro-Mails, Cultural Briefings und Eventvorbereitungen einbinden.

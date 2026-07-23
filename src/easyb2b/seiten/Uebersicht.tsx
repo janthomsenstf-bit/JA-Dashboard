@@ -38,13 +38,13 @@ export default function DashboardPage() {
 
   return (
     <div>
-      <h1 style={{ marginTop: 0, marginBottom: '24px', color: '#003366', fontSize: '24px' }}>
+      <h1 style={{ marginTop: 0, marginBottom: '24px', color: 'var(--text)', fontSize: '24px' }}>
         Dashboard Übersicht
       </h1>
 
       {/* Stats Grid */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px', marginBottom: '32px' }}>
-        <StatCard label="Gesamt Anfragen" value={totalAnfragen} color="#003366" />
+        <StatCard label="Gesamt Anfragen" value={totalAnfragen} color="var(--accent)" />
         <StatCard label="Aktive Anfragen" value={activeAnfragen} color="#4CAF50" />
         <StatCard label="Neue Eingehende" value={eingehend} color="#FF9900" />
         <StatCard label="Interessenten" value={totalInteressenten} color="#2196F3" />
@@ -68,7 +68,7 @@ export default function DashboardPage() {
           <span style={{ fontSize: '24px' }}>&#9888;&#65039;</span>
           <div>
             <strong>{eingehend} neue Anfrage(n)</strong> warten auf Überprüfung.{' '}
-            <a href="/dashboard/anfragen" style={{ color: '#003366', fontWeight: 600 }}>Jetzt prüfen</a>
+            <a href="/dashboard/anfragen" style={{ color: 'var(--text)', fontWeight: 600 }}>Jetzt prüfen</a>
           </div>
         </div>
       )}
@@ -81,7 +81,7 @@ export default function DashboardPage() {
           <span style={{ fontSize: '24px' }}>&#128101;</span>
           <div>
             <strong>{neueInteressenten} neue Interessent(en)</strong> warten auf Freigabe.{' '}
-            <a href="/dashboard/interessenten" style={{ color: '#003366', fontWeight: 600 }}>Jetzt prüfen</a>
+            <a href="/dashboard/interessenten" style={{ color: 'var(--text)', fontWeight: 600 }}>Jetzt prüfen</a>
           </div>
         </div>
       )}
@@ -90,7 +90,7 @@ export default function DashboardPage() {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
         {/* Recent Anfragen */}
         <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
-          <h2 style={{ marginTop: 0, color: '#003366', fontSize: '18px', marginBottom: '16px' }}>Letzte Anfragen</h2>
+          <h2 style={{ marginTop: 0, color: 'var(--text)', fontSize: '18px', marginBottom: '16px' }}>Letzte Anfragen</h2>
           {recentAnfragen.map((a) => (
             <div key={a.id} style={{ padding: '12px', borderBottom: '1px solid #f0f0f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
@@ -102,14 +102,14 @@ export default function DashboardPage() {
               </span>
             </div>
           ))}
-          <a href="/dashboard/anfragen" style={{ display: 'block', textAlign: 'center', marginTop: '16px', color: '#003366', fontWeight: 600, textDecoration: 'none', fontSize: '14px' }}>
+          <a href="/dashboard/anfragen" style={{ display: 'block', textAlign: 'center', marginTop: '16px', color: 'var(--text)', fontWeight: 600, textDecoration: 'none', fontSize: '14px' }}>
             Alle Anfragen anzeigen
           </a>
         </div>
 
         {/* Recent Interessenten */}
         <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
-          <h2 style={{ marginTop: 0, color: '#003366', fontSize: '18px', marginBottom: '16px' }}>Letzte Interessenten</h2>
+          <h2 style={{ marginTop: 0, color: 'var(--text)', fontSize: '18px', marginBottom: '16px' }}>Letzte Interessenten</h2>
           {recentInteressenten.map((i) => (
             <div key={i.id} style={{ padding: '12px', borderBottom: '1px solid #f0f0f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
@@ -126,7 +126,7 @@ export default function DashboardPage() {
               </div>
             </div>
           ))}
-          <a href="/dashboard/interessenten" style={{ display: 'block', textAlign: 'center', marginTop: '16px', color: '#003366', fontWeight: 600, textDecoration: 'none', fontSize: '14px' }}>
+          <a href="/dashboard/interessenten" style={{ display: 'block', textAlign: 'center', marginTop: '16px', color: 'var(--text)', fontWeight: 600, textDecoration: 'none', fontSize: '14px' }}>
             Alle Interessenten anzeigen
           </a>
         </div>
@@ -134,7 +134,7 @@ export default function DashboardPage() {
 
       {/* Aktivitätenprotokoll */}
       <div style={{ marginTop: '24px', backgroundColor: 'white', padding: '20px', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
-        <h2 style={{ marginTop: 0, color: '#003366', fontSize: '18px', marginBottom: '16px' }}>
+        <h2 style={{ marginTop: 0, color: 'var(--text)', fontSize: '18px', marginBottom: '16px' }}>
           Aktivitätenprotokoll
         </h2>
         {aktivitaeten.length === 0 ? (

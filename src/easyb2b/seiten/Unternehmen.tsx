@@ -80,8 +80,8 @@ export default function UnternehmenPage() {
       )}
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-        <h1 style={{ margin: 0, color: '#003366', fontSize: '24px' }}>Unternehmen</h1>
-        <button onClick={() => setModalOffen('neu')} style={{ padding: '10px 18px', backgroundColor: '#003366', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}>+ Neues Unternehmen</button>
+        <h1 style={{ margin: 0, color: 'var(--text)', fontSize: '24px' }}>Unternehmen</h1>
+        <button onClick={() => setModalOffen('neu')} style={{ padding: '10px 18px', backgroundColor: 'var(--accent)', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}>+ Neues Unternehmen</button>
       </div>
 
       <div style={{ display: 'flex', gap: '12px', marginBottom: '20px' }}>
@@ -109,7 +109,7 @@ export default function UnternehmenPage() {
                 <div style={{ flex: 1 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
                     <span style={{ fontSize: '16px' }}>{getLandFlag(u.land)}</span>
-                    <span style={{ fontWeight: 700, fontSize: '15px', color: '#003366' }}>{u.firmenname}</span>
+                    <span style={{ fontWeight: 700, fontSize: '15px', color: 'var(--text)' }}>{u.firmenname}</span>
                   </div>
                   <div style={{ fontSize: '12px', color: '#666' }}>{u.branche} · {u.standort} · {getGroesseLabel(u.groesse || '')}</div>
                 </div>
@@ -166,7 +166,7 @@ function UnternehmenDetail({ u, store, tab, setTab, onZurueck, onEdit, onToast }
   return (
     <div>
       {/* Breadcrumb */}
-      <button onClick={onZurueck} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#003366', fontSize: '13px', fontWeight: 600, padding: 0, marginBottom: '16px' }}>
+      <button onClick={onZurueck} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text)', fontSize: '13px', fontWeight: 600, padding: 0, marginBottom: '16px' }}>
         ← Zurück zur Liste
       </button>
 
@@ -176,7 +176,7 @@ function UnternehmenDetail({ u, store, tab, setTab, onZurueck, onEdit, onToast }
           <div style={{ flex: 1 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
               <span style={{ fontSize: '24px' }}>{getLandFlag(u.land)}</span>
-              <h1 style={{ margin: 0, fontSize: '24px', color: '#003366' }}>{u.firmenname}</h1>
+              <h1 style={{ margin: 0, fontSize: '24px', color: 'var(--text)' }}>{u.firmenname}</h1>
             </div>
             <div style={{ fontSize: '14px', color: '#666' }}>{u.ansprechpartner} · {u.branche} · {u.standort}</div>
             <div style={{ display: 'flex', gap: '8px', marginTop: '10px', flexWrap: 'wrap' }}>
@@ -197,7 +197,7 @@ function UnternehmenDetail({ u, store, tab, setTab, onZurueck, onEdit, onToast }
           {tabs.map(t => (
             <button key={t.id} onClick={() => setTab(t.id)} style={{
               padding: '10px 18px', borderRadius: '6px', border: 'none', cursor: 'pointer', fontSize: '13px', fontWeight: 600,
-              backgroundColor: tab === t.id ? '#003366' : '#f0f0f0', color: tab === t.id ? 'white' : '#666',
+              backgroundColor: tab === t.id ? 'var(--accent)' : '#f0f0f0', color: tab === t.id ? 'white' : '#666',
             }}>
               {t.label}{t.count !== undefined ? ` (${t.count})` : ''}
             </button>
@@ -209,7 +209,7 @@ function UnternehmenDetail({ u, store, tab, setTab, onZurueck, onEdit, onToast }
       {tab === 'ueberblick' && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
           <Card titel="Kontaktdaten">
-            <Row label="Email" value={<a href={`mailto:${u.email}`} style={{ color: '#003366' }}>{u.email}</a>} />
+            <Row label="Email" value={<a href={`mailto:${u.email}`} style={{ color: 'var(--text)' }}>{u.email}</a>} />
             {u.telefon && <Row label="Telefon" value={u.telefon} />}
             {u.website && <Row label="Website" value={u.website} />}
             {u.linkedin && <Row label="LinkedIn" value={u.linkedin} />}
@@ -217,14 +217,14 @@ function UnternehmenDetail({ u, store, tab, setTab, onZurueck, onEdit, onToast }
             <Row label="Größe" value={getGroesseLabel(u.groesse || '')} />
           </Card>
           <Card titel="Kultur & Zusammenarbeit">
-            {u.kommunikationsstil && <div style={{ display: 'inline-flex', gap: '6px', padding: '6px 12px', borderRadius: '20px', backgroundColor: '#e8f0fe', color: '#003366', fontSize: '13px', fontWeight: 600, marginBottom: '10px' }}>{getKommunikationStilIcon(u.kommunikationsstil)} {getKommunikationStilLabel(u.kommunikationsstil)}</div>}
+            {u.kommunikationsstil && <div style={{ display: 'inline-flex', gap: '6px', padding: '6px 12px', borderRadius: '20px', backgroundColor: '#e8f0fe', color: 'var(--text)', fontSize: '13px', fontWeight: 600, marginBottom: '10px' }}>{getKommunikationStilIcon(u.kommunikationsstil)} {getKommunikationStilLabel(u.kommunikationsstil)}</div>}
             {u.kulturprofil && <p style={{ fontSize: '13px', color: '#444', lineHeight: 1.6, margin: '0 0 8px 0' }}>{u.kulturprofil}</p>}
             {u.funFactStandard && <div style={{ backgroundColor: '#fff8e1', borderRadius: '6px', padding: '10px', fontSize: '13px', color: '#555', border: '1px solid #ffe082' }}><span style={{ fontWeight: 600, color: '#f57f17' }}>FunFact:</span> "{u.funFactStandard}"</div>}
           </Card>
           <Card titel="Schnellübersicht">
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
               {[
-                { label: 'Eigene Projekte', v: eigeneProjekte.length, c: '#003366' },
+                { label: 'Eigene Projekte', v: eigeneProjekte.length, c: 'var(--accent)' },
                 { label: 'Beteiligungen', v: beteiligungen.length, c: '#2196F3' },
                 { label: 'Erfolge', v: u.successStories || 0, c: '#4CAF50' },
               ].map(k => (
@@ -311,7 +311,7 @@ function UnternehmenDetail({ u, store, tab, setTab, onZurueck, onEdit, onToast }
                   <div key={a.id} style={{ backgroundColor: 'white', borderRadius: '10px', padding: '18px', boxShadow: '0 2px 6px rgba(0,0,0,0.07)', borderLeft: `5px solid ${getGesundheitColor(ps.gesundheit)}` }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                       <div>
-                        <div style={{ fontWeight: 700, fontSize: '15px', color: '#003366', marginBottom: '4px' }}>
+                        <div style={{ fontWeight: 700, fontSize: '15px', color: 'var(--text)', marginBottom: '4px' }}>
                           {getGesundheitEmoji(ps.gesundheit)} {a.ziel}
                         </div>
                         <div style={{ fontSize: '12px', color: '#666' }}>{a.anzeigenId} · {a.branche} · {getRichtungLabel(a.richtung)}</div>
@@ -346,7 +346,7 @@ function UnternehmenDetail({ u, store, tab, setTab, onZurueck, onEdit, onToast }
                           Schritt {a.workflowStatus}: {getWorkflowStatusLabel(a.workflowStatus)}
                         </span>
                       )}
-                      <a href="/dashboard/projekte" style={{ fontSize: '12px', color: '#003366', fontWeight: 600, textDecoration: 'none', marginLeft: 'auto' }}>
+                      <a href="/dashboard/projekte" style={{ fontSize: '12px', color: 'var(--text)', fontWeight: 600, textDecoration: 'none', marginLeft: 'auto' }}>
                         → Zum Projekt
                       </a>
                       {(a.workflowStatus === 'unternehmen_angelegt' || a.workflowStatus === 'unternehmen_verifiziert') && (
@@ -383,7 +383,7 @@ function UnternehmenDetail({ u, store, tab, setTab, onZurueck, onEdit, onToast }
                 <div key={i.id} style={{ backgroundColor: 'white', borderRadius: '10px', padding: '16px', boxShadow: '0 2px 6px rgba(0,0,0,0.07)', borderLeft: `4px solid ${getStatusColor(i.status)}` }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
-                      <div style={{ fontSize: '14px', fontWeight: 600, color: '#003366' }}>Interesse an: {i.anfrageFirma}</div>
+                      <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text)' }}>Interesse an: {i.anfrageFirma}</div>
                       <div style={{ fontSize: '12px', color: '#666', marginTop: '2px' }}>{i.ansprechpartner} · {i.createdAt}</div>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -460,13 +460,13 @@ function UnternehmenDetail({ u, store, tab, setTab, onZurueck, onEdit, onToast }
 // ─── HILFSKOMPONENTEN ─────────────────────────────────────────
 
 function Toast({ msg }: { msg: string }) {
-  return <div style={{ position: 'fixed', bottom: '24px', right: '24px', zIndex: 4000, backgroundColor: '#003366', color: 'white', padding: '14px 20px', borderRadius: '8px', boxShadow: '0 4px 16px rgba(0,0,0,0.2)', fontSize: '14px', fontWeight: 600 }}>{msg}</div>;
+  return <div style={{ position: 'fixed', bottom: '24px', right: '24px', zIndex: 4000, backgroundColor: 'var(--accent)', color: 'white', padding: '14px 20px', borderRadius: '8px', boxShadow: '0 4px 16px rgba(0,0,0,0.2)', fontSize: '14px', fontWeight: 600 }}>{msg}</div>;
 }
 
 function Card({ titel, children, style: s }: { titel: string; children: React.ReactNode; style?: React.CSSProperties }) {
   return (
     <div style={{ backgroundColor: 'white', borderRadius: '10px', padding: '18px', boxShadow: '0 2px 6px rgba(0,0,0,0.07)', ...s }}>
-      <h3 style={{ margin: '0 0 12px 0', fontSize: '14px', fontWeight: 700, color: '#003366' }}>{titel}</h3>
+      <h3 style={{ margin: '0 0 12px 0', fontSize: '14px', fontWeight: 700, color: 'var(--text)' }}>{titel}</h3>
       {children}
     </div>
   );

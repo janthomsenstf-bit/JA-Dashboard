@@ -58,13 +58,13 @@ export default function ProjektePage() {
     <div>
       {/* Toast */}
       {toast && (
-        <div style={{ position: 'fixed', bottom: '24px', right: '24px', zIndex: 9999, backgroundColor: '#003366', color: 'white', padding: '14px 20px', borderRadius: '8px', boxShadow: '0 4px 16px rgba(0,0,0,0.2)', fontSize: '14px', fontWeight: 600 }}>
+        <div style={{ position: 'fixed', bottom: '24px', right: '24px', zIndex: 9999, backgroundColor: 'var(--accent)', color: 'white', padding: '14px 20px', borderRadius: '8px', boxShadow: '0 4px 16px rgba(0,0,0,0.2)', fontSize: '14px', fontWeight: 600 }}>
           {toast}
         </div>
       )}
 
       <div style={{ marginBottom: '8px' }}>
-        <h1 style={{ margin: 0, color: '#003366', fontSize: '24px' }}>Vermittlungsprojekte</h1>
+        <h1 style={{ margin: 0, color: 'var(--text)', fontSize: '24px' }}>Vermittlungsprojekte</h1>
         <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#555' }}>
           Jede Anfrage als Projekt — Klick auf eine Karte öffnet die Details.
         </p>
@@ -73,7 +73,7 @@ export default function ProjektePage() {
       {/* Übersicht-KPIs */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '14px', margin: '24px 0' }}>
         {[
-          { label: 'Projekte gesamt', value: projekte.length, color: '#003366', filter: 'alle' as const },
+          { label: 'Projekte gesamt', value: projekte.length, color: 'var(--text)', filter: 'alle' as const },
           { label: '🟢 Hohe Aktivität',      value: gruen,   color: '#4CAF50', filter: 'gruen' as const },
           { label: '🟡 Wenig Interesse',      value: gelb,    color: '#FF9900', filter: 'gelb' as const },
           { label: '🔴 Aufmerksamkeit nötig', value: rot,     color: '#f44336', filter: 'rot' as const },
@@ -119,7 +119,7 @@ export default function ProjektePage() {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
                       <span>{getGesundheitEmoji(s.gesundheit)}</span>
-                      <span style={{ fontWeight: 700, fontSize: '16px', color: '#003366' }}>{a.ziel}</span>
+                      <span style={{ fontWeight: 700, fontSize: '16px', color: 'var(--text)' }}>{a.ziel}</span>
                     </div>
                     <div style={{ fontSize: '13px', color: '#444', marginBottom: '8px' }}>
                       {getRichtungLabel(a.richtung)} {a.firmenname} · {a.branche} · {a.anzeigenId}
@@ -274,9 +274,9 @@ function ProjektInhalt({ anfrage: a, status: s, zuordnungen, interessenten, stor
         ] as const).map(tab => (
           <button key={tab.key} onClick={() => setAktiveTab(tab.key)} style={{
             padding: '10px 20px', fontSize: '13px', fontWeight: aktiveTab === tab.key ? 700 : 500, cursor: 'pointer',
-            border: 'none', borderBottom: aktiveTab === tab.key ? '3px solid #003366' : '3px solid transparent',
+            border: 'none', borderBottom: aktiveTab === tab.key ? '3px solid var(--accent)' : '3px solid transparent',
             backgroundColor: aktiveTab === tab.key ? '#f0f4ff' : 'transparent',
-            color: aktiveTab === tab.key ? '#003366' : '#555',
+            color: aktiveTab === tab.key ? 'var(--accent)' : '#555',
             marginBottom: '-2px', whiteSpace: 'nowrap' as const,
             display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.15s',
           }}>
@@ -295,7 +295,7 @@ function ProjektInhalt({ anfrage: a, status: s, zuordnungen, interessenten, stor
           <div><span style={{ color: '#555', fontWeight: 500 }}>Art:</span> {a.art}</div>
           <div><span style={{ color: '#555', fontWeight: 500 }}>Sichtbarkeit:</span> {a.sichtbarkeit}</div>
         </div>
-        <a href="/dashboard/anfragen" style={{ fontSize: '12px', color: '#003366', fontWeight: 600, textDecoration: 'none', display: 'inline-block', marginTop: '8px' }}>→ Anfrage bearbeiten</a>
+        <a href="/dashboard/anfragen" style={{ fontSize: '12px', color: 'var(--text)', fontWeight: 600, textDecoration: 'none', display: 'inline-block', marginTop: '8px' }}>→ Anfrage bearbeiten</a>
       </Section>
       )}
 
@@ -314,7 +314,7 @@ function ProjektInhalt({ anfrage: a, status: s, zuordnungen, interessenten, stor
               <div key={z.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '10px 0', borderBottom: '1px solid #e8e8e8', fontSize: '13px' }}>
                 <div style={{ flex: 1 }}>
                   <div>
-                    <span style={{ fontWeight: 600, color: '#003366' }}>{i.firmenname}</span>
+                    <span style={{ fontWeight: 600, color: 'var(--text)' }}>{i.firmenname}</span>
                     <span style={{ color: '#444' }}> · {i.ansprechpartner}</span>
                     <span style={{ marginLeft: '6px', padding: '1px 6px', borderRadius: '8px', fontSize: '9px', fontWeight: 700, backgroundColor: z.zuordnungsart === 'manuell' ? '#FF990020' : '#99999920', color: z.zuordnungsart === 'manuell' ? '#e65100' : '#777' }}>
                       {z.zuordnungsart === 'manuell' ? '✋ manuell' : '⚙ auto'}
@@ -337,7 +337,7 @@ function ProjektInhalt({ anfrage: a, status: s, zuordnungen, interessenten, stor
             );
           })
         )}
-        <a href="/dashboard/interessenten" style={{ fontSize: '12px', color: '#003366', fontWeight: 600, textDecoration: 'none', display: 'inline-block', marginTop: '8px' }}>→ Interessenten verwalten</a>
+        <a href="/dashboard/interessenten" style={{ fontSize: '12px', color: 'var(--text)', fontWeight: 600, textDecoration: 'none', display: 'inline-block', marginTop: '8px' }}>→ Interessenten verwalten</a>
         <div style={{ fontSize: '11px', color: '#555', marginTop: '6px', fontStyle: 'italic' }}>
           ℹ️ Eingangskorb — neue Interessensbekundungen vom Marktplatz. Nach Prüfung „Kontakt erstellen".
         </div>
@@ -353,7 +353,7 @@ function ProjektInhalt({ anfrage: a, status: s, zuordnungen, interessenten, stor
             return (
               <div key={k.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid #e8e8e8', fontSize: '13px' }}>
                 <div>
-                  <span style={{ fontWeight: 600, color: '#003366' }}>{k.firmenname}</span>
+                  <span style={{ fontWeight: 600, color: 'var(--text)' }}>{k.firmenname}</span>
                   <span style={{ color: '#444' }}> · {k.ansprechpartner}</span>
                   {k.region && <span style={{ color: '#444', fontSize: '11px' }}> · {k.region}</span>}
                   {z.notiz && <div style={{ fontSize: '11px', color: '#555', fontStyle: 'italic', marginTop: '2px' }}>„{z.notiz}"</div>}
@@ -367,14 +367,14 @@ function ProjektInhalt({ anfrage: a, status: s, zuordnungen, interessenten, stor
         )}
 
         {!kontaktSucheOffen ? (
-          <button onClick={() => setKontaktSucheOffen(true)} style={{ marginTop: '10px', padding: '7px 14px', backgroundColor: '#003366', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 600 }}>
+          <button onClick={() => setKontaktSucheOffen(true)} style={{ marginTop: '10px', padding: '7px 14px', backgroundColor: 'var(--accent)', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 600 }}>
             + Kontakt hinzufügen
           </button>
         ) : (
           <div style={{ marginTop: '12px', padding: '14px', backgroundColor: '#f0f4ff', borderRadius: '8px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-              <div style={{ fontSize: '12px', fontWeight: 700, color: '#003366' }}>Bestehenden Kontakt suchen</div>
-              <a href="/dashboard/kontakte" style={{ fontSize: '11px', color: '#003366', fontWeight: 600, textDecoration: 'none' }}>+ Neuen Kontakt anlegen →</a>
+              <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text)' }}>Bestehenden Kontakt suchen</div>
+              <a href="/dashboard/kontakte" style={{ fontSize: '11px', color: 'var(--text)', fontWeight: 600, textDecoration: 'none' }}>+ Neuen Kontakt anlegen →</a>
             </div>
             <input value={kontaktSuche} onChange={e => setKontaktSuche(e.target.value)} placeholder="Name, Firma, Branche, Region, E-Mail…" style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #ddd', fontSize: '13px', boxSizing: 'border-box', marginBottom: '8px' }} />
             <div style={{ maxHeight: '180px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -382,7 +382,7 @@ function ProjektInhalt({ anfrage: a, status: s, zuordnungen, interessenten, stor
                 <p style={{ fontSize: '12px', color: '#555', margin: 0 }}>Keine passenden Kontakte. Lege im Kontakte-Modul einen neuen an.</p>
               ) : verfuegbareKontakte.slice(0, 8).map(k => (
                 <button key={k.id} onClick={() => kontaktHinzufuegen(k.id)} style={{ textAlign: 'left', padding: '8px 10px', backgroundColor: 'white', border: '1px solid #ddd', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>
-                  <div style={{ fontWeight: 600, color: '#003366' }}>{k.firmenname}</div>
+                  <div style={{ fontWeight: 600, color: 'var(--text)' }}>{k.firmenname}</div>
                   <div style={{ fontSize: '11px', color: '#555' }}>{k.ansprechpartner} · {k.email}{k.region ? ` · ${k.region}` : ''}</div>
                 </button>
               ))}
@@ -512,12 +512,12 @@ function SocialMediaTab({ anfrage: a, store, onToast }: {
             return (
               <button key={p} onClick={() => { setPlattform(p); if (saved) { setBeitrag(saved.text); setHashtags(saved.hashtags); } else if (plattform !== p) { setBeitrag(''); setHashtags(''); } }} style={{
                 flex: 1, padding: '14px 10px', borderRadius: '10px', cursor: 'pointer',
-                border: plattform === p ? '2px solid #003366' : '1px solid #ddd',
+                border: plattform === p ? '2px solid var(--accent)' : '1px solid #ddd',
                 backgroundColor: plattform === p ? '#f0f4ff' : 'white',
                 textAlign: 'center', transition: 'all 0.15s',
               }}>
                 <div style={{ fontSize: '24px', marginBottom: '6px' }}>{m.icon}</div>
-                <div style={{ fontSize: '13px', fontWeight: plattform === p ? 700 : 500, color: plattform === p ? '#003366' : '#555' }}>{m.label}</div>
+                <div style={{ fontSize: '13px', fontWeight: plattform === p ? 700 : 500, color: plattform === p ? 'var(--accent)' : '#555' }}>{m.label}</div>
                 {saved && <div style={{ fontSize: '10px', color: '#4CAF50', marginTop: '3px', fontWeight: 600 }}>✓ Gespeichert</div>}
               </button>
             );
@@ -525,7 +525,7 @@ function SocialMediaTab({ anfrage: a, store, onToast }: {
         </div>
 
         {/* Tipp */}
-        <div style={{ padding: '10px 14px', backgroundColor: '#f0f4ff', borderRadius: '8px', fontSize: '12px', color: '#003366', marginBottom: '16px' }}>
+        <div style={{ padding: '10px 14px', backgroundColor: '#f0f4ff', borderRadius: '8px', fontSize: '12px', color: 'var(--text)', marginBottom: '16px' }}>
           💡 <strong>Tipp für {META[plattform].label}:</strong> {META[plattform].tip}
         </div>
 
@@ -534,7 +534,7 @@ function SocialMediaTab({ anfrage: a, store, onToast }: {
           <div style={{ textAlign: 'center', padding: '30px', border: '2px dashed #d0ddf0', borderRadius: '10px', backgroundColor: '#fafbff' }}>
             <div style={{ fontSize: '28px', marginBottom: '10px' }}>{META[plattform].icon}</div>
             <button onClick={generiere} disabled={generating} style={{
-              padding: '10px 28px', backgroundColor: '#003366', color: 'white', border: 'none',
+              padding: '10px 28px', backgroundColor: 'var(--accent)', color: 'white', border: 'none',
               borderRadius: '8px', fontSize: '13px', fontWeight: 700, cursor: generating ? 'wait' : 'pointer',
               opacity: generating ? 0.7 : 1,
             }}>
@@ -546,7 +546,7 @@ function SocialMediaTab({ anfrage: a, store, onToast }: {
         {/* Beitrag Editor */}
         {beitrag && (
           <div>
-            <label style={{ fontSize: '11px', fontWeight: 700, color: '#003366', display: 'block', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Beitragstext</label>
+            <label style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text)', display: 'block', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Beitragstext</label>
             <textarea
               value={beitrag}
               onChange={e => setBeitrag(e.target.value)}
@@ -558,7 +558,7 @@ function SocialMediaTab({ anfrage: a, store, onToast }: {
             </div>
 
             <div style={{ marginTop: '10px' }}>
-              <label style={{ fontSize: '11px', fontWeight: 700, color: '#003366', display: 'block', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Hashtags</label>
+              <label style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text)', display: 'block', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Hashtags</label>
               <input
                 value={hashtags}
                 onChange={e => setHashtags(e.target.value)}
@@ -575,7 +575,7 @@ function SocialMediaTab({ anfrage: a, store, onToast }: {
 
             {/* Aktionen */}
             <div style={{ display: 'flex', gap: '8px', marginTop: '14px', flexWrap: 'wrap' }}>
-              <button onClick={kopiere} style={{ padding: '8px 18px', backgroundColor: '#003366', color: 'white', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}>
+              <button onClick={kopiere} style={{ padding: '8px 18px', backgroundColor: 'var(--accent)', color: 'white', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}>
                 📋 Kopieren
               </button>
               <button onClick={speichere} style={{ padding: '8px 18px', backgroundColor: '#e8f5e9', color: '#1b5e20', border: '1px solid #a5d6a7', borderRadius: '6px', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}>
@@ -598,8 +598,8 @@ function SocialMediaTab({ anfrage: a, store, onToast }: {
           {Object.entries(gespeichert).map(([key, val]) => (
             <div key={key} style={{ padding: '12px 14px', backgroundColor: '#f8f9fa', borderRadius: '8px', marginBottom: '8px', border: '1px solid #e8e8e8' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                <span style={{ fontSize: '13px', fontWeight: 700, color: '#003366' }}>{META[key as keyof typeof META]?.icon} {META[key as keyof typeof META]?.label}</span>
-                <button onClick={() => { navigator.clipboard.writeText(val.text + (val.hashtags ? '\n\n' + val.hashtags : '')); onToast('Kopiert ✓'); }} style={{ padding: '4px 12px', backgroundColor: 'white', border: '1px solid #ddd', borderRadius: '6px', fontSize: '11px', cursor: 'pointer', fontWeight: 600, color: '#003366' }}>📋 Kopieren</button>
+                <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)' }}>{META[key as keyof typeof META]?.icon} {META[key as keyof typeof META]?.label}</span>
+                <button onClick={() => { navigator.clipboard.writeText(val.text + (val.hashtags ? '\n\n' + val.hashtags : '')); onToast('Kopiert ✓'); }} style={{ padding: '4px 12px', backgroundColor: 'white', border: '1px solid #ddd', borderRadius: '6px', fontSize: '11px', cursor: 'pointer', fontWeight: 600, color: 'var(--text)' }}>📋 Kopieren</button>
               </div>
               <div style={{ fontSize: '12px', color: '#555', whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{val.text.slice(0, 200)}{val.text.length > 200 ? '…' : ''}</div>
             </div>
@@ -609,7 +609,7 @@ function SocialMediaTab({ anfrage: a, store, onToast }: {
 
       {/* Zukunfts-Hinweis */}
       <div style={{ padding: '16px', backgroundColor: '#f0f4ff', borderRadius: '10px', border: '1px dashed #90caf9' }}>
-        <div style={{ fontSize: '12px', fontWeight: 700, color: '#003366', marginBottom: '6px' }}>🔮 Zukünftig geplant</div>
+        <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text)', marginBottom: '6px' }}>🔮 Zukünftig geplant</div>
         <div style={{ fontSize: '12px', color: '#555', lineHeight: 1.6 }}>
           Direkte Veröffentlichung über API-Anbindung an LinkedIn, Facebook und Instagram.
           Aktuell: Beitrag erstellen → kopieren → manuell in der jeweiligen Plattform posten.
@@ -638,7 +638,7 @@ function AktivitaetenTab({ anfrage: a, status: s, interessenten, store, matchVor
       <Section titel="Projekt-Zeitlinie">
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
           {[
-            { icon: '📅', color: '#003366', label: 'Projekt erstellt', datum: a.createdAt, show: true },
+            { icon: '📅', color: 'var(--text)', label: 'Projekt erstellt', datum: a.createdAt, show: true },
             { icon: '🚀', color: '#2e7d32', label: 'Veröffentlicht', datum: a.veroeffentlichtAm, show: !!a.veroeffentlichtAm },
             { icon: '👥', color: '#2196F3', label: 'Erster Interessent', datum: interessenten[0]?.createdAt, show: interessenten.length > 0 },
             { icon: '🎯', color: '#FF9900', label: 'Erster Match-Vorschlag', datum: matchVorschlaege[0]?.erstelltAm, show: matchVorschlaege.length > 0 },
@@ -664,7 +664,7 @@ function AktivitaetenTab({ anfrage: a, status: s, interessenten, store, matchVor
           {[
             { label: 'Interessenten gesamt', value: interessenten.length, icon: '👥', color: '#2196F3' },
             { label: 'Match-Vorschläge', value: matchVorschlaege.length, icon: '🎯', color: '#FF9900' },
-            { label: 'Aktive Matches', value: matchVorschlaege.filter(m => !['abgelehnt_suchender', 'abgelehnt_interessent', 'abgeschlossen'].includes(m.status)).length, icon: '🤝', color: '#003366' },
+            { label: 'Aktive Matches', value: matchVorschlaege.filter(m => !['abgelehnt_suchender', 'abgelehnt_interessent', 'abgeschlossen'].includes(m.status)).length, icon: '🤝', color: 'var(--text)' },
             { label: 'Abgeschlossen', value: matchVorschlaege.filter(m => m.status === 'abgeschlossen').length, icon: '⭐', color: '#2e7d32' },
             { label: 'Abgelehnt', value: matchVorschlaege.filter(m => m.status.startsWith('abgelehnt')).length, icon: '❌', color: '#c62828' },
             { label: 'Erfolgsquote', value: `${s.erfolgsquote}%`, icon: '📈', color: '#9C27B0' },
@@ -875,7 +875,7 @@ function MatchSektion({ anfrage: a, matchVorschlaege, store, onToast }: {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '2px' }}>
                       <span style={{ fontSize: '14px' }}>{getMatchStatusIcon(match.status)}</span>
-                      <span style={{ fontWeight: 600, fontSize: '14px', color: '#003366' }}>{match.interessentFirma}</span>
+                      <span style={{ fontWeight: 600, fontSize: '14px', color: 'var(--text)' }}>{match.interessentFirma}</span>
                       <span style={{ fontWeight: 700, fontSize: '13px', color: match.score >= 80 ? '#4CAF50' : '#FF9900' }}>{match.score}%</span>
                     </div>
                     <div style={{ fontSize: '11px', color: '#444' }}>
@@ -895,7 +895,7 @@ function MatchSektion({ anfrage: a, matchVorschlaege, store, onToast }: {
                   <div style={{ padding: '0 14px 14px 14px', borderTop: '1px solid #f0f0f0' }}>
                     {/* Match-Gründe */}
                     <div style={{ margin: '12px 0', padding: '10px 12px', backgroundColor: '#f0f7ff', borderRadius: '6px' }}>
-                      <div style={{ fontSize: '11px', fontWeight: 700, color: '#003366', marginBottom: '6px' }}>Warum passt dieser Kontakt?</div>
+                      <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text)', marginBottom: '6px' }}>Warum passt dieser Kontakt?</div>
                       {match.gruende.map((g, i) => (
                         <div key={i} style={{ display: 'flex', gap: '6px', fontSize: '12px', color: '#333', padding: '2px 0' }}>
                           <span style={{ color: '#4CAF50', flexShrink: 0 }}>✓</span><span>{g}</span>
@@ -918,7 +918,7 @@ function MatchSektion({ anfrage: a, matchVorschlaege, store, onToast }: {
                     {/* Vorschlag erstellt → "Match vorschlagen" (Consent starten) */}
                     {match.status === 'vorschlag_erstellt' && (
                       <div style={{ padding: '12px', backgroundColor: '#f0f4ff', borderRadius: '8px', marginBottom: '10px' }}>
-                        <p style={{ fontSize: '12px', color: '#003366', margin: '0 0 10px 0', fontWeight: 600 }}>
+                        <p style={{ fontSize: '12px', color: 'var(--text)', margin: '0 0 10px 0', fontWeight: 600 }}>
                           Freigabeprozess starten? Beide Parteien erhalten eine E-Mail mit Match-Details — <strong>ohne Kontaktdaten</strong>.
                         </p>
 
@@ -934,7 +934,7 @@ function MatchSektion({ anfrage: a, matchVorschlaege, store, onToast }: {
                           </div>
                         </div>
 
-                        {ss === 'idle' && <button onClick={() => sendeFreigabeAnfrage(match)} style={{ padding: '8px 16px', backgroundColor: '#003366', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 700 }}>🎯 Match vorschlagen & Freigabe anfragen</button>}
+                        {ss === 'idle' && <button onClick={() => sendeFreigabeAnfrage(match)} style={{ padding: '8px 16px', backgroundColor: 'var(--accent)', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 700 }}>🎯 Match vorschlagen & Freigabe anfragen</button>}
                         {ss === 'sending' && <span style={{ fontSize: '12px', color: '#555' }}>⏳ Mails werden gesendet…</span>}
                         {ss === 'sent' && <span style={{ fontSize: '12px', color: '#4CAF50', fontWeight: 600 }}>✅ Freigabe-Anfragen gesendet</span>}
                         {ss === 'error' && <span style={{ fontSize: '12px', color: '#f44336' }}>❌ Fehler — API-Key prüfen</span>}
@@ -949,7 +949,7 @@ function MatchSektion({ anfrage: a, matchVorschlaege, store, onToast }: {
                         {/* Suchender */}
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', backgroundColor: 'white', borderRadius: '6px', marginBottom: '6px', border: '1px solid #e8e8e8' }}>
                           <div>
-                            <div style={{ fontSize: '12px', fontWeight: 600, color: '#003366' }}>📋 {a.firmenname} <span style={{ color: '#555', fontWeight: 400 }}>(Suchender)</span></div>
+                            <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text)' }}>📋 {a.firmenname} <span style={{ color: '#555', fontWeight: 400 }}>(Suchender)</span></div>
                             {match.zustimmungSuchender ? (
                               <div style={{ fontSize: '11px', color: '#4CAF50', marginTop: '2px' }}>
                                 ✅ Zugestimmt am {new Date(match.zustimmungSuchender.zeitpunkt).toLocaleDateString('de-DE')} um {new Date(match.zustimmungSuchender.zeitpunkt).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}
@@ -969,7 +969,7 @@ function MatchSektion({ anfrage: a, matchVorschlaege, store, onToast }: {
                         {/* Interessent */}
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', backgroundColor: 'white', borderRadius: '6px', border: '1px solid #e8e8e8' }}>
                           <div>
-                            <div style={{ fontSize: '12px', fontWeight: 600, color: '#003366' }}>👥 {match.interessentFirma} <span style={{ color: '#555', fontWeight: 400 }}>(Interessent)</span></div>
+                            <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text)' }}>👥 {match.interessentFirma} <span style={{ color: '#555', fontWeight: 400 }}>(Interessent)</span></div>
                             {match.zustimmungInteressent ? (
                               <div style={{ fontSize: '11px', color: '#4CAF50', marginTop: '2px' }}>
                                 ✅ Zugestimmt am {new Date(match.zustimmungInteressent.zeitpunkt).toLocaleDateString('de-DE')} um {new Date(match.zustimmungInteressent.zeitpunkt).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}
@@ -1001,7 +1001,7 @@ function MatchSektion({ anfrage: a, matchVorschlaege, store, onToast }: {
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '12px' }}>
                           {match.zustimmungSuchender && (
                             <div style={{ padding: '8px 10px', backgroundColor: 'white', borderRadius: '6px', fontSize: '11px' }}>
-                              <div style={{ fontWeight: 600, color: '#003366' }}>{match.zustimmungSuchender.unternehmen}</div>
+                              <div style={{ fontWeight: 600, color: 'var(--text)' }}>{match.zustimmungSuchender.unternehmen}</div>
                               <div style={{ color: '#444' }}>Zustimmung: {new Date(match.zustimmungSuchender.zeitpunkt).toLocaleDateString('de-DE')}</div>
                               <div style={{ color: '#444' }}>{new Date(match.zustimmungSuchender.zeitpunkt).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} Uhr</div>
                               <div style={{ color: '#444' }}>Person: {match.zustimmungSuchender.person}</div>
@@ -1009,7 +1009,7 @@ function MatchSektion({ anfrage: a, matchVorschlaege, store, onToast }: {
                           )}
                           {match.zustimmungInteressent && (
                             <div style={{ padding: '8px 10px', backgroundColor: 'white', borderRadius: '6px', fontSize: '11px' }}>
-                              <div style={{ fontWeight: 600, color: '#003366' }}>{match.zustimmungInteressent.unternehmen}</div>
+                              <div style={{ fontWeight: 600, color: 'var(--text)' }}>{match.zustimmungInteressent.unternehmen}</div>
                               <div style={{ color: '#444' }}>Zustimmung: {new Date(match.zustimmungInteressent.zeitpunkt).toLocaleDateString('de-DE')}</div>
                               <div style={{ color: '#444' }}>{new Date(match.zustimmungInteressent.zeitpunkt).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} Uhr</div>
                               <div style={{ color: '#444' }}>Person: {match.zustimmungInteressent.person}</div>
@@ -1066,7 +1066,7 @@ function MatchSektion({ anfrage: a, matchVorschlaege, store, onToast }: {
                       <div style={{ padding: '12px', backgroundColor: '#ffebee', borderRadius: '8px', marginBottom: '10px' }}>
                         <div style={{ fontSize: '12px', fontWeight: 700, color: '#c62828', marginBottom: '6px' }}>⚠ Problem gemeldet</div>
                         <div style={{ display: 'flex', gap: '6px' }}>
-                          <button onClick={() => store.setzeMatchStatus(match.id, 'erstkontakt_offen')} style={{ padding: '5px 12px', backgroundColor: 'white', color: '#003366', border: '1px solid #ddd', borderRadius: '5px', cursor: 'pointer', fontSize: '11px', fontWeight: 600 }}>↩ Wieder öffnen</button>
+                          <button onClick={() => store.setzeMatchStatus(match.id, 'erstkontakt_offen')} style={{ padding: '5px 12px', backgroundColor: 'white', color: 'var(--text)', border: '1px solid #ddd', borderRadius: '5px', cursor: 'pointer', fontSize: '11px', fontWeight: 600 }}>↩ Wieder öffnen</button>
                           <button onClick={() => store.setzeMatchStatus(match.id, 'abgeschlossen')} style={{ padding: '5px 12px', backgroundColor: '#f5f5f5', color: '#555', border: '1px solid #ddd', borderRadius: '5px', cursor: 'pointer', fontSize: '11px', fontWeight: 600 }}>Abschließen</button>
                         </div>
                       </div>
@@ -1141,7 +1141,7 @@ function FormularSektion({ anfrage: a, store, onToast }: {
 
       {/* Formular-Auswahl */}
       <div>
-        <label style={{ fontSize: '12px', fontWeight: 600, color: '#003366' }}>👥 Interessentenformular auswählen</label>
+        <label style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text)' }}>👥 Interessentenformular auswählen</label>
         <select
           value={aktInteressentId}
           onChange={e => { store.updateAnfrage(a.id, { interessentFormularId: e.target.value }); store.logge('Interessentenformular zugeordnet', a.anzeigenId, 'bearbeiten'); onToast('Interessentenformular zugeordnet ✓'); }}
@@ -1158,7 +1158,7 @@ function FormularSektion({ anfrage: a, store, onToast }: {
         <div style={{ marginTop: '12px', padding: '14px', backgroundColor: '#f0f4ff', borderRadius: '8px', border: '1px solid #d0ddf0' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
             <div>
-              <div style={{ fontSize: '14px', fontWeight: 700, color: '#003366' }}>{aktInteressent.name}</div>
+              <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text)' }}>{aktInteressent.name}</div>
               <div style={{ fontSize: '11px', color: '#555', marginTop: '2px' }}>
                 {aktInteressent.fragen.length} Fragen
                 {aktInteressent.branche && <span> · Branche: {aktInteressent.branche}</span>}
@@ -1168,11 +1168,11 @@ function FormularSektion({ anfrage: a, store, onToast }: {
             <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
               <button
                 onClick={() => setZeigeVorschau(prev => !prev)}
-                style={{ padding: '5px 12px', fontSize: '11px', fontWeight: 600, backgroundColor: 'white', color: '#003366', border: '1px solid #bfdbfe', borderRadius: '6px', cursor: 'pointer' }}
+                style={{ padding: '5px 12px', fontSize: '11px', fontWeight: 600, backgroundColor: 'white', color: 'var(--text)', border: '1px solid #bfdbfe', borderRadius: '6px', cursor: 'pointer' }}
               >
                 {zeigeVorschau ? '▴ Vorschau ausblenden' : '👁 Vorschau'}
               </button>
-              <a href="/dashboard/formulare" style={{ padding: '5px 12px', fontSize: '11px', fontWeight: 600, backgroundColor: '#003366', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', textDecoration: 'none', display: 'inline-block' }}>
+              <a href="/dashboard/formulare" style={{ padding: '5px 12px', fontSize: '11px', fontWeight: 600, backgroundColor: 'var(--accent)', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', textDecoration: 'none', display: 'inline-block' }}>
                 ✏️ Bearbeiten
               </a>
             </div>
@@ -1190,7 +1190,7 @@ function FormularSektion({ anfrage: a, store, onToast }: {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                   {aktInteressent.fragen.map((fr, idx) => (
                     <div key={fr.id} style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', fontSize: '12px', color: '#333', padding: '4px 0' }}>
-                      <span style={{ color: '#003366', fontWeight: 700, flexShrink: 0, minWidth: '18px' }}>{idx + 1}.</span>
+                      <span style={{ color: 'var(--text)', fontWeight: 700, flexShrink: 0, minWidth: '18px' }}>{idx + 1}.</span>
                       <span>{fr.text}</span>
                       {fr.pflicht && <span style={{ color: '#c62828', fontSize: '10px', flexShrink: 0 }}>*</span>}
                     </div>
@@ -1234,9 +1234,9 @@ function MkBtn({ children, onClick, variant = 'default', disabled }: {
 }) {
   const styles: Record<string, React.CSSProperties> = {
     default: { backgroundColor: '#f5f5f5', color: '#333', border: '1px solid #ddd' },
-    primary: { backgroundColor: '#003366', color: 'white', border: 'none' },
+    primary: { backgroundColor: 'var(--accent)', color: 'white', border: 'none' },
     danger:  { backgroundColor: '#ffebee', color: '#c62828', border: '1px solid #ef9a9a' },
-    ghost:   { backgroundColor: 'transparent', color: '#003366', border: '1px solid #003366' },
+    ghost:   { backgroundColor: 'transparent', color: 'var(--text)', border: '1px solid var(--accent)' },
   };
   return (
     <button onClick={onClick} disabled={disabled} style={{
@@ -1454,7 +1454,7 @@ function MarktplatzSektion({ anfrage, store, onToast }: {
         <div>
           {!editMode && md && (
             <div style={{ marginBottom: '14px', padding: '12px 14px', backgroundColor: '#f8f9fa', borderRadius: '8px', fontSize: '13px' }}>
-              <div style={{ fontWeight: 600, color: '#003366', marginBottom: '4px' }}>{md.titel}</div>
+              <div style={{ fontWeight: 600, color: 'var(--text)', marginBottom: '4px' }}>{md.titel}</div>
               <div style={{ color: '#444', lineHeight: 1.5 }}>{md.kurzbeschreibung?.slice(0, 150)}{(md.kurzbeschreibung?.length || 0) > 150 ? '…' : ''}</div>
               <div style={{ marginTop: '8px', display: 'flex', gap: '12px', fontSize: '11px', color: '#444' }}>
                 <span>👁 {md.sichtbarkeit === 'oeffentlich' ? 'Öffentlich' : 'Anonym'}</span>
@@ -1502,7 +1502,7 @@ function MarktplatzSektion({ anfrage, store, onToast }: {
 
               {/* KI-Tools */}
               <div style={{ marginTop: '12px', padding: '12px 14px', backgroundColor: '#f0f4ff', borderRadius: '8px' }}>
-                <div style={{ fontSize: '11px', fontWeight: 700, color: '#003366', marginBottom: '8px' }}>🤖 KI-UNTERSTÜTZUNG</div>
+                <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text)', marginBottom: '8px' }}>🤖 KI-UNTERSTÜTZUNG</div>
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                   {[{ key: 'generieren', label: '✨ Text generieren' }, { key: 'kuerzen', label: '✂️ Kürzen' }, { key: 'voicecheck', label: '🎙 Voice Check' }, { key: 'anonymisieren', label: '👤 Anonymisieren' }].map(t => (
                     <button key={t.key} onClick={() => kiSimuliere(t.key)} disabled={kiLoading !== ''} style={{ padding: '5px 12px', backgroundColor: kiLoading === t.key ? '#e3f2fd' : 'white', border: '1px solid #90caf9', borderRadius: '6px', fontSize: '11px', cursor: kiLoading !== '' ? 'wait' : 'pointer', color: '#1565C0', fontWeight: 600 }}>
@@ -1907,7 +1907,7 @@ function MarktplatzVorschau({ anfrage, md, onClose }: {
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 4000, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '20px', overflowY: 'auto' }}>
       <div onClick={e => e.stopPropagation()} style={{ backgroundColor: 'white', borderRadius: '12px', maxWidth: '720px', width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.4)', margin: '20px 0' }}>
         {/* Header */}
-        <div style={{ padding: '14px 20px', backgroundColor: '#003366', color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderRadius: '12px 12px 0 0', position: 'sticky', top: 0, zIndex: 1 }}>
+        <div style={{ padding: '14px 20px', backgroundColor: 'var(--accent)', color: 'white', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderRadius: '12px 12px 0 0', position: 'sticky', top: 0, zIndex: 1 }}>
           <span style={{ fontWeight: 700, fontSize: '13px' }}>Vorschau — So erscheint die Anzeige auf der Homepage</span>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'white', fontSize: '20px', cursor: 'pointer' }}>×</button>
         </div>
@@ -1922,7 +1922,7 @@ function MarktplatzVorschau({ anfrage, md, onClose }: {
             <span style={{ marginLeft: 'auto', fontFamily: 'monospace', fontSize: '11px', color: '#555', backgroundColor: '#eee', padding: '2px 8px', borderRadius: '4px' }}>{anfrage.anzeigenId}</span>
           </div>
 
-          <h1 style={{ margin: '0 0 6px 0', fontSize: '22px', color: '#003366', lineHeight: 1.3 }}>{md.titel}</h1>
+          <h1 style={{ margin: '0 0 6px 0', fontSize: '22px', color: 'var(--text)', lineHeight: 1.3 }}>{md.titel}</h1>
           <div style={{ fontSize: '13px', color: '#555', marginBottom: '20px' }}>
             {md.sichtbarkeit === 'anonym' ? '🔒 Anonyme Anfrage' : `📍 ${anfrage.standort}`}
           </div>
@@ -1961,7 +1961,7 @@ function MarktplatzVorschau({ anfrage, md, onClose }: {
           {/* 1. Was wird gesucht? */}
           <VBlock titel="Was wird gesucht?">
             <p style={{ margin: 0, fontSize: '14px', color: '#333', lineHeight: 1.7 }}>{md.kurzbeschreibung}</p>
-            {md.wasSuche && <p style={{ marginTop: '10px', fontSize: '14px', color: '#333', lineHeight: 1.7 }}><strong style={{ color: '#003366' }}>Konkret gesucht:</strong> {md.wasSuche}</p>}
+            {md.wasSuche && <p style={{ marginTop: '10px', fontSize: '14px', color: '#333', lineHeight: 1.7 }}><strong style={{ color: 'var(--text)' }}>Konkret gesucht:</strong> {md.wasSuche}</p>}
           </VBlock>
 
           {/* 2. Von Easy-B2B vorbereitet */}
@@ -2023,7 +2023,7 @@ function MarktplatzVorschau({ anfrage, md, onClose }: {
               <ul style={{ margin: 0, paddingLeft: '0', listStyle: 'none' }}>
                 {anfrage.partnerErwartungen!.map((e, i) => (
                   <li key={i} style={{ display: 'flex', gap: '10px', fontSize: '14px', color: '#333', lineHeight: 1.6, padding: '4px 0' }}>
-                    <span style={{ color: '#003366', fontWeight: 700, flexShrink: 0 }}>•</span>
+                    <span style={{ color: 'var(--text)', fontWeight: 700, flexShrink: 0 }}>•</span>
                     <span>{e}</span>
                   </li>
                 ))}
@@ -2077,7 +2077,7 @@ function MarktplatzVorschau({ anfrage, md, onClose }: {
 
           {/* 11. Bevor Sie Ihr Interesse bekunden */}
           <VBlock titel="Bevor Sie Ihr Interesse bekunden" akzent="#f0f4ff">
-            <p style={{ margin: '0 0 10px 0', fontSize: '13px', color: '#003366', fontWeight: 500 }}>
+            <p style={{ margin: '0 0 10px 0', fontSize: '13px', color: 'var(--text)', fontWeight: 500 }}>
               Folgende Informationen werden im Anschluss abgefragt:
             </p>
             {[
@@ -2087,14 +2087,14 @@ function MarktplatzVorschau({ anfrage, md, onClose }: {
               'Welche Kontakte oder Netzwerke sind vorhanden?',
             ].map((f, i) => (
               <div key={i} style={{ display: 'flex', gap: '8px', fontSize: '13px', color: '#333', padding: '3px 0' }}>
-                <span style={{ color: '#003366', flexShrink: 0 }}>→</span>
+                <span style={{ color: 'var(--text)', flexShrink: 0 }}>→</span>
                 <span>{f}</span>
               </div>
             ))}
           </VBlock>
 
           {/* CTA */}
-          <div style={{ marginTop: '24px', padding: '20px', backgroundColor: '#003366', borderRadius: '10px', textAlign: 'center' }}>
+          <div style={{ marginTop: '24px', padding: '20px', backgroundColor: 'var(--accent)', borderRadius: '10px', textAlign: 'center' }}>
             <p style={{ margin: '0 0 12px 0', fontSize: '13px', color: '#a8c4e0' }}>Passt das zu Ihnen?</p>
             <div style={{ display: 'inline-block', padding: '12px 28px', backgroundColor: '#FF9900', color: 'white', borderRadius: '8px', fontSize: '14px', fontWeight: 700 }}>
               Interesse bekunden →
@@ -2109,7 +2109,7 @@ function MarktplatzVorschau({ anfrage, md, onClose }: {
 function VBlock({ titel, children, akzent }: { titel: string; children: React.ReactNode; akzent?: string }) {
   return (
     <div style={{ marginBottom: '20px', padding: akzent ? '14px 16px' : 0, backgroundColor: akzent, borderRadius: akzent ? '8px' : 0 }}>
-      <h3 style={{ margin: '0 0 10px 0', fontSize: '13px', fontWeight: 700, color: '#003366', letterSpacing: '0.3px' }}>{titel}</h3>
+      <h3 style={{ margin: '0 0 10px 0', fontSize: '13px', fontWeight: 700, color: 'var(--text)', letterSpacing: '0.3px' }}>{titel}</h3>
       {children}
     </div>
   );
@@ -2118,7 +2118,7 @@ function VBlock({ titel, children, akzent }: { titel: string; children: React.Re
 function Section({ titel, children }: { titel: string; children: React.ReactNode }) {
   return (
     <div style={{ marginBottom: '20px', paddingBottom: '16px', borderBottom: '1px solid #e8e8e8' }}>
-      <h3 style={{ margin: '0 0 10px 0', fontSize: '13px', fontWeight: 700, color: '#003366', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{titel}</h3>
+      <h3 style={{ margin: '0 0 10px 0', fontSize: '13px', fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{titel}</h3>
       {children}
     </div>
   );

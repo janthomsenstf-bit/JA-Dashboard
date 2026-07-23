@@ -91,7 +91,7 @@ export default function KontaktePage() {
   return (
     <div style={{ display: 'flex', gap: '24px' }}>
       {toast && (
-        <div style={{ position: 'fixed', bottom: '24px', right: '24px', zIndex: 9999, backgroundColor: '#003366', color: 'white', padding: '14px 20px', borderRadius: '8px', boxShadow: '0 4px 16px rgba(0,0,0,0.2)', fontSize: '14px', fontWeight: 600 }}>
+        <div style={{ position: 'fixed', bottom: '24px', right: '24px', zIndex: 9999, backgroundColor: 'var(--accent)', color: 'white', padding: '14px 20px', borderRadius: '8px', boxShadow: '0 4px 16px rgba(0,0,0,0.2)', fontSize: '14px', fontWeight: 600 }}>
           {toast}
         </div>
       )}
@@ -110,12 +110,12 @@ export default function KontaktePage() {
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
           <div>
-            <h1 style={{ margin: 0, color: '#003366', fontSize: '24px' }}>Kontakte</h1>
+            <h1 style={{ margin: 0, color: 'var(--text)', fontSize: '24px' }}>Kontakte</h1>
             <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#666' }}>
               Dauerhafte Arbeitsakten — entstehen aus geprüften Interessenten oder werden manuell angelegt.
             </p>
           </div>
-          <button onClick={() => { setDetailId(null); setModalOffen('neu'); }} style={{ padding: '10px 18px', backgroundColor: '#003366', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '14px', fontWeight: 600, flexShrink: 0 }}>
+          <button onClick={() => { setDetailId(null); setModalOffen('neu'); }} style={{ padding: '10px 18px', backgroundColor: 'var(--accent)', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '14px', fontWeight: 600, flexShrink: 0 }}>
             + Neuer Kontakt
           </button>
         </div>
@@ -123,7 +123,7 @@ export default function KontaktePage() {
         {/* KPIs */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '12px', margin: '20px 0' }}>
           {[
-            { label: 'Kontakte gesamt', v: store.geschaftskontakte.length, c: '#003366' },
+            { label: 'Kontakte gesamt', v: store.geschaftskontakte.length, c: 'var(--accent)' },
             { label: 'Aktiv', v: aktiv, c: '#4CAF50' },
             { label: 'Aus Interessent', v: ausInteressent, c: '#2196F3' },
             { label: 'Projekt zugeordnet', v: mitZuordnung, c: '#9C27B0' },
@@ -180,7 +180,7 @@ export default function KontaktePage() {
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '3px' }}>
                     {k.land && <span>{getLandFlag(k.land)}</span>}
-                    <span style={{ fontWeight: 700, fontSize: '15px', color: '#003366' }}>{k.firmenname}</span>
+                    <span style={{ fontWeight: 700, fontSize: '15px', color: 'var(--text)' }}>{k.firmenname}</span>
                     <span style={{ padding: '1px 7px', borderRadius: '8px', fontSize: '10px', fontWeight: 600, backgroundColor: '#f0f0f0', color: '#666' }}>
                       {getKontaktQuelleLabel(k.quelleTyp)}
                     </span>
@@ -280,7 +280,7 @@ function KontaktDetail({ kontakt: k, store, onClose, onEdit, onToast }: {
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             {k.land && <span style={{ fontSize: '18px' }}>{getLandFlag(k.land)}</span>}
-            <h2 style={{ margin: 0, color: '#003366', fontSize: '18px' }}>{k.firmenname}</h2>
+            <h2 style={{ margin: 0, color: 'var(--text)', fontSize: '18px' }}>{k.firmenname}</h2>
           </div>
           <div style={{ fontSize: '12px', color: '#666', marginTop: '3px' }}>{k.ansprechpartner}</div>
         </div>
@@ -297,7 +297,7 @@ function KontaktDetail({ kontakt: k, store, onClose, onEdit, onToast }: {
       {/* Tabs */}
       <div style={{ display: 'flex', gap: '6px', marginBottom: '16px' }}>
         {([['profil', 'Profil'], ['projekte', `Projekte (${k.projektZuordnungen.length})`], ['historie', 'Historie']] as const).map(([id, label]) => (
-          <button key={id} onClick={() => setTab(id)} style={{ padding: '7px 12px', borderRadius: '6px', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 600, backgroundColor: tab === id ? '#003366' : '#f0f0f0', color: tab === id ? 'white' : '#666' }}>
+          <button key={id} onClick={() => setTab(id)} style={{ padding: '7px 12px', borderRadius: '6px', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 600, backgroundColor: tab === id ? 'var(--accent)' : '#f0f0f0', color: tab === id ? 'white' : '#666' }}>
             {label}
           </button>
         ))}
@@ -306,9 +306,9 @@ function KontaktDetail({ kontakt: k, store, onClose, onEdit, onToast }: {
       {/* TAB: PROFIL */}
       {tab === 'profil' && (
         <div style={{ fontSize: '13px' }}>
-          <Row label="E-Mail" value={<a href={`mailto:${k.email}`} style={{ color: '#003366' }}>{k.email}</a>} />
+          <Row label="E-Mail" value={<a href={`mailto:${k.email}`} style={{ color: 'var(--text)' }}>{k.email}</a>} />
           {k.telefon && <Row label="Telefon" value={k.telefon} />}
-          {k.website && <Row label="Website" value={<a href={k.website} target="_blank" rel="noreferrer" style={{ color: '#003366' }}>{k.website}</a>} />}
+          {k.website && <Row label="Website" value={<a href={k.website} target="_blank" rel="noreferrer" style={{ color: 'var(--text)' }}>{k.website}</a>} />}
           {k.linkedin && <Row label="LinkedIn" value={k.linkedin} />}
           {k.region && <Row label="Region" value={k.region} />}
           {k.branche && <Row label="Branche" value={k.branche} />}
@@ -334,7 +334,7 @@ function KontaktDetail({ kontakt: k, store, onClose, onEdit, onToast }: {
           {/* Klärungsstand — wenn aus Interessent abgeleitet */}
           {ursprungsInteressent && (
             <div style={{ marginTop: '14px' }}>
-              <div style={{ fontSize: '11px', fontWeight: 700, color: '#003366', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>
+              <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>
                 Klärungsstand (aus Interessent)
               </div>
               <KlaerungsBox
@@ -358,7 +358,7 @@ function KontaktDetail({ kontakt: k, store, onClose, onEdit, onToast }: {
                 const proj = store.anfragen.find(a => a.id === z.projektId);
                 return (
                   <div key={z.id} style={{ padding: '12px', backgroundColor: '#f9f9f9', borderRadius: '8px', borderLeft: `3px solid ${getKontaktZuordnungColor(z.status)}` }}>
-                    <div style={{ fontWeight: 600, fontSize: '13px', color: '#003366' }}>{proj ? `${proj.anzeigenId} – ${proj.ziel}` : 'Projekt'}</div>
+                    <div style={{ fontWeight: 600, fontSize: '13px', color: 'var(--text)' }}>{proj ? `${proj.anzeigenId} – ${proj.ziel}` : 'Projekt'}</div>
                     {proj && <div style={{ fontSize: '11px', color: '#666', marginTop: '2px' }}>{getRichtungLabel(proj.richtung)} {proj.firmenname}</div>}
                     {z.notiz && <div style={{ fontSize: '11px', color: '#666', fontStyle: 'italic', marginTop: '4px' }}>„{z.notiz}"</div>}
                     <div style={{ marginTop: '8px' }}>
@@ -373,12 +373,12 @@ function KontaktDetail({ kontakt: k, store, onClose, onEdit, onToast }: {
           )}
 
           {!zuordnenOffen ? (
-            <button onClick={() => setZuordnenOffen(true)} style={{ width: '100%', padding: '10px', backgroundColor: '#003366', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}>
+            <button onClick={() => setZuordnenOffen(true)} style={{ width: '100%', padding: '10px', backgroundColor: 'var(--accent)', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}>
               + Projekt zuordnen
             </button>
           ) : (
             <div style={{ padding: '14px', backgroundColor: '#f0f4ff', borderRadius: '8px' }}>
-              <div style={{ fontSize: '12px', fontWeight: 700, color: '#003366', marginBottom: '8px' }}>Projekt suchen & zuordnen</div>
+              <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text)', marginBottom: '8px' }}>Projekt suchen & zuordnen</div>
               <input value={projektSuche} onChange={e => setProjektSuche(e.target.value)} placeholder="Suche nach Firma, ID, Ziel…" style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #ddd', fontSize: '13px', boxSizing: 'border-box', marginBottom: '8px' }} />
               <textarea value={zuordnungGrund} onChange={e => setZuordnungGrund(e.target.value)} placeholder="Grund / Notiz (optional)" rows={2} style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #ddd', fontSize: '12px', boxSizing: 'border-box', marginBottom: '8px', fontFamily: 'inherit', resize: 'vertical' }} />
               <div style={{ maxHeight: '180px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -386,7 +386,7 @@ function KontaktDetail({ kontakt: k, store, onClose, onEdit, onToast }: {
                   <p style={{ fontSize: '12px', color: '#666', margin: 0 }}>Keine passenden Projekte.</p>
                 ) : verfuegbareProjekte.slice(0, 8).map(a => (
                   <button key={a.id} onClick={() => projektZuordnen(a.id)} style={{ textAlign: 'left', padding: '8px 10px', backgroundColor: 'white', border: '1px solid #ddd', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>
-                    <div style={{ fontWeight: 600, color: '#003366' }}>{a.anzeigenId} – {a.ziel}</div>
+                    <div style={{ fontWeight: 600, color: 'var(--text)' }}>{a.anzeigenId} – {a.ziel}</div>
                     <div style={{ fontSize: '11px', color: '#666' }}>{a.firmenname} · {a.branche}</div>
                   </button>
                 ))}

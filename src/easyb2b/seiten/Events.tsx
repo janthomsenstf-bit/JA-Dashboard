@@ -41,13 +41,13 @@ export default function EventsPage() {
     <div>
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-        <h1 style={{ margin: 0, color: '#003366', fontSize: '24px' }}>Veranstaltungen</h1>
+        <h1 style={{ margin: 0, color: 'var(--text)', fontSize: '24px' }}>Veranstaltungen</h1>
         <div style={{ display: 'flex', gap: '8px' }}>
           {(['liste', 'analytics'] as TabType[]).map(t => (
             <button key={t} onClick={() => setTab(t)} style={{
               padding: '8px 18px', borderRadius: '6px', border: 'none', cursor: 'pointer',
               fontWeight: 600, fontSize: '13px',
-              backgroundColor: tab === t ? '#003366' : '#f0f0f0',
+              backgroundColor: tab === t ? 'var(--accent)' : '#f0f0f0',
               color: tab === t ? 'white' : '#666',
             }}>
               {t === 'liste' ? 'Alle Events' : 'Analytics'}
@@ -140,7 +140,7 @@ function EventCard({ event, selected, onClick }: {
       onClick={onClick}
       style={{
         backgroundColor: 'white', borderRadius: '10px', padding: '20px', cursor: 'pointer',
-        border: selected ? '2px solid #003366' : '2px solid transparent',
+        border: selected ? '2px solid var(--accent)' : '2px solid transparent',
         boxShadow: '0 2px 8px rgba(0,0,0,0.07)',
         opacity: event.status === 'abgesagt' ? 0.6 : 1,
         transition: 'all 0.15s',
@@ -154,7 +154,7 @@ function EventCard({ event, selected, onClick }: {
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
             <span style={{ fontSize: '22px' }}>{getEventTypIcon(event.typ)}</span>
             <div>
-              <div style={{ fontWeight: 700, fontSize: '16px', color: '#003366' }}>{event.titel}</div>
+              <div style={{ fontWeight: 700, fontSize: '16px', color: 'var(--text)' }}>{event.titel}</div>
               {event.untertitel && <div style={{ fontSize: '12px', color: '#666', marginTop: '2px' }}>{event.untertitel}</div>}
             </div>
           </div>
@@ -166,7 +166,7 @@ function EventCard({ event, selected, onClick }: {
           {/* Ziele */}
           <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
             {event.ziele.map(z => (
-              <span key={z} style={{ padding: '2px 8px', borderRadius: '10px', fontSize: '10px', fontWeight: 600, backgroundColor: '#e8f0fe', color: '#003366' }}>
+              <span key={z} style={{ padding: '2px 8px', borderRadius: '10px', fontSize: '10px', fontWeight: 600, backgroundColor: '#e8f0fe', color: 'var(--text)' }}>
                 {getEventZielLabel(z)}
               </span>
             ))}
@@ -241,7 +241,7 @@ function EventDetailPanel({ event, activeTab, setActiveTab, onClose }: {
       {toast && (
         <div style={{
           position: 'fixed', bottom: '24px', right: '24px', zIndex: 1000,
-          backgroundColor: '#003366', color: 'white', padding: '14px 20px',
+          backgroundColor: 'var(--accent)', color: 'white', padding: '14px 20px',
           borderRadius: '8px', boxShadow: '0 4px 16px rgba(0,0,0,0.2)', fontSize: '14px', fontWeight: 600,
         }}>{toast}</div>
       )}
@@ -250,7 +250,7 @@ function EventDetailPanel({ event, activeTab, setActiveTab, onClose }: {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
           <div>
             <div style={{ fontSize: '22px', marginBottom: '4px' }}>{getEventTypIcon(event.typ)}</div>
-            <h2 style={{ margin: 0, color: '#003366', fontSize: '17px' }}>{event.titel}</h2>
+            <h2 style={{ margin: 0, color: 'var(--text)', fontSize: '17px' }}>{event.titel}</h2>
             <div style={{ fontSize: '12px', color: '#666', marginTop: '3px' }}>{getEventTypLabel(event.typ)}</div>
           </div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '20px', color: '#666' }}>×</button>
@@ -265,8 +265,8 @@ function EventDetailPanel({ event, activeTab, setActiveTab, onClose }: {
             <button key={t.id} onClick={() => setActiveTab(t.id)} style={{
               padding: '8px 12px', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 600,
               backgroundColor: 'transparent',
-              color: activeTab === t.id ? '#003366' : '#666',
-              borderBottom: activeTab === t.id ? '2px solid #003366' : '2px solid transparent',
+              color: activeTab === t.id ? 'var(--accent)' : '#666',
+              borderBottom: activeTab === t.id ? '2px solid var(--accent)' : '2px solid transparent',
               marginBottom: '-2px',
             }}>
               {t.label}
@@ -291,16 +291,16 @@ function EventDetailPanel({ event, activeTab, setActiveTab, onClose }: {
             </div>
             <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
               {event.ziele.map(z => (
-                <span key={z} style={{ padding: '4px 10px', borderRadius: '12px', fontSize: '11px', fontWeight: 600, backgroundColor: '#e8f0fe', color: '#003366' }}>
+                <span key={z} style={{ padding: '4px 10px', borderRadius: '12px', fontSize: '11px', fontWeight: 600, backgroundColor: '#e8f0fe', color: 'var(--text)' }}>
                   {getEventZielLabel(z)}
                 </span>
               ))}
             </div>
             <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <button onClick={() => zeigeToast('Einladungslink kopiert — bereit zum Teilen')} style={{ padding: '10px', backgroundColor: '#003366', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}>
+              <button onClick={() => zeigeToast('Einladungslink kopiert — bereit zum Teilen')} style={{ padding: '10px', backgroundColor: 'var(--accent)', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 600 }}>
                 Teilnehmer einladen
               </button>
-              <button onClick={() => zeigeToast(`"${event.titel}" zum Bearbeiten geöffnet`)} style={{ padding: '10px', backgroundColor: 'transparent', color: '#003366', border: '1px solid #003366', borderRadius: '6px', cursor: 'pointer', fontSize: '13px' }}>
+              <button onClick={() => zeigeToast(`"${event.titel}" zum Bearbeiten geöffnet`)} style={{ padding: '10px', backgroundColor: 'transparent', color: 'var(--text)', border: '1px solid var(--accent)', borderRadius: '6px', cursor: 'pointer', fontSize: '13px' }}>
                 Event bearbeiten
               </button>
             </div>
@@ -333,7 +333,7 @@ function EventDetailPanel({ event, activeTab, setActiveTab, onClose }: {
                 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                     <div>
-                      <div style={{ fontWeight: 600, fontSize: '13px', color: '#003366' }}>
+                      <div style={{ fontWeight: 600, fontSize: '13px', color: 'var(--text)' }}>
                         {getLandFlag(t.land)} {t.firmenname}
                       </div>
                       <div style={{ fontSize: '11px', color: '#666', marginTop: '2px' }}>
@@ -371,7 +371,7 @@ function EventDetailPanel({ event, activeTab, setActiveTab, onClose }: {
                 {event.feedback.map(f => (
                   <div key={f.id} style={{ backgroundColor: '#f9f9f9', borderRadius: '8px', padding: '14px', marginBottom: '10px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                      <div style={{ fontWeight: 600, fontSize: '13px', color: '#003366' }}>{f.firmenname}</div>
+                      <div style={{ fontWeight: 600, fontSize: '13px', color: 'var(--text)' }}>{f.firmenname}</div>
                       <div style={{ color: '#FF9900', fontSize: '14px' }}>{'★'.repeat(f.bewertung)}{'☆'.repeat(5 - f.bewertung)}</div>
                     </div>
                     <div style={{ display: 'flex', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
@@ -422,7 +422,7 @@ function EventDetailPanel({ event, activeTab, setActiveTab, onClose }: {
               ))
             )}
             {event.status === 'durchgefuehrt' && (
-              <button onClick={() => zeigeToast('Neuer Match-Eintrag angelegt')} style={{ width: '100%', padding: '10px', backgroundColor: '#003366', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 600, marginTop: '8px' }}>
+              <button onClick={() => zeigeToast('Neuer Match-Eintrag angelegt')} style={{ width: '100%', padding: '10px', backgroundColor: 'var(--accent)', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 600, marginTop: '8px' }}>
                 + Match dokumentieren
               </button>
             )}
@@ -453,7 +453,7 @@ function EventAnalytics({ totalEvents, durchgefuehrt, totalTeilnehmer, totalErsc
       {/* KPI Grid */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '14px', marginBottom: '32px' }}>
         {[
-          { label: 'Events gesamt', value: totalEvents, color: '#003366' },
+          { label: 'Events gesamt', value: totalEvents, color: 'var(--text)' },
           { label: 'Durchgeführt', value: durchgefuehrt, color: '#9C27B0' },
           { label: 'Anmeldungen', value: totalTeilnehmer, color: '#2196F3' },
           { label: 'Erschienen', value: totalErschienen, color: '#4CAF50' },
@@ -472,13 +472,13 @@ function EventAnalytics({ totalEvents, durchgefuehrt, totalTeilnehmer, totalErsc
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
         {/* Beliebteste Formate */}
         <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '8px', boxShadow: '0 2px 6px rgba(0,0,0,0.07)' }}>
-          <h3 style={{ marginTop: 0, color: '#003366', fontSize: '16px', marginBottom: '16px' }}>Eventformate</h3>
+          <h3 style={{ marginTop: 0, color: 'var(--text)', fontSize: '16px', marginBottom: '16px' }}>Eventformate</h3>
           {topTypen.map(([typ, count]: any) => (
             <div key={typ} style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
               <span style={{ fontSize: '18px', minWidth: '24px' }}>{getEventTypIcon(typ)}</span>
               <span style={{ flex: 1, fontSize: '13px' }}>{getEventTypLabel(typ)}</span>
               <div style={{ width: '80px', height: '8px', backgroundColor: '#f0f0f0', borderRadius: '4px', overflow: 'hidden' }}>
-                <div style={{ height: '100%', backgroundColor: '#003366', width: `${(count / totalEvents) * 100}%`, borderRadius: '4px' }} />
+                <div style={{ height: '100%', backgroundColor: 'var(--accent)', width: `${(count / totalEvents) * 100}%`, borderRadius: '4px' }} />
               </div>
               <span style={{ fontSize: '12px', color: '#666', minWidth: '20px' }}>{count}×</span>
             </div>
@@ -487,7 +487,7 @@ function EventAnalytics({ totalEvents, durchgefuehrt, totalTeilnehmer, totalErsc
 
         {/* Feedback Übersicht */}
         <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '8px', boxShadow: '0 2px 6px rgba(0,0,0,0.07)' }}>
-          <h3 style={{ marginTop: 0, color: '#003366', fontSize: '16px', marginBottom: '16px' }}>Feedback-Überblick</h3>
+          <h3 style={{ marginTop: 0, color: 'var(--text)', fontSize: '16px', marginBottom: '16px' }}>Feedback-Überblick</h3>
           {allFeedbacks.length === 0 ? (
             <p style={{ color: '#666', fontSize: '13px' }}>Noch kein Feedback vorhanden.</p>
           ) : (
@@ -506,10 +506,10 @@ function EventAnalytics({ totalEvents, durchgefuehrt, totalTeilnehmer, totalErsc
 
       {/* Event → Match → Kooperation Flow */}
       <div style={{ marginTop: '24px', backgroundColor: 'white', padding: '20px', borderRadius: '8px', boxShadow: '0 2px 6px rgba(0,0,0,0.07)' }}>
-        <h3 style={{ marginTop: 0, color: '#003366', fontSize: '16px', marginBottom: '16px' }}>Event → Kooperations-Flow</h3>
+        <h3 style={{ marginTop: 0, color: 'var(--text)', fontSize: '16px', marginBottom: '16px' }}>Event → Kooperations-Flow</h3>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px', alignItems: 'center' }}>
           {[
-            { label: 'Events', value: totalEvents, color: '#003366' },
+            { label: 'Events', value: totalEvents, color: 'var(--text)' },
             { label: 'Anmeldungen', value: totalTeilnehmer, color: '#2196F3' },
             { label: 'Matches', value: totalMatches, color: '#FF9900' },
             { label: 'Kooperationen', value: totalKooperationen, color: '#4CAF50' },

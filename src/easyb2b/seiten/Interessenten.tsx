@@ -48,7 +48,7 @@ export default function InteressentenPage() {
   return (
     <div>
       {toast && (
-        <div style={{ position: 'fixed', bottom: '24px', right: '24px', zIndex: 4000, backgroundColor: '#003366', color: 'white', padding: '14px 20px', borderRadius: '8px', boxShadow: '0 4px 16px rgba(0,0,0,0.2)', fontSize: '14px', fontWeight: 600 }}>
+        <div style={{ position: 'fixed', bottom: '24px', right: '24px', zIndex: 4000, backgroundColor: 'var(--accent)', color: 'white', padding: '14px 20px', borderRadius: '8px', boxShadow: '0 4px 16px rgba(0,0,0,0.2)', fontSize: '14px', fontWeight: 600 }}>
           {toast}
         </div>
       )}
@@ -63,7 +63,7 @@ export default function InteressentenPage() {
         />
       )}
 
-      <h1 style={{ marginTop: 0, marginBottom: '24px', color: '#003366', fontSize: '24px' }}>Interessenten Verwaltung</h1>
+      <h1 style={{ marginTop: 0, marginBottom: '24px', color: 'var(--text)', fontSize: '24px' }}>Interessenten Verwaltung</h1>
 
       {/* Filter */}
       <div style={{ display: 'flex', gap: '16px', marginBottom: '24px', flexWrap: 'wrap' }}>
@@ -87,7 +87,7 @@ export default function InteressentenPage() {
             {/* Header — klickbar */}
             <div onClick={() => setDetailId(i.id)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px', cursor: 'pointer' }}>
               <div>
-                <h3 style={{ margin: 0, fontSize: '16px', color: '#003366' }}>{i.firmenname}</h3>
+                <h3 style={{ margin: 0, fontSize: '16px', color: 'var(--text)' }}>{i.firmenname}</h3>
                 <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#666' }}>
                   {i.ansprechpartner}{i.position ? ` · ${i.position}` : ''}
                 </p>
@@ -133,9 +133,9 @@ export default function InteressentenPage() {
                 </>
               )}
               {i.status === 'freigegeben' && (
-                <button onClick={() => update(i.id, { status: 'kontakt_laeuft' }, `Kontakt zu ${i.firmenname} hergestellt`)} style={btnStyle('#003366')}>Kontakt herstellen</button>
+                <button onClick={() => update(i.id, { status: 'kontakt_laeuft' }, `Kontakt zu ${i.firmenname} hergestellt`)} style={btnStyle('var(--accent)')}>Kontakt herstellen</button>
               )}
-              <button onClick={() => setDetailId(i.id)} style={{ ...btnStyle('transparent'), color: '#003366', border: '1px solid #003366', marginLeft: 'auto' }}>
+              <button onClick={() => setDetailId(i.id)} style={{ ...btnStyle('transparent'), color: 'var(--text)', border: '1px solid var(--accent)', marginLeft: 'auto' }}>
                 Details ansehen →
               </button>
             </div>
@@ -242,7 +242,7 @@ function InteressentDetail({ interessent: i, alle, onClose, onUpdate, onToast }:
         {/* Header */}
         <div style={{ padding: '20px 24px', borderBottom: '1px solid #f0f0f0', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', position: 'sticky', top: 0, backgroundColor: 'white', borderRadius: '12px 12px 0 0', zIndex: 1 }}>
           <div>
-            <h2 style={{ margin: 0, fontSize: '20px', color: '#003366' }}>{i.firmenname}</h2>
+            <h2 style={{ margin: 0, fontSize: '20px', color: 'var(--text)' }}>{i.firmenname}</h2>
             <div style={{ fontSize: '13px', color: '#666', marginTop: '4px' }}>
               {i.ansprechpartner}{i.position ? ` · ${i.position}` : ''}{i.region ? ` · ${i.region}` : ''}
             </div>
@@ -261,7 +261,7 @@ function InteressentDetail({ interessent: i, alle, onClose, onUpdate, onToast }:
           {/* ── MATCHING-BEZUG ── */}
           {anfrage && (
             <Box titel="🎯 Bezug zur Anfrage" bg="#f0f4ff">
-              <div style={{ fontSize: '13px', color: '#003366', fontWeight: 600, marginBottom: '4px' }}>
+              <div style={{ fontSize: '13px', color: 'var(--text)', fontWeight: 600, marginBottom: '4px' }}>
                 {anfrage.anzeigenId} · {anfrage.firmenname}
               </div>
               <div style={{ fontSize: '13px', color: '#444', marginBottom: '8px' }}>Sucht: {anfrage.ziel}</div>
@@ -282,7 +282,7 @@ function InteressentDetail({ interessent: i, alle, onClose, onUpdate, onToast }:
 
           {/* ── KI-ZUSAMMENFASSUNG ── */}
           <div style={{ marginBottom: '20px' }}>
-            <button onClick={handleKi} disabled={kiLaedt} style={{ padding: '10px 18px', backgroundColor: kiLaedt ? '#ccc' : '#003366', color: 'white', border: 'none', borderRadius: '8px', cursor: kiLaedt ? 'wait' : 'pointer', fontSize: '13px', fontWeight: 600 }}>
+            <button onClick={handleKi} disabled={kiLaedt} style={{ padding: '10px 18px', backgroundColor: kiLaedt ? '#ccc' : 'var(--accent)', color: 'white', border: 'none', borderRadius: '8px', cursor: kiLaedt ? 'wait' : 'pointer', fontSize: '13px', fontWeight: 600 }}>
               {kiLaedt ? '✨ Analysiert...' : '✨ KI-Kurzbewertung'}
             </button>
             {kiText && (
@@ -295,7 +295,7 @@ function InteressentDetail({ interessent: i, alle, onClose, onUpdate, onToast }:
           {/* ── KONTAKT & STAMMDATEN ── */}
           <Box titel="Stammdaten & Kontakt">
             <Grid>
-              <Feld label="E-Mail" wert={<a href={`mailto:${i.email}`} style={{ color: '#003366' }}>{i.email}</a>} />
+              <Feld label="E-Mail" wert={<a href={`mailto:${i.email}`} style={{ color: 'var(--text)' }}>{i.email}</a>} />
               {i.telefon && <Feld label="Telefon" wert={i.telefon} />}
               {i.website && <Feld label="Website" wert={i.website} />}
               {i.linkedin && <Feld label="LinkedIn" wert={i.linkedin} />}
@@ -312,7 +312,7 @@ function InteressentDetail({ interessent: i, alle, onClose, onUpdate, onToast }:
                 return formular ? (
                   <div style={{ fontSize: '11px', color: '#1565C0', fontWeight: 600, marginBottom: '10px' }}>
                     📝 Formular: {formular.name}
-                    <a href="/dashboard/formulare" style={{ marginLeft: '8px', color: '#003366', textDecoration: 'none' }}>ansehen →</a>
+                    <a href="/dashboard/formulare" style={{ marginLeft: '8px', color: 'var(--text)', textDecoration: 'none' }}>ansehen →</a>
                   </div>
                 ) : null;
               })()}
@@ -358,7 +358,7 @@ function InteressentDetail({ interessent: i, alle, onClose, onUpdate, onToast }:
                 <div key={z.id} style={{ backgroundColor: 'white', borderRadius: '8px', padding: '12px', marginBottom: '8px', border: '1px solid #e0e0e0' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px' }}>
                     <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: '13px', fontWeight: 600, color: '#003366' }}>
+                      <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text)' }}>
                         {proj?.ziel || z.projektId}
                       </div>
                       <div style={{ fontSize: '12px', color: '#666' }}>{proj?.firmenname} · {proj?.anzeigenId}</div>
@@ -400,12 +400,12 @@ function InteressentDetail({ interessent: i, alle, onClose, onUpdate, onToast }:
                   placeholder="z.B. Hat im Telefonat am 03.06. Interesse an diesem Projekt geäußert."
                   style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #ddd', fontSize: '13px', boxSizing: 'border-box', fontFamily: 'inherit', resize: 'vertical', marginBottom: '8px' }} />
                 <div style={{ display: 'flex', gap: '8px' }}>
-                  <button onClick={handleZuordnen} disabled={!neuProjekt} style={{ ...btnStyle(neuProjekt ? '#003366' : '#ccc'), cursor: neuProjekt ? 'pointer' : 'not-allowed' }}>Zuordnen</button>
+                  <button onClick={handleZuordnen} disabled={!neuProjekt} style={{ ...btnStyle(neuProjekt ? 'var(--accent)' : '#ccc'), cursor: neuProjekt ? 'pointer' : 'not-allowed' }}>Zuordnen</button>
                   <button onClick={() => setZuordnenOffen(false)} style={{ ...btnStyle('transparent'), color: '#666', border: '1px solid #ddd' }}>Abbrechen</button>
                 </div>
               </div>
             ) : (
-              <button onClick={() => setZuordnenOffen(true)} style={{ ...btnStyle('#003366'), marginTop: '4px' }}>
+              <button onClick={() => setZuordnenOffen(true)} style={{ ...btnStyle('var(--accent)'), marginTop: '4px' }}>
                 + Projekt zuordnen
               </button>
             )}
@@ -466,7 +466,7 @@ function InteressentDetail({ interessent: i, alle, onClose, onUpdate, onToast }:
             {i.kontaktId ? (
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
                 <span style={{ fontSize: '13px', color: '#2e7d32', fontWeight: 600 }}>✅ Kontakt wurde erstellt</span>
-                <a href="/dashboard/kontakte" style={{ fontSize: '12px', color: '#003366', fontWeight: 600, textDecoration: 'none' }}>→ Im Kontakte-Modul ansehen</a>
+                <a href="/dashboard/kontakte" style={{ fontSize: '12px', color: 'var(--text)', fontWeight: 600, textDecoration: 'none' }}>→ Im Kontakte-Modul ansehen</a>
               </div>
             ) : kontaktDuplikate ? (
               <div>
@@ -534,7 +534,7 @@ function PruefDot({ label, aktiv }: { label: string; aktiv?: boolean }) {
 function Box({ titel, children, bg }: { titel: string; children: React.ReactNode; bg?: string }) {
   return (
     <div style={{ marginBottom: '20px', backgroundColor: bg || 'transparent', borderRadius: bg ? '8px' : 0, padding: bg ? '14px' : 0 }}>
-      <h3 style={{ margin: '0 0 12px 0', fontSize: '13px', fontWeight: 700, color: '#003366', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{titel}</h3>
+      <h3 style={{ margin: '0 0 12px 0', fontSize: '13px', fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{titel}</h3>
       {children}
     </div>
   );

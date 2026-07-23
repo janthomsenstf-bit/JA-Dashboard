@@ -48,13 +48,13 @@ export default function AnfragenPage() {
   return (
     <div>
       {toast && (
-        <div style={{ position: 'fixed', bottom: '24px', right: '24px', zIndex: 9999, backgroundColor: '#003366', color: 'white', padding: '14px 20px', borderRadius: '8px', boxShadow: '0 4px 16px rgba(0,0,0,0.2)', fontSize: '14px', fontWeight: 600 }}>
+        <div style={{ position: 'fixed', bottom: '24px', right: '24px', zIndex: 9999, backgroundColor: 'var(--accent)', color: 'white', padding: '14px 20px', borderRadius: '8px', boxShadow: '0 4px 16px rgba(0,0,0,0.2)', fontSize: '14px', fontWeight: 600 }}>
           {toast}
         </div>
       )}
 
       <div style={{ marginBottom: '8px' }}>
-        <h1 style={{ margin: 0, color: '#003366', fontSize: '24px' }}>Anfragen</h1>
+        <h1 style={{ margin: 0, color: 'var(--text)', fontSize: '24px' }}>Anfragen</h1>
         <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#555' }}>
           Eingangskorb — Anfragen prüfen, qualifizieren und als Projekt anlegen. Veröffentlichung erfolgt im Modul Projekte.
         </p>
@@ -63,7 +63,7 @@ export default function AnfragenPage() {
       {/* KPIs */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '14px', margin: '24px 0' }}>
         {[
-          { label: 'Anfragen gesamt', value: store.anfragen.length, color: '#003366' },
+          { label: 'Anfragen gesamt', value: store.anfragen.length, color: 'var(--text)' },
           { label: '⏳ Eingehend', value: eingehend, color: '#E65100' },
           { label: '🔍 In Prüfung', value: inPruefung, color: '#FF9900' },
           { label: '🚀 Projekt erstellt', value: projektErstellt, color: '#9C27B0' },
@@ -131,7 +131,7 @@ export default function AnfragenPage() {
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px', flexWrap: 'wrap' }}>
                     <span style={{ fontFamily: 'monospace', fontSize: '11px', color: '#444', backgroundColor: '#e8e8e8', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>{a.anzeigenId}</span>
-                    <span style={{ fontWeight: 700, fontSize: '16px', color: '#003366' }}>{a.firmenname}</span>
+                    <span style={{ fontWeight: 700, fontSize: '16px', color: 'var(--text)' }}>{a.firmenname}</span>
                     <span style={{ fontSize: '12px', color: '#555' }}>{getRichtungLabel(a.richtung)}</span>
                   </div>
                   <div style={{ fontSize: '13px', color: '#555', marginBottom: '4px' }}>{a.ziel}</div>
@@ -379,7 +379,7 @@ function AnfrageInhalt({ anfrage: a, store, onToast }: {
               </div>
             ) : (
               <div>
-                <div style={{ fontSize: '14px', fontWeight: 600, color: '#003366', marginBottom: '8px' }}>{w.ziel}</div>
+                <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text)', marginBottom: '8px' }}>{w.ziel}</div>
                 <p style={{ fontSize: '14px', color: '#222', lineHeight: 1.7, margin: 0 }}>{w.beschreibung}</p>
               </div>
             )}
@@ -388,7 +388,7 @@ function AnfrageInhalt({ anfrage: a, store, onToast }: {
           {formular && (
             <div style={{ marginTop: '-10px', marginBottom: '16px', padding: '10px 12px', backgroundColor: '#f0f4ff', borderRadius: '6px', fontSize: '12px', color: '#333' }}>
               📝 <strong>Anfrageformular:</strong> {formular.name} ({formular.fragen.length} Fragen)
-              <a href="/dashboard/formulare" style={{ marginLeft: '8px', color: '#003366', fontWeight: 600, textDecoration: 'none' }}>ansehen →</a>
+              <a href="/dashboard/formulare" style={{ marginLeft: '8px', color: 'var(--text)', fontWeight: 600, textDecoration: 'none' }}>ansehen →</a>
             </div>
           )}
 
@@ -401,7 +401,7 @@ function AnfrageInhalt({ anfrage: a, store, onToast }: {
                 {interessenten.map(i => (
                   <div key={i.id} style={{ padding: '12px 14px', backgroundColor: 'white', borderRadius: '8px', borderLeft: `3px solid ${getStatusColor(i.status)}` }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px', marginBottom: '4px' }}>
-                      <div style={{ fontWeight: 600, fontSize: '13px', color: '#003366' }}>{i.firmenname}</div>
+                      <div style={{ fontWeight: 600, fontSize: '13px', color: 'var(--text)' }}>{i.firmenname}</div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
                         {i.matchScore && <span style={{ fontSize: '11px', fontWeight: 700, color: i.matchScore >= 80 ? '#2e7d32' : '#E65100' }}>{i.matchScore}%</span>}
                         <span style={{ padding: '2px 8px', borderRadius: '10px', fontSize: '10px', fontWeight: 600, color: 'white', backgroundColor: getStatusColor(i.status) }}>{getStatusLabel(i.status)}</span>
@@ -409,7 +409,7 @@ function AnfrageInhalt({ anfrage: a, store, onToast }: {
                     </div>
                     <div style={{ fontSize: '12px', color: '#555' }}>{i.ansprechpartner}</div>
                     <div style={{ fontSize: '12px', marginTop: '4px' }}>
-                      <a href={`mailto:${i.email}`} style={{ color: '#003366' }}>{i.email}</a>
+                      <a href={`mailto:${i.email}`} style={{ color: 'var(--text)' }}>{i.email}</a>
                       {i.telefon && <span style={{ color: '#666' }}> · {i.telefon}</span>}
                     </div>
                     {i.notiz && (
@@ -417,7 +417,7 @@ function AnfrageInhalt({ anfrage: a, store, onToast }: {
                     )}
                   </div>
                 ))}
-                <a href="/dashboard/interessenten" style={{ fontSize: '12px', color: '#003366', fontWeight: 600, textDecoration: 'none', marginTop: '4px' }}>
+                <a href="/dashboard/interessenten" style={{ fontSize: '12px', color: 'var(--text)', fontWeight: 600, textDecoration: 'none', marginTop: '4px' }}>
                   → Im Interessenten-Modul verwalten
                 </a>
               </div>
@@ -469,15 +469,15 @@ function AnfrageInhalt({ anfrage: a, store, onToast }: {
                 )}
                 {(kiErgebnis || a.funFactAntwortKI) && (
                   <div style={{ backgroundColor: '#e8f0fe', borderRadius: '6px', padding: '12px', marginBottom: '12px', fontSize: '13px', color: '#222', border: '1px solid #c5d3f0' }}>
-                    <div style={{ fontSize: '10px', color: '#003366', marginBottom: '6px', fontWeight: 700 }}>
-                      ✨ KI-VERBESSERUNG {kiErgebnis && <span style={{ backgroundColor: '#003366', color: 'white', padding: '1px 6px', borderRadius: '4px', fontSize: '9px', marginLeft: '6px' }}>NEU</span>}
+                    <div style={{ fontSize: '10px', color: 'var(--text)', marginBottom: '6px', fontWeight: 700 }}>
+                      ✨ KI-VERBESSERUNG {kiErgebnis && <span style={{ backgroundColor: 'var(--accent)', color: 'white', padding: '1px 6px', borderRadius: '4px', fontSize: '9px', marginLeft: '6px' }}>NEU</span>}
                     </div>
                     {kiErgebnis || a.funFactAntwortKI}
                   </div>
                 )}
                 {w.funFactAntwort && (
                   <button onClick={kiVerbessern} disabled={kiLaedt}
-                    style={{ padding: '8px 14px', backgroundColor: kiLaedt ? '#bbb' : '#003366', color: 'white', border: 'none', borderRadius: '6px', cursor: kiLaedt ? 'wait' : 'pointer', fontSize: '12px', fontWeight: 600 }}>
+                    style={{ padding: '8px 14px', backgroundColor: kiLaedt ? '#bbb' : 'var(--accent)', color: 'white', border: 'none', borderRadius: '6px', cursor: kiLaedt ? 'wait' : 'pointer', fontSize: '12px', fontWeight: 600 }}>
                     {kiLaedt ? '✨ KI verbessert…' : '✨ FunFact mit KI verbessern'}
                   </button>
                 )}
@@ -559,9 +559,9 @@ function AnfrageInhalt({ anfrage: a, store, onToast }: {
               <div style={{ fontSize: '11px', fontWeight: 700, color: '#444', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>
                 🏢 Verknüpftes Unternehmen
               </div>
-              <div style={{ fontWeight: 600, fontSize: '14px', color: '#003366', marginBottom: '4px' }}>{verknuepftesUnternehmen.firmenname}</div>
+              <div style={{ fontWeight: 600, fontSize: '14px', color: 'var(--text)', marginBottom: '4px' }}>{verknuepftesUnternehmen.firmenname}</div>
               <div style={{ fontSize: '12px', color: '#555', marginBottom: '8px' }}>{verknuepftesUnternehmen.ansprechpartner}</div>
-              <a href="/dashboard/unternehmen" style={{ fontSize: '12px', color: '#003366', fontWeight: 600, textDecoration: 'none' }}>
+              <a href="/dashboard/unternehmen" style={{ fontSize: '12px', color: 'var(--text)', fontWeight: 600, textDecoration: 'none' }}>
                 → Zur Unternehmensakte
               </a>
             </div>
@@ -606,7 +606,7 @@ function AnfrageInhalt({ anfrage: a, store, onToast }: {
             ) : (
               <div>
                 <Row label="Person" value={w.ansprechpartner} />
-                <Row label="E-Mail" value={<a href={`mailto:${w.email}`} style={{ color: '#003366' }}>{w.email}</a>} />
+                <Row label="E-Mail" value={<a href={`mailto:${w.email}`} style={{ color: 'var(--text)' }}>{w.email}</a>} />
                 {w.telefon && <Row label="Telefon" value={w.telefon} />}
                 <Row label="Standort" value={w.standort} />
                 <Row label="Sichtbarkeit" value={w.sichtbarkeit} />
@@ -728,7 +728,7 @@ function PruefungUndQualifizierung({ anfrage: a, store, onToast }: {
         style={{ padding: '16px 20px', borderBottom: offen ? '1px solid #f0f0f0' : 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', userSelect: 'none' }}
       >
         <div>
-          <h3 style={{ margin: '0 0 4px 0', fontSize: '15px', fontWeight: 700, color: '#003366' }}>
+          <h3 style={{ margin: '0 0 4px 0', fontSize: '15px', fontWeight: 700, color: 'var(--text)' }}>
             📋 Prüfung & Qualifizierung
           </h3>
           <div style={{ fontSize: '12px', color: '#555' }}>
@@ -763,7 +763,7 @@ function PruefungUndQualifizierung({ anfrage: a, store, onToast }: {
             <div key={kat.key} style={{ marginBottom: '16px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
                 <span style={{ fontSize: '14px' }}>{kat.icon}</span>
-                <span style={{ fontSize: '12px', fontWeight: 700, color: '#003366', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{kat.label}</span>
+                <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{kat.label}</span>
                 <span style={{ fontSize: '11px', color: katErledigt === kat.punkte.length ? '#2e7d32' : '#666', fontWeight: 600 }}>
                   {katErledigt}/{kat.punkte.length}
                 </span>
@@ -890,7 +890,7 @@ function PruefungUndQualifizierung({ anfrage: a, store, onToast }: {
 function SimpleSection({ titel, children }: { titel: string; children: React.ReactNode }) {
   return (
     <div style={{ marginBottom: '20px' }}>
-      <h3 style={{ margin: '0 0 10px 0', fontSize: '12px', fontWeight: 700, color: '#003366', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{titel}</h3>
+      <h3 style={{ margin: '0 0 10px 0', fontSize: '12px', fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{titel}</h3>
       {children}
     </div>
   );
@@ -913,7 +913,7 @@ function CollapsibleSection({ titel, icon, children, initialOffen = false }: {
           borderBottom: offen ? '1px solid #f0f0f0' : 'none',
         }}
       >
-        <h3 style={{ margin: 0, fontSize: '12px', fontWeight: 700, color: '#003366', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+        <h3 style={{ margin: 0, fontSize: '12px', fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
           {icon && <span style={{ marginRight: '6px' }}>{icon}</span>}{titel}
         </h3>
         <span style={{ fontSize: '16px', color: '#888', lineHeight: 1, transition: 'transform 0.2s', transform: offen ? 'rotate(180deg)' : 'rotate(0deg)' }}>▾</span>

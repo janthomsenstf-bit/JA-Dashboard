@@ -34,20 +34,20 @@ export default function FormularePage() {
   return (
     <div>
       {toast && (
-        <div style={{ position: 'fixed', bottom: '24px', right: '24px', zIndex: 9999, backgroundColor: '#003366', color: 'white', padding: '14px 20px', borderRadius: '8px', boxShadow: '0 4px 16px rgba(0,0,0,0.2)', fontSize: '14px', fontWeight: 600 }}>
+        <div style={{ position: 'fixed', bottom: '24px', right: '24px', zIndex: 9999, backgroundColor: 'var(--accent)', color: 'white', padding: '14px 20px', borderRadius: '8px', boxShadow: '0 4px 16px rgba(0,0,0,0.2)', fontSize: '14px', fontWeight: 600 }}>
           {toast}
         </div>
       )}
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
         <div>
-          <h1 style={{ margin: 0, color: '#003366', fontSize: '24px' }}>Formulare & Vorlagen</h1>
+          <h1 style={{ margin: 0, color: 'var(--text)', fontSize: '24px' }}>Formulare & Vorlagen</h1>
           <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#666' }}>
             Verwaltbare Vorlagen für Anfragen, Interessenten und Matchmaking-Kommunikation. Bessere Vorlagen → bessere Prozesse.
           </p>
         </div>
         {tab !== 'matchmaking' && (
-          <button onClick={() => setNeuOffen(true)} style={{ padding: '10px 18px', backgroundColor: '#003366', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '14px', fontWeight: 600, flexShrink: 0 }}>
+          <button onClick={() => setNeuOffen(true)} style={{ padding: '10px 18px', backgroundColor: 'var(--accent)', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '14px', fontWeight: 600, flexShrink: 0 }}>
             + Neue Vorlage
           </button>
         )}
@@ -63,7 +63,7 @@ export default function FormularePage() {
         ] as const).map(([id, label]) => (
           <button key={id} onClick={() => { setTab(id); setSelectedId(null); setSelectedMailId(null); }} style={{
             padding: '10px 18px', borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '13px', fontWeight: 600,
-            backgroundColor: tab === id ? (id === 'matchmaking' ? '#0a3d2e' : '#003366') : '#f0f0f0',
+            backgroundColor: tab === id ? (id === 'matchmaking' ? '#0a3d2e' : 'var(--accent)') : '#f0f0f0',
             color: tab === id ? 'white' : '#666',
           }}>
             {label}
@@ -101,7 +101,7 @@ export default function FormularePage() {
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px' }}>
                   <div>
-                    <div style={{ fontWeight: 700, fontSize: '15px', color: '#003366' }}>{f.name}</div>
+                    <div style={{ fontWeight: 700, fontSize: '15px', color: 'var(--text)' }}>{f.name}</div>
                     <div style={{ fontSize: '12px', color: '#666', marginTop: '3px' }}>
                       {f.typ === 'anfrage' ? '📋 Anfrage' : '👥 Interessent'} · {f.fragen.length} Fragen
                     </div>
@@ -216,7 +216,7 @@ function MatchmakingVorlagenTab({ vorlagen, selectedId, onSelect, onUpdate, onTo
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px' }}>
                   <div>
                     <div style={{ fontSize: '20px', marginBottom: '6px' }}>{icon}</div>
-                    <div style={{ fontWeight: 700, fontSize: '15px', color: '#003366' }}>{v.name}</div>
+                    <div style={{ fontWeight: 700, fontSize: '15px', color: 'var(--text)' }}>{v.name}</div>
                     <div style={{ fontSize: '11px', color: '#666', marginTop: '3px' }}>{typLabel}</div>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-end' }}>
@@ -309,14 +309,14 @@ function MatchmailEditor({ vorlage: v, onUpdate, onClose, onToast }: {
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <span style={{ fontSize: '22px' }}>{MATCHMAIL_TYP_ICONS[v.typ]}</span>
               <div>
-                <div style={{ fontWeight: 700, fontSize: '18px', color: '#003366' }}>{v.name}</div>
+                <div style={{ fontWeight: 700, fontSize: '18px', color: 'var(--text)' }}>{v.name}</div>
                 <div style={{ fontSize: '12px', color: '#666', marginTop: '2px' }}>{MATCHMAIL_TYP_LABELS[v.typ]} · {v.beschreibung}</div>
               </div>
             </div>
           </div>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
             {dirty && <span style={{ fontSize: '11px', color: '#FF9900', fontWeight: 600 }}>Ungespeicherte Änderungen</span>}
-            <button onClick={speichern} disabled={!dirty} style={{ padding: '8px 18px', backgroundColor: dirty ? '#003366' : '#ccc', color: 'white', border: 'none', borderRadius: '6px', cursor: dirty ? 'pointer' : 'default', fontSize: '13px', fontWeight: 600 }}>
+            <button onClick={speichern} disabled={!dirty} style={{ padding: '8px 18px', backgroundColor: dirty ? 'var(--accent)' : '#ccc', color: 'white', border: 'none', borderRadius: '6px', cursor: dirty ? 'pointer' : 'default', fontSize: '13px', fontWeight: 600 }}>
               💾 Speichern
             </button>
             <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '20px', color: '#666' }}>×</button>
@@ -333,7 +333,7 @@ function MatchmailEditor({ vorlage: v, onUpdate, onClose, onToast }: {
           ] as const).map(([id, label]) => (
             <button key={id} onClick={() => setSubTab(id)} style={{
               padding: '7px 14px', borderRadius: '6px 6px 0 0', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 600,
-              backgroundColor: subTab === id ? '#f0f4ff' : 'transparent', color: subTab === id ? '#003366' : '#666',
+              backgroundColor: subTab === id ? '#f0f4ff' : 'transparent', color: subTab === id ? 'var(--accent)' : '#666',
             }}>
               {label}
             </button>
@@ -399,7 +399,7 @@ function MatchmailEditor({ vorlage: v, onUpdate, onClose, onToast }: {
                     <button onClick={() => { const neu = editData.buttons.filter((_, j) => j !== i); upd({ buttons: neu }); }} style={{ padding: '6px 10px', backgroundColor: '#ffebee', color: '#c62828', border: '1px solid #ef9a9a', borderRadius: '5px', fontSize: '11px', cursor: 'pointer' }}>🗑</button>
                   </div>
                 ))}
-                <button onClick={() => upd({ buttons: [...editData.buttons, { label: 'Neuer Button', aktion: 'link', farbe: '#003366' }] })} style={{ padding: '6px 14px', backgroundColor: '#f0f4ff', color: '#003366', border: '1px solid #bfdbfe', borderRadius: '6px', fontSize: '12px', cursor: 'pointer', fontWeight: 600 }}>
+                <button onClick={() => upd({ buttons: [...editData.buttons, { label: 'Neuer Button', aktion: 'link', farbe: 'var(--accent)' }] })} style={{ padding: '6px 14px', backgroundColor: '#f0f4ff', color: 'var(--text)', border: '1px solid #bfdbfe', borderRadius: '6px', fontSize: '12px', cursor: 'pointer', fontWeight: 600 }}>
                   + Button hinzufügen
                 </button>
               </div>
@@ -440,7 +440,7 @@ function MatchmailEditor({ vorlage: v, onUpdate, onClose, onToast }: {
                 {/* E-Mail-Body (wie echte E-Mail) */}
                 <div style={{ fontFamily: 'Arial, sans-serif', maxWidth: '600px', margin: '0 auto', color: '#333' }}>
                   {/* Branded Header */}
-                  <div style={{ background: '#003366', padding: '20px 24px', borderRadius: '0' }}>
+                  <div style={{ background: 'var(--accent)', padding: '20px 24px', borderRadius: '0' }}>
                     <h1 style={{ color: 'white', margin: 0, fontSize: '18px' }}>
                       {MATCHMAIL_TYP_ICONS[editData.typ]} {editData.name}
                     </h1>
@@ -478,7 +478,7 @@ function MatchmailEditor({ vorlage: v, onUpdate, onClose, onToast }: {
                           return <div key={i} style={{ fontSize: '12px', fontWeight: 'bold', color: '#1b5e20', margin: '12px 0 6px 0' }}>{replaced}</div>;
                         }
                         if (!replaced.trim()) return <div key={i} style={{ height: '8px' }} />;
-                        return <div key={i} style={{ fontSize: '14px', fontWeight: replaced.length < 40 && !replaced.includes(' ') ? 'bold' : 'normal', color: replaced.length < 40 ? '#003366' : '#333', padding: '2px 0', lineHeight: 1.6 }}>{replaced}</div>;
+                        return <div key={i} style={{ fontSize: '14px', fontWeight: replaced.length < 40 && !replaced.includes(' ') ? 'bold' : 'normal', color: replaced.length < 40 ? 'var(--accent)' : '#333', padding: '2px 0', lineHeight: 1.6 }}>{replaced}</div>;
                       })}
                     </div>
 
@@ -544,7 +544,7 @@ function MatchmailEditor({ vorlage: v, onUpdate, onClose, onToast }: {
                 {ALLE_PLATZHALTER.map(p => (
                   <div key={p.key} style={{ padding: '12px', backgroundColor: '#f8f9fa', borderRadius: '8px', border: '1px solid #e8e8e8' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                      <code style={{ fontSize: '13px', fontWeight: 700, color: '#003366', backgroundColor: '#e3f2fd', padding: '2px 8px', borderRadius: '4px' }}>{p.key}</code>
+                      <code style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)', backgroundColor: '#e3f2fd', padding: '2px 8px', borderRadius: '4px' }}>{p.key}</code>
                       <button onClick={() => { navigator.clipboard.writeText(p.key); onToast(`${p.key} kopiert`); }} style={{ padding: '3px 8px', backgroundColor: 'transparent', border: '1px solid #ddd', borderRadius: '4px', fontSize: '10px', cursor: 'pointer', color: '#555' }}>
                         📋 Kopieren
                       </button>
@@ -557,13 +557,13 @@ function MatchmailEditor({ vorlage: v, onUpdate, onClose, onToast }: {
 
               {/* Verwendete Platzhalter in dieser Vorlage */}
               <div style={{ marginTop: '20px', padding: '16px', backgroundColor: '#f0f4ff', borderRadius: '8px' }}>
-                <div style={{ fontSize: '12px', fontWeight: 700, color: '#003366', marginBottom: '10px' }}>In dieser Vorlage verwendet:</div>
+                <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text)', marginBottom: '10px' }}>In dieser Vorlage verwendet:</div>
                 <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                   {ALLE_PLATZHALTER.filter(p => {
                     const all = editData.betreff + editData.einleitung + editData.hauptinhalt + editData.hinweis + editData.fusszeile;
                     return all.includes(p.key);
                   }).map(p => (
-                    <code key={p.key} style={{ fontSize: '12px', padding: '3px 8px', backgroundColor: '#e3f2fd', color: '#003366', borderRadius: '4px', fontWeight: 600 }}>{p.key}</code>
+                    <code key={p.key} style={{ fontSize: '12px', padding: '3px 8px', backgroundColor: '#e3f2fd', color: 'var(--text)', borderRadius: '4px', fontWeight: 600 }}>{p.key}</code>
                   ))}
                 </div>
               </div>
@@ -582,7 +582,7 @@ function MatchmailEditor({ vorlage: v, onUpdate, onClose, onToast }: {
 
               <div style={{ padding: '16px', backgroundColor: '#f8f9fa', borderRadius: '8px', marginBottom: '16px' }}>
                 <div style={{ fontSize: '12px', color: '#555', marginBottom: '8px' }}><strong>Empfänger:</strong></div>
-                <div style={{ fontSize: '14px', color: '#003366', fontWeight: 600 }}>jan.thomsen.stf@gmail.com</div>
+                <div style={{ fontSize: '14px', color: 'var(--text)', fontWeight: 600 }}>jan.thomsen.stf@gmail.com</div>
                 <div style={{ fontSize: '11px', color: '#888', marginTop: '4px' }}>Resend Free-Tier: nur verifizierte Adressen</div>
               </div>
 
@@ -624,7 +624,7 @@ function MatchmailEditor({ vorlage: v, onUpdate, onClose, onToast }: {
                 }}
                 disabled={testSending}
                 style={{
-                  padding: '12px 24px', backgroundColor: testSending ? '#ccc' : '#003366', color: 'white',
+                  padding: '12px 24px', backgroundColor: testSending ? '#ccc' : 'var(--accent)', color: 'white',
                   border: 'none', borderRadius: '8px', cursor: testSending ? 'wait' : 'pointer',
                   fontSize: '14px', fontWeight: 700, width: '100%',
                 }}
@@ -736,7 +736,7 @@ function FormularEditor({ formular: f, store, onClose, onToast }: {
           <input
             value={f.name}
             onChange={e => store.updateFormular(f.id, { name: e.target.value })}
-            style={{ fontSize: '18px', fontWeight: 700, color: '#003366', border: 'none', borderBottom: '1px dashed transparent', outline: 'none', width: '100%' }}
+            style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text)', border: 'none', borderBottom: '1px dashed transparent', outline: 'none', width: '100%' }}
             onFocus={e => e.currentTarget.style.borderBottomColor = '#ddd'}
             onBlur={e => e.currentTarget.style.borderBottomColor = 'transparent'}
           />
@@ -760,7 +760,7 @@ function FormularEditor({ formular: f, store, onClose, onToast }: {
         {([['editor', '✏️ Editor'], ['vorschau', '👁 Vorschau'], ['ki', '🤖 KI-Hilfe']] as const).map(([id, label]) => (
           <button key={id} onClick={() => setEditorTab(id)} style={{
             padding: '7px 14px', borderRadius: '6px 6px 0 0', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: 600,
-            backgroundColor: editorTab === id ? '#f0f4ff' : 'transparent', color: editorTab === id ? '#003366' : '#666',
+            backgroundColor: editorTab === id ? '#f0f4ff' : 'transparent', color: editorTab === id ? 'var(--accent)' : '#666',
           }}>
             {label}
           </button>
@@ -820,7 +820,7 @@ function FormularEditor({ formular: f, store, onClose, onToast }: {
               <select value={neuerTyp} onChange={e => setNeuerTyp(e.target.value as FrageTyp)} style={{ ...INPUT, fontSize: '12px' }}>
                 {FRAGETYP_OPTIONEN.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
-              <button onClick={frageHinzufuegen} style={{ padding: '8px 16px', backgroundColor: '#003366', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 600, flexShrink: 0 }}>+ Hinzufügen</button>
+              <button onClick={frageHinzufuegen} style={{ padding: '8px 16px', backgroundColor: 'var(--accent)', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 600, flexShrink: 0 }}>+ Hinzufügen</button>
             </div>
           </div>
         )}
@@ -828,7 +828,7 @@ function FormularEditor({ formular: f, store, onClose, onToast }: {
         {/* TAB: VORSCHAU */}
         {editorTab === 'vorschau' && (
           <div style={{ maxWidth: '560px', margin: '0 auto' }}>
-            <div style={{ padding: '10px 14px', backgroundColor: '#003366', color: 'white', borderRadius: '8px 8px 0 0', fontSize: '13px', fontWeight: 700 }}>
+            <div style={{ padding: '10px 14px', backgroundColor: 'var(--accent)', color: 'white', borderRadius: '8px 8px 0 0', fontSize: '13px', fontWeight: 700 }}>
               {f.typ === 'anfrage' ? '📋 Anfrage einreichen' : '👥 Interesse bekunden'} — Vorschau
             </div>
             <div style={{ border: '1px solid #e0e0e0', borderTop: 'none', borderRadius: '0 0 8px 8px', padding: '20px' }}>
@@ -855,10 +855,10 @@ function FormularEditor({ formular: f, store, onClose, onToast }: {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
             {/* Branchenfragen vorschlagen */}
             <div style={{ padding: '16px', backgroundColor: '#f0f4ff', borderRadius: '8px' }}>
-              <div style={{ fontSize: '13px', fontWeight: 700, color: '#003366', marginBottom: '8px' }}>✨ Branchenfragen vorschlagen</div>
+              <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)', marginBottom: '8px' }}>✨ Branchenfragen vorschlagen</div>
               <p style={{ fontSize: '12px', color: '#666', margin: '0 0 8px 0' }}>Beschreibe das Vorhaben — die KI schlägt passende Zusatzfragen vor.</p>
               <textarea value={kiBeschreibung} onChange={e => setKiBeschreibung(e.target.value)} rows={2} placeholder="z.B. Lebensmittelunternehmen aus Dänemark sucht Vertriebspartner in Deutschland" style={{ ...INPUT, width: '100%', marginBottom: '8px', resize: 'vertical' }} />
-              <button onClick={kiVorschlagen} disabled={kiLoading || !kiBeschreibung.trim()} style={{ padding: '8px 16px', backgroundColor: kiLoading ? '#ccc' : '#003366', color: 'white', border: 'none', borderRadius: '6px', cursor: kiLoading ? 'wait' : 'pointer', fontSize: '13px', fontWeight: 600 }}>
+              <button onClick={kiVorschlagen} disabled={kiLoading || !kiBeschreibung.trim()} style={{ padding: '8px 16px', backgroundColor: kiLoading ? '#ccc' : 'var(--accent)', color: 'white', border: 'none', borderRadius: '6px', cursor: kiLoading ? 'wait' : 'pointer', fontSize: '13px', fontWeight: 600 }}>
                 {kiLoading ? '⏳ Analysiere…' : '✨ Fragen vorschlagen'}
               </button>
               {kiFragen && (
@@ -956,7 +956,7 @@ function NeueVorlageModal({ onClose, onErstellen }: {
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 3000, backgroundColor: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
       <div onClick={e => e.stopPropagation()} style={{ backgroundColor: 'white', borderRadius: '12px', width: '100%', maxWidth: '440px', boxShadow: '0 12px 40px rgba(0,0,0,0.3)' }}>
         <div style={{ padding: '20px 24px', borderBottom: '1px solid #f0f0f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2 style={{ margin: 0, fontSize: '18px', color: '#003366' }}>Neue Formular-Vorlage</h2>
+          <h2 style={{ margin: 0, fontSize: '18px', color: 'var(--text)' }}>Neue Formular-Vorlage</h2>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '22px', color: '#666' }}>×</button>
         </div>
         <div style={{ padding: '24px' }}>
@@ -975,7 +975,7 @@ function NeueVorlageModal({ onClose, onErstellen }: {
         </div>
         <div style={{ padding: '16px 24px', borderTop: '1px solid #f0f0f0', display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
           <button onClick={onClose} style={{ padding: '10px 20px', backgroundColor: 'transparent', color: '#666', border: '1px solid #ddd', borderRadius: '6px', cursor: 'pointer', fontSize: '14px' }}>Abbrechen</button>
-          <button onClick={() => name.trim() && onErstellen(name.trim(), typ, branche.trim())} disabled={!name.trim()} style={{ padding: '10px 24px', backgroundColor: name.trim() ? '#003366' : '#ccc', color: 'white', border: 'none', borderRadius: '6px', cursor: name.trim() ? 'pointer' : 'not-allowed', fontSize: '14px', fontWeight: 600 }}>Erstellen</button>
+          <button onClick={() => name.trim() && onErstellen(name.trim(), typ, branche.trim())} disabled={!name.trim()} style={{ padding: '10px 24px', backgroundColor: name.trim() ? 'var(--accent)' : '#ccc', color: 'white', border: 'none', borderRadius: '6px', cursor: name.trim() ? 'pointer' : 'not-allowed', fontSize: '14px', fontWeight: 600 }}>Erstellen</button>
         </div>
       </div>
     </div>
