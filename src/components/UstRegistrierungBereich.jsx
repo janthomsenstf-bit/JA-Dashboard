@@ -24,9 +24,10 @@ const AKZENT = '#4f46e5'
 const HEUTE  = '2026-07-23'
 
 const HAUPTNAV = [
-  { key: 'faelle',   label: 'Fälle (Anmeldung)', icon: '📁' },
-  { key: 'abmeldung',label: 'Abmeldung',         icon: '🚪' },
-  { key: 'wissen',   label: 'Wissensdatenbank',  icon: '📚' },
+  { key: 'faelle',   label: 'Fälle',            icon: '📁' },
+  { key: 'anfrage',  label: 'Anfrageformular',  icon: '📝' },
+  { key: 'abmeldung',label: 'Abmeldung',        icon: '🚪' },
+  { key: 'wissen',   label: 'Wissensdatenbank', icon: '📚' },
 ]
 
 // ── Herkunft/Qualität jeder Information ──────────────────────────────────────
@@ -424,6 +425,7 @@ export default function UstRegistrierungBereich() {
       <div style={{ flex: 1, overflowY: 'auto', minHeight: 0, padding: '20px 24px 56px' }}>
         <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
           {ebene === 'faelle'    && <FaelleAnsicht />}
+          {ebene === 'anfrage'   && <AnfrageAnsicht />}
           {ebene === 'abmeldung' && <AbmeldungAnsicht />}
           {ebene === 'wissen'    && <WissensAnsicht />}
         </div>
@@ -1089,6 +1091,117 @@ function StufenInhalt({ stufe, fall, fa, anf, wartetTage }) {
   )
 
   return null
+}
+
+// ═════════════════════════ ANFRAGEFORMULAR (öffentliche Anmeldung) ══════════
+const faFuerLand = (id) => FINANZAEMTER.find(f => f.zustaendigkeit.laender.includes(id)) ?? FINANZAEMTER[0]
+
+function AnfrageAnsicht() {
+  const [f, setF] = useState({
+    firma: 'Havblik Handel ApS', land: 'dk', rechtsform: 'ApS',
+    ansprechpartner: 'Freja Holm', email: 'freja@havblik.dk',
+    taetigkeit: 'Online-Handel (B2C)', lagerInDe: true, umsatzErwartet: '180.000 €',
+    optEmpfangsvollmacht: true, optEmailEinwilligung: true, optPortal: true, dsgvo: false,
+  })
+  const set = (k) => (e) => setF(s => ({ ...s, [k]: e.target.value }))
+  const toggle = (k) => (e) => setF(s => ({ ...s, [k]: e.target.checked }))
+  const l = land(f.land)
+  const fa = faFuerLand(f.land)
+  const anf = ANFORDERUNGEN[0]
+
+  const inp = { width: '100%', padding: '8px 11px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text)', fontSize: '13px', fontFamily: 'inherit', boxSizing: 'border-box' }
+  const lbl = { fontSize: '11.5px', color: 'var(--text-muted)', marginBottom: '4px', display: 'block' }
+  const Feld = ({ label, children }) => (<div><label style={lbl}>{label}</label>{children}</div>)
+  const Check = ({ k, children }) => (
+    <label style={{ display: 'flex', gap: '9px', alignItems: 'flex-start', cursor: 'pointer', fontSize: '12.5px', color: 'var(--text)', lineHeight: 1.5 }}>
+      <input type="checkbox" checked={f[k]} onChange={toggle(k)} style={{ marginTop: '2px', accentColor: FARBE }} />
+      <span>{children}</span>
+    </label>
+  )
+
+  return (
+    <div>
+      <div style={{ marginBottom: '18px' }}>
+        <h2 style={{ margin: '0 0 4px', fontSize: '20px', fontWeight: 700, color: 'var(--text)' }}>Anfrage: Umsatzsteuerliche Registrierung in Deutschland</h2>
+        <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-muted)', lineHeight: 1.7, maxWidth: '720px' }}>
+          Das öffentliche Erstkontakt-Formular. Der Mandant wählt gleich seine Optionen; rechts siehst du die <strong>automatische Willkommens-Mail</strong> live,
+          inkl. Hinweis auf die zurück benötigte Einwilligung/Beauftragung.
+        </p>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', alignItems: 'start' }}>
+        {/* Formular */}
+        <div style={{ border: '1px solid var(--border)', borderRadius: '12px', background: 'var(--surface)', padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: '13px' }}>
+          <div style={{ fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.02em', color: FARBE }}>Anfrage-Formular</div>
+          <Feld label="Unternehmen"><input style={inp} value={f.firma} onChange={set('firma')} /></Feld>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <Feld label="Land">
+              <select style={inp} value={f.land} onChange={set('land')}>{LAENDER.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select>
+            </Feld>
+            <Feld label="Rechtsform"><input style={inp} value={f.rechtsform} onChange={set('rechtsform')} /></Feld>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <Feld label="Ansprechpartner"><input style={inp} value={f.ansprechpartner} onChange={set('ansprechpartner')} /></Feld>
+            <Feld label="E-Mail"><input style={inp} value={f.email} onChange={set('email')} /></Feld>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '12px' }}>
+            <Feld label="Art der Tätigkeit"><input style={inp} value={f.taetigkeit} onChange={set('taetigkeit')} /></Feld>
+            <Feld label="Erwarteter Umsatz"><input style={inp} value={f.umsatzErwartet} onChange={set('umsatzErwartet')} /></Feld>
+          </div>
+          <Check k="lagerInDe">Wir haben ein Lager / eine Betriebsstätte in Deutschland</Check>
+
+          <div style={{ borderTop: '1px solid var(--border)', paddingTop: '13px', marginTop: '3px', display: 'flex', flexDirection: 'column', gap: '11px' }}>
+            <div style={{ fontSize: '11.5px', fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)' }}>Optionen (beschleunigen den Prozess)</div>
+            <Check k="optEmpfangsvollmacht"><strong>Empfangsvollmacht (Zustellvollmacht) erteilen</strong> – die Steuernummer kommt dann direkt zu uns und in der Regel schneller.</Check>
+            <Check k="optEmailEinwilligung"><strong>Einwilligung zur E-Mail-Kommunikation</strong> mit dem Finanzamt (§ 87a AO) gleich mit erteilen.</Check>
+            <Check k="optPortal"><strong>Zugang zum Online-Portal</strong> einrichten (Status, Dokumente, Nachrichten).</Check>
+          </div>
+
+          <div style={{ borderTop: '1px solid var(--border)', paddingTop: '13px', marginTop: '3px' }}>
+            <Check k="dsgvo">
+              <span><strong style={{ color: f.dsgvo ? 'var(--text)' : '#dc2626' }}>Einwilligung &amp; Beauftragung (erforderlich):</strong> Ich beauftrage euch mit meiner USt-Registrierung. Meine Daten werden ausschließlich dafür verarbeitet, ans Finanzamt weitergeleitet und nach Abschluss innerhalb von 14 Tagen gelöscht. Ich habe die Datenschutzhinweise gelesen.</span>
+            </Check>
+          </div>
+
+          <button disabled={!f.dsgvo} style={{ marginTop: '4px', alignSelf: 'flex-start', padding: '9px 18px', borderRadius: '8px', border: 'none', background: f.dsgvo ? FARBE : 'var(--border2)', color: '#fff', fontSize: '13px', fontWeight: 700, cursor: f.dsgvo ? 'pointer' : 'not-allowed' }}>
+            Anfrage absenden →
+          </button>
+          <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Ohne die Einwilligung kann nicht abgesendet werden. Zustimmung wird mit Zeitstempel beim Fall gespeichert.</div>
+        </div>
+
+        {/* Live-Vorschau Willkommens-Mail */}
+        <div style={{ border: '1px solid var(--border)', borderRadius: '12px', background: 'var(--surface)', padding: '22px 24px' }}>
+          <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '12px' }}>Automatische Willkommens-Mail (Live-Vorschau · Brevo)</div>
+          <div style={{ fontSize: '12.5px', color: 'var(--text-muted)' }}>Betreff: Willkommen – deine USt-Registrierung in Deutschland</div>
+          <div style={{ marginTop: '14px', fontSize: '12.5px', color: 'var(--text)', lineHeight: 1.8 }}>
+            Hallo {f.ansprechpartner || 'und willkommen'},<br /><br />
+            schön, dass du dich für eine umsatzsteuerliche Registrierung in Deutschland interessierst!<br /><br />
+            <strong>Von dir wissen wir bereits:</strong> {l.name}, {f.rechtsform}, {f.taetigkeit}{f.lagerInDe ? ', Lager in Deutschland' : ''}, erwarteter Umsatz {f.umsatzErwartet}.<br /><br />
+            <strong>Für die Registrierung beim {fa.name} brauchen wir noch:</strong> {anf.pflichtunterlagen.join(', ')}.
+
+            {(f.optEmpfangsvollmacht || f.optEmailEinwilligung || f.optPortal) && (
+              <><br /><br /><strong>Deine gewählten Optionen:</strong>
+                {f.optEmpfangsvollmacht && <div>✓ Empfangsvollmacht erteilt – so bekommen wir die Steuernummer direkt und es geht schneller.</div>}
+                {f.optEmailEinwilligung && <div>✓ Einwilligung E-Mail-Kommunikation (§ 87a AO) – legen wir gleich mit bei.</div>}
+                {f.optPortal && <div>✓ Zugang zum Online-Portal – die Zugangsdaten kommen separat.</div>}
+              </>
+            )}
+          </div>
+
+          {/* Einwilligungs-Hinweis – prominent */}
+          <div style={{ marginTop: '16px', padding: '13px 15px', borderRadius: '10px', background: 'rgba(79,70,229,0.06)', border: '1px solid rgba(79,70,229,0.28)', fontSize: '12.5px', color: 'var(--text)', lineHeight: 1.7 }}>
+            <strong>📄 Damit wir starten können</strong> brauchen wir deine unterschriebene <strong>Einwilligung &amp; Beauftragung</strong> zurück. Kurz gesagt: Wir verarbeiten deine Daten
+            <strong> ausschließlich</strong> für diese Registrierung, leiten sie an das Finanzamt weiter und <strong>löschen sie innerhalb von 14 Tagen</strong> nach Abschluss.
+            Das Dokument findest du im Anhang – bitte einmal bestätigen und zurücksenden, dann geht's los.
+          </div>
+
+          <div style={{ marginTop: '14px', fontSize: '12.5px', color: 'var(--text)' }}>
+            Viele Grüße<br />{KANZLEI.name}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 // ═════════════════════════ ABMELDUNG (Webformular) ══════════════════════════
