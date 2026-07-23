@@ -219,7 +219,7 @@ function ProjektInhalt({ anfrage: a, status: s, zuordnungen, interessenten, stor
   async function sendeIntroMail(interessentId: string, i: typeof MOCK_INTERESSENTEN[number]) {
     setIntroStatus(prev => ({ ...prev, [interessentId]: 'sending' }));
     try {
-      const res = await fetch('/api/email/intro', {
+      const res = await fetch('/api/easyb2b-email?aktion=intro', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -732,7 +732,7 @@ function MatchSektion({ anfrage: a, matchVorschlaege, store, onToast }: {
     setSendStatus(prev => ({ ...prev, [match.id]: 'sending' }));
     const interessent = MOCK_INTERESSENTEN.find(i => i.id === match.interessentId);
     try {
-      const res = await fetch('/api/email/match-consent', {
+      const res = await fetch('/api/easyb2b-email?aktion=match-consent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -770,7 +770,7 @@ function MatchSektion({ anfrage: a, matchVorschlaege, store, onToast }: {
     setPaketStatus(prev => ({ ...prev, [match.id]: 'sending' }));
     const interessent = MOCK_INTERESSENTEN.find(i => i.id === match.interessentId);
     try {
-      const res = await fetch('/api/email/match-consent', {
+      const res = await fetch('/api/easyb2b-email?aktion=match-consent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

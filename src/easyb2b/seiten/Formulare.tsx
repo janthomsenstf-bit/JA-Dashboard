@@ -596,7 +596,7 @@ function MatchmailEditor({ vorlage: v, onUpdate, onClose, onToast }: {
                   setTestSending(true);
                   setTestResult(null);
                   try {
-                    const res = await fetch('/api/email/test-vorlage', {
+                    const res = await fetch('/api/easyb2b-email?aktion=test-vorlage', {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({
