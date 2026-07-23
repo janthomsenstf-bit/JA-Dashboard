@@ -40,6 +40,8 @@ import InternBereich from './components/InternBereich.jsx'
 // geladen, wenn der Bereich geöffnet wird – so bleibt der Start des Spielbuchs
 // schnell und das Haupt-Bundle klein genug für die Offline-Ablage der PWA.
 const EasyB2BBereich = lazy(() => import('./components/EasyB2BBereich.jsx'))
+// USt-Registrierung – eigenständiges Modul, lazy geladen (Vorschau mit Beispieldaten)
+const UstRegistrierungBereich = lazy(() => import('./components/UstRegistrierungBereich.jsx'))
 
 // ── Website-Lead → Auftrag (geteilt von "Mandant anlegen" + "Auftrag zu Mandant") ──
 const LEAD_TYP_MAP = {
@@ -1514,7 +1516,7 @@ export default function App() {
         const klientOffen = hauptbereich === 'personen' && !!selectedId && clients.some(c => c.id === selectedId)
         const zeigeUebersicht = hauptbereich === 'personen' && !klientOffen
         const zeigeArbeitsbereich = hauptbereich === 'spielbuch' || klientOffen
-        const eigeneBereiche = ['spielbuch', 'personen', 'kommunikation', 'dokumente', 'homepages', 'uebersichten', 'prozesse', 'intern', 'easyb2b']
+        const eigeneBereiche = ['spielbuch', 'personen', 'kommunikation', 'dokumente', 'homepages', 'uebersichten', 'prozesse', 'intern', 'easyb2b', 'ustreg']
         const zeigePlatzhalter = !eigeneBereiche.includes(hauptbereich)
         const offenerKlient = klientOffen ? clients.find(c => c.id === selectedId) : null
 
@@ -1578,6 +1580,20 @@ export default function App() {
                   initialBereich={easyb2bInitial}
                   onInitialVerbraucht={() => setEasyb2bInitial(null)}
                 />
+              </Suspense>
+            )}
+
+            {/* Bereich „USt-Registrierung" – Modul (Vorschau mit Beispieldaten) */}
+            {hauptbereich === 'ustreg' && (
+              <Suspense fallback={
+                <div style={{
+                  flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: 'var(--text-muted)', fontSize: '13px', background: 'var(--bg)',
+                }}>
+                  USt-Registrierung wird geladen …
+                </div>
+              }>
+                <UstRegistrierungBereich />
               </Suspense>
             )}
 
