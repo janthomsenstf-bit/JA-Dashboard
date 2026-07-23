@@ -1,9 +1,18 @@
+import { fileURLToPath, URL } from 'node:url'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
   base: '/',
+  resolve: {
+    alias: {
+      // Der übernommene Easy-B2B-Bereich behält seine ursprüngliche
+      // Ordnerstruktur (lib/, components/). Über diesen Alias bleiben seine
+      // Importe unverändert – dort steht durchgehend '@easyb2b/lib/...'.
+      '@easyb2b': fileURLToPath(new URL('./src/easyb2b', import.meta.url)),
+    },
+  },
   plugins: [
     react(),
     VitePWA({

@@ -1,58 +1,51 @@
 import { useState } from 'react'
-import { DashboardStoreProvider, useStore } from '../easyb2b/store.tsx'
+import { DashboardStoreProvider, useStore } from '@easyb2b/lib/store.tsx'
+
+import Uebersicht     from '@easyb2b/seiten/Uebersicht.tsx'
+import Anfragen       from '@easyb2b/seiten/Anfragen.tsx'
+import Unternehmen    from '@easyb2b/seiten/Unternehmen.tsx'
+import Projekte       from '@easyb2b/seiten/Projekte.tsx'
+import Interessenten  from '@easyb2b/seiten/Interessenten.tsx'
+import Kontakte       from '@easyb2b/seiten/Kontakte.tsx'
+import Netzwerk       from '@easyb2b/seiten/Netzwerk.tsx'
+import Events         from '@easyb2b/seiten/Events.tsx'
+import Newsletter     from '@easyb2b/seiten/Newsletter.tsx'
+import KiZentrale     from '@easyb2b/seiten/KiZentrale.tsx'
+import Formulare      from '@easyb2b/seiten/Formulare.tsx'
+import KulturWissen   from '@easyb2b/seiten/KulturWissen.tsx'
+import SuccessStories from '@easyb2b/seiten/SuccessStories.tsx'
 
 /**
  * Bereich „Easy-B2B" – Marktplatz, Suchanzeigen und Partnervermittlung.
  *
- * Dieses Modul übernimmt das bisher eigenständige Easy-B2B-Dashboard
- * (Next.js) in das Spielbuch. Der Umzug erfolgt seitenweise; dieses Gerüst
- * bildet die Navigation und zeigt für jeden Unterbereich, ob er bereits
- * übernommen wurde.
+ * Das bisher eigenständige Easy-B2B-Dashboard (Next.js) ist hier als Modul
+ * eingebunden. Die 13 Unterbereiche entsprechen den Seiten des Ursprungs-
+ * projekts und wurden fachlich unverändert übernommen.
  *
- * Phase 1: nur Struktur. Es werden keine Daten geladen, geschrieben oder
- * verändert. Das Ursprungsprojekt bleibt unangetastet bestehen.
+ * Offen: Die Seiten bringen noch ihre eigene Farbwelt mit (feste Hex-Werte
+ * statt der CSS-Variablen des Spielbuchs). Die Angleichung ist ein eigener
+ * Schritt, damit sich Übernahme und Umgestaltung getrennt prüfen lassen.
  */
 
 const FARBE  = '#f97316' // Farbwelt des Bereichs „Easy-B2B"
 const AKZENT = '#ea580c' // Akzent für aktive Elemente
 
-/**
- * Die 13 Unterbereiche des bestehenden Easy-B2B-Dashboards, in der dortigen
- * Reihenfolge. `quelle` und `zeilen` dokumentieren die Herkunft, `daten` die
- * Datenlage – beides bleibt während des Umzugs die Arbeitsgrundlage.
- */
+/** Die Unterbereiche in der Reihenfolge des Ursprungsdashboards. */
 export const EB2B_BEREICHE = [
-  { key: 'uebersicht',  label: 'Übersicht',       icon: '📊', quelle: 'dashboard/page.tsx',            zeilen: 168,  daten: 'store' },
-  { key: 'anfragen',    label: 'Anfragen',        icon: '📋', quelle: 'dashboard/anfragen/page.tsx',   zeilen: 938,  daten: 'neon'  },
-  { key: 'unternehmen', label: 'Unternehmen',     icon: '🏢', quelle: 'dashboard/unternehmen/page.tsx',zeilen: 483,  daten: 'mock'  },
-  { key: 'projekte',    label: 'Projekte',        icon: '🚀', quelle: 'dashboard/projekte/page.tsx',   zeilen: 2126, daten: 'neon'  },
-  { key: 'interessenten',label: 'Interessenten',  icon: '👥', quelle: 'dashboard/interessenten/page.tsx',zeilen: 595,daten: 'neon'  },
-  { key: 'kontakte',    label: 'Kontakte',        icon: '🤝', quelle: 'dashboard/kontakte/page.tsx',   zeilen: 434,  daten: 'mock'  },
-  { key: 'netzwerk',    label: 'Netzwerk',        icon: '🕸', quelle: 'dashboard/netzwerk/page.tsx',   zeilen: 682,  daten: 'mock'  },
-  { key: 'events',      label: 'Events',          icon: '🎤', quelle: 'dashboard/events/page.tsx',     zeilen: 579,  daten: 'mock'  },
-  { key: 'newsletter',  label: 'Newsletter',      icon: '📰', quelle: 'dashboard/newsletter/page.tsx', zeilen: 427,  daten: 'mock'  },
-  { key: 'ki',          label: 'KI-Zentrale',     icon: '🤖', quelle: 'dashboard/ki-zentrale/page.tsx',zeilen: 745,  daten: 'mock'  },
-  { key: 'formulare',   label: 'Formulare',       icon: '📝', quelle: 'dashboard/formulare/page.tsx',  zeilen: 988,  daten: 'mock'  },
-  { key: 'kultur',      label: 'Kultur & Wissen', icon: '📚', quelle: 'dashboard/kultur-wissen/page.tsx',zeilen: 388,daten: 'mock'  },
-  { key: 'stories',     label: 'Success Stories', icon: '⭐', quelle: 'dashboard/success-stories/page.tsx',zeilen: 518,daten: 'mock' },
+  { key: 'uebersicht',    label: 'Übersicht',       icon: '📊', seite: Uebersicht,     daten: 'gemischt' },
+  { key: 'anfragen',      label: 'Anfragen',        icon: '📋', seite: Anfragen,       daten: 'neon'  },
+  { key: 'unternehmen',   label: 'Unternehmen',     icon: '🏢', seite: Unternehmen,    daten: 'demo'  },
+  { key: 'projekte',      label: 'Projekte',        icon: '🚀', seite: Projekte,       daten: 'neon'  },
+  { key: 'interessenten', label: 'Interessenten',   icon: '👥', seite: Interessenten,  daten: 'neon'  },
+  { key: 'kontakte',      label: 'Kontakte',        icon: '🤝', seite: Kontakte,       daten: 'demo'  },
+  { key: 'netzwerk',      label: 'Netzwerk',        icon: '🕸', seite: Netzwerk,       daten: 'demo'  },
+  { key: 'events',        label: 'Events',          icon: '🎤', seite: Events,         daten: 'demo'  },
+  { key: 'newsletter',    label: 'Newsletter',      icon: '📰', seite: Newsletter,     daten: 'demo'  },
+  { key: 'ki',            label: 'KI-Zentrale',     icon: '🤖', seite: KiZentrale,     daten: 'demo'  },
+  { key: 'formulare',     label: 'Formulare',       icon: '📝', seite: Formulare,      daten: 'demo'  },
+  { key: 'kultur',        label: 'Kultur & Wissen', icon: '📚', seite: KulturWissen,   daten: 'demo'  },
+  { key: 'stories',       label: 'Success Stories', icon: '⭐', seite: SuccessStories, daten: 'demo'  },
 ]
-
-/** Woher die Daten eines Unterbereichs stammen – ehrlich benannt. */
-const DATENLAGE = {
-  neon:  { label: 'Neon-Datenbank', icon: '🗄', farbe: '#16a34a',
-           text: 'Liest aus der bestehenden Neon-Datenbank. Bleibt beim Umzug unverändert angebunden.' },
-  mock:  { label: 'Beispieldaten',  icon: '⚠️', farbe: '#d97706',
-           text: 'Arbeitet mit Beispieldaten im Arbeitsspeicher. Änderungen überleben kein Neuladen – schon heute im Ursprungsprojekt.' },
-  store: { label: 'Gemischt',       icon: '◐', farbe: '#2563eb',
-           text: 'Zeigt Kennzahlen aus beiden Quellen zusammengefasst.' },
-}
-
-/** Zustand der Datenanbindung, in Klartext. */
-const DB_STATUS = {
-  laden:  { icon: '⏳', farbe: 'var(--text-muted)', text: 'Datenbank wird abgefragt …' },
-  fertig: { icon: '🟢', farbe: '#16a34a',           text: 'Mit der Neon-Datenbank verbunden.' },
-  fehler: { icon: '🔴', farbe: '#dc2626',           text: 'Keine Verbindung zur Neon-Datenbank – es werden nur Beispieldaten angezeigt. Fehlt auf Vercel die Umgebungsvariable DATABASE_URL?' },
-}
 
 /**
  * Der Bereich stellt die übernommene Datenschicht bereit, damit sie über
@@ -70,12 +63,13 @@ export default function EasyB2BBereich() {
 function EasyB2BInhalt() {
   const [bereich, setBereich] = useState('uebersicht')
   const aktiv = EB2B_BEREICHE.find(b => b.key === bereich) ?? EB2B_BEREICHE[0]
-  const lage  = DATENLAGE[aktiv.daten]
+  const Seite = aktiv.seite
 
-  const { anfragen, unternehmen, kontakte, zuordnungen, dbLadenStatus } = useStore()
-  const db = DB_STATUS[dbLadenStatus] ?? DB_STATUS.laden
+  const { dbLadenStatus } = useStore()
 
-  const gesamtZeilen = EB2B_BEREICHE.reduce((s, b) => s + b.zeilen, 0)
+  // Nur melden, wenn wirklich etwas fehlt. Im Normalfall bleibt die Leiste
+  // aus – ein dauerhaft grüner Haken wäre nur Lärm.
+  const zeigeWarnung = dbLadenStatus === 'fehler' && aktiv.daten === 'neon'
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--bg)' }}>
@@ -106,124 +100,26 @@ function EasyB2BInhalt() {
         </div>
       </div>
 
-      <div style={{ flex: 1, overflowY: 'auto', minHeight: 0, padding: '24px 26px 56px' }}>
-        <div style={{ maxWidth: '1060px', margin: '0 auto' }}>
-
-          <h2 style={{ margin: '0 0 6px', fontSize: '24px', fontWeight: 700, letterSpacing: '-0.02em', color: 'var(--text)' }}>
-            {aktiv.label}
-          </h2>
-          <p style={{ margin: '0 0 22px', fontSize: '13.5px', color: 'var(--text-muted)', lineHeight: 1.7, maxWidth: '660px' }}>
-            Dieser Unterbereich wird aus dem bestehenden Easy-B2B-Dashboard übernommen.
-            Die Oberfläche folgt danach der Gestaltung des Spielbuchs, die Fachlichkeit bleibt unverändert.
-          </p>
-
-          {/* Stand der Übernahme */}
-          <div style={{
-            padding: '17px 19px', borderRadius: '12px', marginBottom: '20px',
-            background: 'rgba(249,115,22,0.05)', border: '1px solid rgba(249,115,22,0.28)',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '9px', marginBottom: '7px' }}>
-              <span style={{ fontSize: '17px' }} aria-hidden="true">🚚</span>
-              <strong style={{ fontSize: '14px', color: 'var(--text)' }}>Noch nicht übernommen</strong>
-            </div>
-            <p style={{ margin: 0, fontSize: '13px', lineHeight: 1.7, color: 'var(--text-muted)' }}>
-              Herkunft: <code style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--text)' }}>{aktiv.quelle}</code>{' '}
-              · {aktiv.zeilen.toLocaleString('de-DE')} Zeilen.
-              Bis zur Übernahme bleibt das Ursprungsprojekt die maßgebliche Fassung –
-              es wird nicht verändert und dient als Rückfallebene.
-            </p>
-          </div>
-
-          {/* Datenlage */}
-          <div style={{
-            display: 'flex', alignItems: 'flex-start', gap: '12px',
-            padding: '14px 17px', borderRadius: '11px', marginBottom: '26px',
-            background: 'var(--surface)', border: '1px solid var(--border)',
-          }}>
-            <span style={{ fontSize: '17px', lineHeight: 1.4 }} aria-hidden="true">{lage.icon}</span>
-            <span style={{ fontSize: '13px', color: 'var(--text)', lineHeight: 1.7 }}>
-              <strong style={{ color: lage.farbe }}>{lage.label}.</strong>{' '}
-              <span style={{ color: 'var(--text-muted)' }}>{lage.text}</span>
-            </span>
-          </div>
-
-          {/* Datenschicht – seit Schritt 2 tatsächlich aktiv */}
-          <h3 style={{ margin: '0 0 12px', fontSize: '15px', fontWeight: 700, color: 'var(--text)' }}>
-            Datenschicht
-          </h3>
-          <div style={{
-            padding: '15px 17px', borderRadius: '11px', marginBottom: '14px',
-            background: 'var(--surface)', border: '1px solid var(--border)',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '9px', marginBottom: '13px' }}>
-              <span style={{ fontSize: '15px' }} aria-hidden="true">{db.icon}</span>
-              <span style={{ fontSize: '13px', color: db.farbe, lineHeight: 1.6 }}>{db.text}</span>
-            </div>
-            <div style={{ display: 'flex', gap: '9px', flexWrap: 'wrap' }}>
-              {[
-                { label: 'Anfragen',      wert: anfragen.length },
-                { label: 'Unternehmen',   wert: unternehmen.length },
-                { label: 'Kontakte',      wert: kontakte.length },
-                { label: 'Zuordnungen',   wert: zuordnungen.length },
-              ].map(z => (
-                <div key={z.label} style={{
-                  flex: '1 1 110px', padding: '10px 12px', borderRadius: '9px',
-                  background: 'var(--surface2)', border: '1px solid var(--border)',
-                }}>
-                  <div style={{ fontSize: '19px', fontWeight: 700, color: 'var(--text)', fontFamily: 'var(--font-mono)' }}>
-                    {z.wert}
-                  </div>
-                  <div style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>{z.label}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-          <p style={{ margin: '0 0 26px', fontSize: '12px', color: 'var(--text-muted)', lineHeight: 1.7 }}>
-            Die Datenschicht des Ursprungsdashboards ist übernommen und aktiv. Sie hält die
-            Bestände über alle Unterbereiche hinweg. Anfragen und Interessenten kommen aus
-            der Neon-Datenbank. Die übrigen Bestände enthalten lediglich je einen
-            Demo-Datensatz – niedrige Zahlen sind hier also kein Fehler, sondern der
-            tatsächliche Stand des Ursprungsprojekts.
-          </p>
-
-          {/* Gesamtübersicht */}
-          <h3 style={{ margin: '0 0 12px', fontSize: '15px', fontWeight: 700, color: 'var(--text)' }}>
-            Umfang des Umzugs
-          </h3>
-          <div style={{
-            border: '1px solid var(--border)', borderRadius: '11px',
-            background: 'var(--surface)', overflow: 'hidden', marginBottom: '14px',
-          }}>
-            {EB2B_BEREICHE.map((b, i) => {
-              const l = DATENLAGE[b.daten]
-              return (
-                <button key={b.key} onClick={() => setBereich(b.key)}
-                  style={{
-                    width: '100%', display: 'flex', alignItems: 'center', gap: '11px',
-                    padding: '11px 15px', border: 'none', cursor: 'pointer', textAlign: 'left',
-                    background: b.key === bereich ? 'var(--surface2)' : 'transparent',
-                    borderTop: i === 0 ? 'none' : '1px solid var(--border)',
-                  }}>
-                  <span aria-hidden="true" style={{ fontSize: '15px' }}>{b.icon}</span>
-                  <span style={{ flex: 1, fontSize: '13px', color: 'var(--text)', fontWeight: b.key === bereich ? 700 : 500 }}>
-                    {b.label}
-                  </span>
-                  <span title={l.label} style={{ fontSize: '12px', color: l.farbe }} aria-label={l.label}>
-                    {l.icon}
-                  </span>
-                  <span style={{ fontSize: '11.5px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', minWidth: '58px', textAlign: 'right' }}>
-                    {b.zeilen.toLocaleString('de-DE')}
-                  </span>
-                </button>
-              )
-            })}
-          </div>
-          <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-muted)', lineHeight: 1.7 }}>
-            {EB2B_BEREICHE.length} Unterbereiche, zusammen {gesamtZeilen.toLocaleString('de-DE')} Zeilen.
-            Sie werden einzeln übernommen – nach jedem Schritt ist der Bereich lauffähig.
-          </p>
-
+      {/* Hinweis nur bei fehlender Datenbankverbindung auf einer Seite,
+          die echte Daten erwartet. */}
+      {zeigeWarnung && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '9px',
+          padding: '9px 20px', flexShrink: 0,
+          background: 'rgba(220,38,38,0.07)', borderBottom: '1px solid rgba(220,38,38,0.25)',
+          fontSize: '12.5px', color: '#dc2626', lineHeight: 1.6,
+        }}>
+          <span aria-hidden="true">🔴</span>
+          <span>
+            Keine Verbindung zur Neon-Datenbank – dieser Bereich zeigt nur Demo-Daten.
+            Fehlt auf Vercel die Umgebungsvariable <code style={{ fontFamily: 'var(--font-mono)' }}>DATABASE_URL</code>?
+          </span>
         </div>
+      )}
+
+      {/* Übernommene Seite, unverändert dargestellt */}
+      <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
+        <Seite />
       </div>
     </div>
   )

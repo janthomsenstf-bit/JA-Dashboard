@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo, lazy, Suspense } from 'react'
 import { sampleClients } from './utils/sampleData.js'
 import { calculateProgress, getOverdueClients } from './utils/progress.js'
 import { loadChecklistenTypen, saveChecklistenTypen } from './utils/checklistenStorage.js'
@@ -36,7 +36,10 @@ import HomepagesBereich from './components/HomepagesBereich.jsx'
 import UebersichtenBereich from './components/UebersichtenBereich.jsx'
 import ProzesseBereich from './components/ProzesseBereich.jsx'
 import InternBereich from './components/InternBereich.jsx'
-import EasyB2BBereich from './components/EasyB2BBereich.jsx'
+// Easy-B2B ist ein eigenständiges Modul mit rund 9.400 Zeilen. Es wird erst
+// geladen, wenn der Bereich geöffnet wird – so bleibt der Start des Spielbuchs
+// schnell und das Haupt-Bundle klein genug für die Offline-Ablage der PWA.
+const EasyB2BBereich = lazy(() => import('./components/EasyB2BBereich.jsx'))
 
 // ── Website-Lead → Auftrag (geteilt von "Mandant anlegen" + "Auftrag zu Mandant") ──
 const LEAD_TYP_MAP = {
@@ -1553,7 +1556,18 @@ export default function App() {
 
             {/* Bereich „Easy-B2B" – Modul-Gerüst, Übernahme des bestehenden
                 Easy-B2B-Dashboards erfolgt seitenweise (Phase 1: nur Struktur) */}
-            {hauptbereich === 'easyb2b' && <EasyB2BBereich />}
+            {hauptbereich === 'easyb2b' && (
+              <Suspense fallback={
+                <div style={{
+                  flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: 'var(--text-muted)', fontSize: '13px', background: 'var(--bg)',
+                }}>
+                  Easy-B2B wird geladen …
+                </div>
+              }>
+                <EasyB2BBereich />
+              </Suspense>
+            )}
 
             {/* Bereich „Prozesse" – Wissens- und Prozesszentrale (rein lesend) */}
             {hauptbereich === 'prozesse' && (
