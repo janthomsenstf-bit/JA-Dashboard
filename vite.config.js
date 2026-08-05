@@ -40,6 +40,9 @@ export default defineConfig({
       workbox: {
         // Cache static assets; API calls pass through to network
         globPatterns: ['**/*.{js,css,html,svg,woff2}'],
+        // Haupt-Bundle ist > 2 MiB (xlsx u. a.) – Precache-Limit anheben,
+        // damit der Service Worker den App-Chunk weiterhin cacht.
+        maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
         // WICHTIG: /api/* NICHT auf index.html umleiten – sonst fängt der
         // Service Worker den OneDrive-OAuth-Popup (/api/onedrive-callback) ab
         // und zeigt die App statt des Microsoft-Logins.
