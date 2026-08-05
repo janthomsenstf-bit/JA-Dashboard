@@ -35,6 +35,8 @@ import DokumenteBereich from './components/DokumenteBereich.jsx'
 import HomepagesBereich from './components/HomepagesBereich.jsx'
 import UebersichtenBereich from './components/UebersichtenBereich.jsx'
 import ProzesseBereich from './components/ProzesseBereich.jsx'
+import ChecklistenBereich from './components/ChecklistenBereich.jsx'
+import { loadChecklistenUebersicht } from './utils/checklistenUebersichtStorage.js'
 import InternBereich from './components/InternBereich.jsx'
 // Easy-B2B ist ein eigenständiges Modul mit rund 9.400 Zeilen. Es wird erst
 // geladen, wenn der Bereich geöffnet wird – so bleibt der Start des Spielbuchs
@@ -345,6 +347,7 @@ export default function App() {
   const [checklistenTypen, setChecklistenTypen]         = useState(() => loadChecklistenTypen())  // Fallback: lokal
   const [showChecklistEditor, setShowChecklistEditor]   = useState(false)
   const [vorlagen, setVorlagen]                         = useState(() => loadVorlagen())           // Fallback: lokal
+  const [checklisten, setChecklisten]                   = useState(() => loadChecklistenUebersicht()) // eigenständige JA-Checklisten
   const importRef                         = useRef(null)
 
   // ── Posteingang / E-Mail-Auto-Abruf ──────────────────────────────────────────
@@ -430,6 +433,7 @@ export default function App() {
         if (Array.isArray(cloudData['sdb-zeiterfassung']))  setZeiterfassung(cloudData['sdb-zeiterfassung'])
         if (cloudData['spielbuch-checklisten-v1'])    setChecklistenTypen(cloudData['spielbuch-checklisten-v1'])
         if (cloudData['spielbuch-vorlagen-v1'])       setVorlagen(cloudData['spielbuch-vorlagen-v1'])
+        if (Array.isArray(cloudData['spielbuch-checklisten-uebersicht-v1'])) setChecklisten(cloudData['spielbuch-checklisten-uebersicht-v1'])
         if (Array.isArray(cloudData['unbekannte-emails'])) setUnbekannteEmails(cloudData['unbekannte-emails'])
         if (Array.isArray(cloudData['email-vorlagen-v1']))    setEmailVorlagen(cloudData['email-vorlagen-v1'])
         if (Array.isArray(cloudData['email-signaturen-v1'])) setEmailSignaturen(cloudData['email-signaturen-v1'])
@@ -520,6 +524,10 @@ export default function App() {
     if (!authUser || dataLoading) return
     cloudSave('spielbuch-vorlagen-v1', vorlagen)
   }, [vorlagen])
+  useEffect(() => {
+    if (!authUser || dataLoading) return
+    cloudSave('spielbuch-checklisten-uebersicht-v1', checklisten)
+  }, [checklisten])
   useEffect(() => {
     if (!authUser || dataLoading) return
     cloudSave('sdb-termine', termine)
@@ -849,7 +857,8 @@ export default function App() {
     if (!migrationData) return
     await migrateLocalStorageToCloud([
       STORAGE_KEY, 'sdb-termine', 'spielbuch-checklisten-v1',
-      'spielbuch-vorlagen-v1', 'checkliste-struktur-v1', 'kfz-buchungshinweise-defaults',
+      'spielbuch-vorlagen-v1', 'spielbuch-checklisten-uebersicht-v1',
+      'checkliste-struktur-v1', 'kfz-buchungshinweise-defaults',
     ])
     setMigrationData(null)
     setImportMsg('✓ Lokale Daten erfolgreich in Cloud übertragen')
@@ -1516,7 +1525,7 @@ export default function App() {
         const klientOffen = hauptbereich === 'personen' && !!selectedId && clients.some(c => c.id === selectedId)
         const zeigeUebersicht = hauptbereich === 'personen' && !klientOffen
         const zeigeArbeitsbereich = hauptbereich === 'spielbuch' || klientOffen
-        const eigeneBereiche = ['spielbuch', 'personen', 'kommunikation', 'dokumente', 'homepages', 'uebersichten', 'prozesse', 'intern', 'easyb2b', 'ustreg']
+        const eigeneBereiche = ['spielbuch', 'personen', 'kommunikation', 'dokumente', 'homepages', 'uebersichten', 'prozesse', 'checklisten', 'intern', 'easyb2b', 'ustreg']
         const zeigePlatzhalter = !eigeneBereiche.includes(hauptbereich)
         const offenerKlient = klientOffen ? clients.find(c => c.id === selectedId) : null
 
@@ -1603,6 +1612,15 @@ export default function App() {
                 clients={clients}
                 checklistenTypen={checklistenTypen}
                 onOeffneChecklistenEditor={() => setShowChecklistEditor(true)}
+              />
+            )}
+
+            {/* Bereich „Checklisten" – eigenständige JA-Checklisten (Übersicht + Bearbeitung) */}
+            {hauptbereich === 'checklisten' && (
+              <ChecklistenBereich
+                clients={clients}
+                checklisten={checklisten}
+                onUpdate={setChecklisten}
               />
             )}
 

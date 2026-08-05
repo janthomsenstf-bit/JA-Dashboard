@@ -18,6 +18,7 @@ export const HAUPTBEREICHE = [
   { key: 'ustreg',       label: 'USt-Registrierung', icon: '🏛', farbe: '#4338ca', beschreibung: 'Umsatzsteuerliche Registrierung ausländischer Unternehmen – Fälle, Formulare, Wissensdatenbank.' },
   { key: 'uebersichten', label: 'Übersichten',   icon: '📈', farbe: '#7c3aed', beschreibung: 'Auswertungen, Kennzahlen und Berichte.' },
   { key: 'prozesse',     label: 'Prozesse',      icon: '⚙️', farbe: '#0f766e', beschreibung: 'Abläufe, Checklisten und wiederkehrende Aufgaben.' },
+  { key: 'checklisten',  label: 'Checklisten',   icon: '✅', farbe: '#059669', beschreibung: 'Jahresabschluss-Checklisten – Übersicht, Bearbeitung und Mandanten-Zuordnung.' },
   { key: 'dokumente',    label: 'Dokumente',     icon: '📁', farbe: '#dc2626', beschreibung: 'Dateien, Ablage und Vorlagen.' },
   { key: 'lernplattform',label: 'Lernplattform', icon: '🎓', farbe: '#ca8a04', beschreibung: 'Wissen, Schulungen und Nachschlagewerke.' },
   { key: 'intern',       label: 'Intern',        icon: '🔒', farbe: '#64748b', beschreibung: 'Einstellungen, Verwaltung und interne Notizen.' },

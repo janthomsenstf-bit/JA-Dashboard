@@ -1,5 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import JAComposePanel from './JAComposePanel.jsx'
+import JAChecklisteV2 from './JAChecklisteV2.jsx'
 import LohnJahresmappe, { MonatHinweise } from './LohnJahresmappe.jsx'
 import LohnStammdaten, { zeitraumText } from './LohnStammdaten.jsx'
 import { buildDoc, downloadPdf, pdfFilename, pdfToBase64 } from '../../utils/ustRegPdf.js'
@@ -3527,6 +3528,7 @@ function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete, client, onOpe
   const offeneH   = hinweise.filter(h => !h.erledigt).length
 
   const [newH, setNewH] = useState('')
+  const [jaSubView, setJaSubView] = useState('stammdaten')  // JA-Auftrag: Unter-Reiter Stammdaten | Jahresabschluss | Kommunikation | Checkliste
 
   function cycleStatus(e) {
     e.stopPropagation()
@@ -3626,12 +3628,34 @@ function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete, client, onOpe
       {expanded && (
         <div style={{ borderTop: `1px solid ${typCfg.color}33`, padding: '14px 16px' }}>
 
-          {/* ── JA: Abschluss-Jahr + Workflow-Status prominent oben ── */}
+          {/* ── JA-Auftrag: Unter-Reiter Kommunikation | Checkliste ── */}
           {isJA && (
-            <>
-              <JAStammdatenBlock au={au} onUpdate={onUpdate} />
-              <JAStatusSection au={au} onUpdate={onUpdate} />
-            </>
+            <div style={{ display: 'flex', gap: '6px', borderBottom: '1px solid var(--border)', marginBottom: '14px' }}>
+              {[['stammdaten', '📇 Stammdaten'], ['ja', '📁 Jahresabschluss'], ['kommunikation', '✉️ Kommunikation & Rückfragen'], ['checkliste', '📋 Checkliste']].map(([v, l]) => (
+                <button key={v} onClick={() => setJaSubView(v)}
+                  style={{
+                    padding: '8px 16px', border: 'none', background: 'none', cursor: 'pointer',
+                    fontSize: '13px', fontWeight: 700, marginBottom: '-1px',
+                    color: jaSubView === v ? 'var(--accent)' : 'var(--text-muted)',
+                    borderBottom: jaSubView === v ? '2px solid var(--accent)' : '2px solid transparent',
+                  }}>
+                  {l}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {isJA && jaSubView === 'checkliste' ? (
+            <JAChecklisteV2 au={au} client={client} onUpdate={onUpdate} />
+          ) : (
+          <>
+
+          {/* ── JA: Stammdaten (Reiter Stammdaten) / Status (Reiter Jahresabschluss) ── */}
+          {isJA && jaSubView === 'stammdaten' && (
+            <JAStammdatenBlock au={au} onUpdate={onUpdate} />
+          )}
+          {isJA && jaSubView === 'ja' && (
+            <JAStatusSection au={au} onUpdate={onUpdate} />
           )}
 
           {/* ── Workflow-Typen: Prozess-Stepper oben ── */}
@@ -3668,6 +3692,7 @@ function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete, client, onOpe
               onUpdateClient={onUpdateClient} />
           )}
 
+          {(!isJA || jaSubView === 'stammdaten') && (<>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: '10px', marginBottom: '12px' }}>
             <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
               <span style={labelStyle}>Bezeichnung</span>
@@ -3710,6 +3735,7 @@ function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete, client, onOpe
               inputStyle={inputStyle}
             />
           </div>
+          </>)}
 
           {au.typ === 'lohn' && (
             <div style={{ marginBottom: '14px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
@@ -3719,7 +3745,7 @@ function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete, client, onOpe
           )}
 
           {/* E-Mail-Quelle (wenn aus E-Mail erstellt) */}
-          {au.emailRef && (
+          {au.emailRef && (!isJA || jaSubView === 'stammdaten') && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 10px', borderRadius: '6px', background: 'rgba(22,163,74,0.04)', border: '1px solid rgba(22,163,74,0.15)', marginBottom: '14px', flexWrap: 'wrap' }}>
               <span style={{ fontSize: '10px', color: 'var(--text-muted)', flex: 1, minWidth: 0 }}>
                 📧 Quelle: E-Mail von <b>{au.emailRef.absender}</b>
@@ -3728,6 +3754,7 @@ function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete, client, onOpe
             </div>
           )}
 
+          {(!isJA || jaSubView === 'ja') && (
           <div style={{ borderTop: '1px solid var(--border)', paddingTop: '12px' }}>
             <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '8px' }}>
               Hinweise &amp; Unteraufgaben
@@ -3753,10 +3780,10 @@ function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete, client, onOpe
               }
             </div>
           </div>
+          )}
 
-          {/* ── Jahresabschluss-spezifische Sektionen ── */}
-          {/* Hinweis: „Vereinbartes Honorar" ist in den Stammdaten-Block integriert (JAStammdatenBlock). */}
-          {isJA && (
+          {/* ── Kommunikation & Rückfragen (Reiter) ── */}
+          {isJA && jaSubView === 'kommunikation' && (
             <>
               <JAVerlaufSection
                 au={au} client={client} onUpdate={onUpdate} onOpenEmail={onOpenEmail}
@@ -3788,7 +3815,8 @@ function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete, client, onOpe
             />
           )}
 
-          {/* ── Auftrag abschließen / wieder öffnen ── */}
+          {/* ── Auftrag abschließen / wieder öffnen (Reiter Jahresabschluss) ── */}
+          {(!isJA || jaSubView === 'ja') && (
           <div style={{ marginTop: '16px', paddingTop: '12px', borderTop: '1px solid var(--border)' }}>
             {abgeschlossen ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', padding: '12px 14px', borderRadius: '8px', background: 'rgba(22,163,74,0.08)', border: '1px solid rgba(22,163,74,0.35)' }}>
@@ -3830,6 +3858,7 @@ function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete, client, onOpe
               </button>
             )}
           </div>
+          )}
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '14px', paddingTop: '10px', borderTop: '1px solid var(--border)' }}>
             <button onClick={onDelete}
@@ -3837,6 +3866,9 @@ function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete, client, onOpe
               🗑 Auftrag löschen
             </button>
           </div>
+
+          </>
+          )}
         </div>
       )}
     </div>
