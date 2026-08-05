@@ -55,6 +55,50 @@ export const AUFTRAG = [
   ] },
 ]
 
+// ── Kfz-Fachhelfer (versioniert) ──────────────────────────────────────────────
+// Begünstigungsfaktor für die Listenpreis-Werte (1 %, 0,03 %, 0,002 %).
+// Wirkt NUR ertragsteuerlich – NIE auf die umsatzsteuerliche Bemessungsgrundlage.
+// art: verbrenner | mildhybrid | hybrid | elektro | brennstoff | sonstiges
+export function kfzFaktor(art, blpAbg, datum, opt = {}) {
+  const d = datum instanceof Date ? datum : (datum ? new Date(datum) : getStichtag())
+  if (!art || art === 'verbrenner' || art === 'sonstiges')
+    return { f: 1, label: '1 % (Verbrenner)', quelle: '§ 6 Abs. 1 Nr. 4 S. 2 EStG' }
+  if (art === 'mildhybrid')
+    return { f: 1, label: '1 % (Mild-Hybrid – nicht begünstigt)', quelle: '§ 6 Abs. 1 Nr. 4 S. 2 EStG' }
+  if (d < new Date('2019-01-01'))
+    return { f: 1, label: '1 % (Altfall vor 2019)', warn: 'Anschaffung vor 2019: Batterie-Nachteilsausgleich (kWh-Abzug/Höchstbetrag) nach § 6 Abs. 1 Nr. 4 EStG a. F. gesondert ermitteln.', quelle: '§ 6 Abs. 1 Nr. 4 EStG a. F.' }
+  if (art === 'elektro' || art === 'brennstoff') {
+    if (d < new Date('2020-01-01')) return { f: 0.5, label: '0,5 % (BEV 2019)', quelle: '§ 6 Abs. 1 Nr. 4 S. 2 EStG (2019: Halbierung)' }
+    const grenze = d >= new Date('2025-07-01') ? 100000 : (d >= new Date('2024-01-01') ? 70000 : 60000)
+    return blpAbg <= grenze
+      ? { f: 0.25, label: '0,25 % (BEV, BLP ≤ ' + eur(grenze) + ')', quelle: '§ 6 Abs. 1 Nr. 4 S. 3 EStG' }
+      : { f: 0.5, label: '0,5 % (BEV, BLP > ' + eur(grenze) + ')', quelle: '§ 6 Abs. 1 Nr. 4 S. 2 EStG' }
+  }
+  if (art === 'hybrid') {
+    const co2 = num(opt.co2), rw = num(opt.reichweite)
+    const need = d < new Date('2022-01-01') ? 40 : (d < new Date('2025-01-01') ? 60 : 80)
+    const ok = (co2 > 0 && co2 <= 50) || rw >= need
+    return ok
+      ? { f: 0.5, label: '0,5 % (PHEV begünstigt)', quelle: '§ 6 Abs. 1 Nr. 4 S. 2 EStG' }
+      : { f: 1, label: '1 % (PHEV nicht begünstigt)', warn: 'PHEV: CO₂ ≤ 50 g/km oder elektrische Mindestreichweite ≥ ' + need + ' km nicht erfüllt → voller 1-%-Ansatz.', quelle: '§ 6 Abs. 1 Nr. 4 S. 2 EStG' }
+  }
+  return { f: 1, label: '1 %' }
+}
+
+// Abziehbare Entfernungspauschale (Betrag) für die 0,03-%-/0,002-%-Gegenrechnung.
+// 2026: 0,38 €/km ab dem 1. km; Vorjahre gestaffelt (0,30 € km 1–20, 0,38 € ab 21).
+export function entfPauschale(km, tage, jahr) {
+  km = Math.max(0, Math.floor(num(km))); tage = Math.max(0, num(tage))
+  if (!km || !tage) return 0
+  const proTag = jahr >= 2026 ? km * 0.38 : (Math.min(km, 20) * 0.30 + Math.max(0, km - 20) * 0.38)
+  return Math.round(tage * proTag * 100) / 100
+}
+
+// Strompreispauschale für selbst getragenen Ladestrom (§ 3 Nr. 50 EStG, BMF 21.7.2026).
+// €/kWh = auf volle Cent abgerundeter Destatis-Gesamtdurchschnittspreis des 1. Halbjahrs
+// des Vorjahres (Haushalte 5.000–15.000 kWh). Gilt für WJ ab 1.1.2026.
+export const STROMPAUSCHALE = { 2026: 0.34 }
+
 // ── Modul-Registry (Typ C = Fachanwendungen) ──────────────────────────────────
 export const MODULE = {
   bewirtung: { name: 'Bewirtungsaufwendungen', bereich: 'ba', typ: 'C',
@@ -190,68 +234,359 @@ export const MODULE = {
   verpflegung: { name: 'Verpflegungsmehraufwand', bereich: 'ba', typ: 'C', hinweis: 'Pauschalen-Rechner folgt' },
   arbeitszimmer: { name: 'Häusliches Arbeitszimmer', bereich: 'ba', typ: 'C', hinweis: 'Rechner folgt' },
   kfzKosten: { name: 'Kfz-Kosten (Konto)', bereich: 'ba', typ: 'B', konto: '4500', bez: 'Kfz-Kosten' },
-  kfz1prozent: { name: 'Firmenfahrzeug – private Nutzung (1-%-Methode)', bereich: 'be', typ: 'C', posLabel: 'Firmenfahrzeuge',
+  kfz1prozent: { name: 'Firmenfahrzeug – private Nutzung (Unternehmer)', bereich: 'be', typ: 'C', posLabel: 'Firmenfahrzeuge',
     flags: [
-      { k: 'fBetriebsvermoegen', label: 'Fahrzeug im Betriebsvermögen (> 50 % betrieblich)' },
-      { k: 'fFahrtenbuch', label: 'Fahrtenbuch als Alternative geprüft (Günstigerprüfung)' },
-      { k: 'fKostendeckel', label: 'Kostendeckelung geprüft' },
-      { k: 'fUst', label: 'Umsatzsteuer auf private Nutzung berücksichtigt' } ],
+      { k: 'fUst', label: 'Fahrzeug dem Unternehmen zugeordnet · Vorsteuerabzug (USt auf Privatnutzung ansetzen)' },
+      { k: 'fFbOrdnung', label: 'Fahrtenbuch ordnungsgemäß (zeitnah, fortlaufend, geschlossen, vollständig)' },
+      { k: 'fFbBelege', label: 'Gesamtkosten vollständig belegt (keine geschätzten Kraftstoffkosten)' },
+      { k: 'fVerbot', label: 'Privatnutzung ausgeschlossen (schriftl. Verbot, tatsächlich kontrolliert)' } ],
     felder: [
-      { k: 'kEntnahme', l: 'Konto Gegenbuchung (Privat/Verrechnung)', t: 'text', def: '1880' },
-      { k: 'kErtrag', l: 'Konto Kfz-Nutzung (Ertrag)', t: 'text', def: '8921' },
+      { k: 'kEntnahme', l: 'Gegenkonto (Privat/Verrechnung)', t: 'text', def: '1880' },
+      { k: 'kErtragUst', l: 'Konto Kfz-Nutzung m. USt (SKR03 8921)', t: 'text', def: '8921' },
+      { k: 'kErtragOhneUst', l: 'Konto Kfz-Nutzung o. USt (SKR03 8924)', t: 'text', def: '8924' },
+      { k: 'kUst', l: 'Konto Umsatzsteuer 19 % (SKR03 1776)', t: 'text', def: '1776' },
       { k: 'notiz', l: 'Notiz', t: 'area' } ],
     positionen: true,
     posFelder: [
       { k: 'bez', l: 'Fahrzeug / Kennzeichen', t: 'text' },
-      { k: 'art', l: 'Antrieb', t: 'select', opt: [['verbrenner', 'Verbrenner'], ['elektro', 'Elektro (rein)'], ['hybrid', 'Plug-in-Hybrid']] },
-      { k: 'erstzulassung', l: 'Anschaffung / Erstzulassung', t: 'date' },
+      { k: 'art', l: 'Antrieb', t: 'select', opt: [['verbrenner', 'Verbrenner'], ['mildhybrid', 'Mild-Hybrid'], ['hybrid', 'Plug-in-Hybrid'], ['elektro', 'Elektro (BEV)'], ['brennstoff', 'Brennstoffzelle'], ['sonstiges', 'Sonstiges']] },
+      { k: 'betrAnteil', l: 'betriebl. Nutzung %', t: 'num' },
+      { k: 'methode', l: 'Methode', t: 'select', opt: [['pauschal', '1-%-Methode'], ['fahrtenbuch', 'Fahrtenbuch']] },
+      { k: 'erstzulassung', l: 'Erstzulassung (BLP-Stichtag)', t: 'date' },
+      { k: 'anschaffung', l: 'Anschaffung/Leasingbeginn (Faktor)', t: 'date' },
       { k: 'blp', l: 'Bruttolistenpreis', t: 'num' },
-      { k: 'monate', l: 'Monate genutzt', t: 'num', def: '12' },
+      { k: 'monate', l: 'Monate mit Privatnutzung', t: 'num', def: '12' },
       { k: 'reichweite', l: 'E-Reichweite km (Hybrid)', t: 'num' },
       { k: 'co2', l: 'CO₂ g/km (Hybrid)', t: 'num' },
-      { k: 'entfernung', l: 'Entfernung Whg–Betrieb (km, 0,03 %)', t: 'num' },
-      { k: 'kosten', l: 'tatsächliche Gesamtkosten (Kostendeckelung)', t: 'num' } ],
-    rechnen: (w, ctx) => {
+      { k: 'entfernung', l: 'Entfernung Whg–Betrieb (km)', t: 'num' },
+      { k: 'pendelTage', l: 'Pendeltage/Jahr', t: 'num' },
+      { k: 'heimEntfernung', l: 'Familienheimfahrt km (dopp. HH)', t: 'num' },
+      { k: 'heimFahrten', l: 'zusätzl. Heimfahrten (Anzahl)', t: 'num' },
+      { k: 'kosten', l: 'tats. Gesamtkosten (Deckelung/Fahrtenbuch)', t: 'num' },
+      { k: 'kostenVst', l: 'davon vorsteuerbelastet (USt)', t: 'num' },
+      { k: 'kmGesamt', l: 'Fahrtenbuch: Gesamt-km', t: 'num' },
+      { k: 'kmPrivat', l: 'Fahrtenbuch: Privat-km', t: 'num' },
+      { k: 'kmPendel', l: 'Fahrtenbuch: km Whg–Betrieb', t: 'num' } ],
+    rechnen: (w) => {
       const r2 = x => Math.round(x * 100) / 100
-      const pos = w._pos || []; let sumEntn = 0, sumFahrt = 0; const det = [], hinweise = [], buchungen = []
-      pos.forEach(v => { const blp = num(v.blp); if (!blp) return
-        const art = v.art || 'verbrenner'
-        const d = v.erstzulassung ? new Date(v.erstzulassung) : getStichtag()
+      const jahr = getStichtag().getFullYear()
+      const pos = w._pos || []
+      const det = [], hinweise = [], buchungen = []
+      const fUst = !!w.fUst
+      let sumEst = 0, sumUstBase = 0, sumUst = 0, sumPendelNA = 0, sumHeimNA = 0
+
+      if (w.fVerbot) {
+        hinweise.push('ℹ️ Privatnutzung ausgeschlossen (schriftliches, tatsächlich kontrolliertes Verbot) – keine Nutzungsentnahme angesetzt. Nachweis/Kontrolle dokumentieren.')
+        return { ergebnisse: [], total: { l: 'Nutzungsentnahme (ESt)', v: 0 }, hinweise, buchungen }
+      }
+
+      pos.forEach(v => {
+        const name = v.bez || 'Fahrzeug'
+        const blp = num(v.blp)
+        if (!blp) { hinweise.push('⚠️ ' + name + ': kein Bruttolistenpreis erfasst – übersprungen.'); return }
+        const blpAbg = Math.floor(blp / 100) * 100
+        const datFaktor = v.anschaffung || v.erstzulassung
+        const monate = Math.min(12, Math.max(0, num(v.monate) || 12))
+        const anteil = num(v.betrAnteil)
+        const methode = v.methode || 'pauschal'
+        const km = Math.floor(num(v.entfernung))
+        const pendelTage = num(v.pendelTage)
+        const kosten = num(v.kosten)
+
+        // Begünstigungsfaktor (nur ESt)
+        const fk = kfzFaktor(v.art, blpAbg, datFaktor, { co2: v.co2, reichweite: v.reichweite })
+        if (fk.warn) hinweise.push('⚠️ ' + name + ': ' + fk.warn)
+        const MBLP = blpAbg * fk.f
+
+        // Klassifizierung des Nutzungsumfangs (Ertragsteuer)
+        // < 10 % → notwendiges Privatvermögen: keine Entnahme
+        if (anteil > 0 && anteil < 10) {
+          hinweise.push('⛔ ' + name + ': betriebliche Nutzung ' + r2(anteil) + ' % < 10 % → notwendiges Privatvermögen. Keine Nutzungsentnahme/1-%-Methode; betriebliche Fahrten als Nutzungseinlage (tats. Kosten oder pauschal 0,30 €/km).')
+          return
+        }
+        // 10–50 % → gewillkürtes BV: anteilige tatsächliche Kosten, KEINE 1-%-Methode
+        if (anteil >= 10 && anteil <= 50) {
+          const gesKm = num(v.kmGesamt), privKm = num(v.kmPrivat)
+          const privAnteil = gesKm > 0 ? privKm / gesKm : (100 - anteil) / 100
+          const est = kosten > 0 ? r2(kosten * privAnteil) : 0
+          det.push({ l: name + ' — gewillkürtes BV (' + r2(anteil) + ' %) · anteilige tats. Kosten (Privatanteil ' + Math.round(privAnteil * 100) + ' %)', v: est })
+          sumEst += est
+          hinweise.push('ℹ️ ' + name + ': betriebliche Nutzung 10–50 % → Zuordnungswahlrecht (gewillkürtes BV). Bei Zuordnung KEINE 1-%-Methode, sondern private Nutzung = tats. Gesamtkosten × Privatanteil. E-/Hybrid-Begünstigung nach § 6 EStG stichtagsabhängig prüfen.')
+          if (methode === 'pauschal') hinweise.push('⛔ ' + name + ': 1-%-Methode bei ≤ 50 % betrieblicher Nutzung unzulässig – tatsächliche Kosten angesetzt.')
+          if (!kosten) hinweise.push('⚠️ ' + name + ': tatsächliche Gesamtkosten fehlen – anteilige Bewertung unvollständig.')
+          return
+        }
+        // > 50 % (oder unbekannt) → 1-%-/Fahrtenbuchmethode
+        if (!anteil) hinweise.push('⚠️ ' + name + ': betrieblicher Nutzungsumfang nicht erfasst. Die 1-%-Methode setzt > 50 % betriebliche Nutzung voraus (Nachweis: 3-Monats-Aufzeichnung/Fahrtenbuch).')
+
+        // Fahrtenbuch-Zulässigkeit
+        let useFb = methode === 'fahrtenbuch'
+        if (useFb && (!w.fFbOrdnung || !w.fFbBelege)) {
+          useFb = false
+          const g = []; if (!w.fFbOrdnung) g.push('nicht als ordnungsgemäß bestätigt'); if (!w.fFbBelege) g.push('Gesamtkosten nicht vollständig belegt (BFH VI R 44/20)')
+          hinweise.push('⛔ ' + name + ': Fahrtenbuch ' + g.join(' + ') + ' → Rückfall auf 1-%-Methode + § 4 Abs. 5 Nr. 6. HOCHRISIKO.')
+        }
+        const gesKm = num(v.kmGesamt), privKm = num(v.kmPrivat), pendKm = num(v.kmPendel)
+        const fbMoeglich = kosten > 0 && gesKm > 0
+        if (useFb && !fbMoeglich) hinweise.push('⚠️ ' + name + ': Fahrtenbuch gewählt, aber Gesamtkosten/Gesamt-km fehlen – 1-%-Methode angesetzt.')
+        const nutzeFb = useFb && fbMoeglich
+
+        // Werte beider Methoden (für Vergleich)
+        const p1_privat = r2(MBLP * 0.01 * monate)
+        const p1_pendel = km > 0 ? r2(MBLP * 0.0003 * km * monate) : 0
+        const cpk = fbMoeglich ? kosten / gesKm : 0
+        const fb_privat = fbMoeglich ? r2(cpk * privKm) : 0
+        const fb_pendel = fbMoeglich ? r2(cpk * pendKm) : 0
+
+        // Familienheimfahrten (0,002 %) – nur pauschale Methode
+        const heimKm = Math.floor(num(v.heimEntfernung)), heimN = num(v.heimFahrten)
+        let heimBrutto = (!nutzeFb && heimKm > 0 && heimN > 0) ? r2(MBLP * 0.00002 * heimKm * heimN) : 0
+        const heimAllow = heimBrutto > 0 ? entfPauschale(heimKm, heimN, jahr) : 0
+
+        let estPrivat, estPendelBrutto
+        if (nutzeFb) {
+          estPrivat = fb_privat; estPendelBrutto = fb_pendel
+          det.push({ l: name + ' — Fahrtenbuch · ' + eur(r2(cpk)) + '/km · privat ' + privKm + ' km', v: fb_privat })
+        } else {
+          estPrivat = p1_privat; estPendelBrutto = p1_pendel
+          det.push({ l: name + ' — ' + fk.label + ' · ' + monate + ' Mon. · BLP ' + eur(blpAbg), v: p1_privat })
+        }
+
+        // Kostendeckelung (nur ESt, nur pauschale Rohwerte)
+        let deckel = false
+        if (!nutzeFb && kosten > 0) {
+          const roh = estPrivat + estPendelBrutto + heimBrutto
+          if (roh > kosten && roh > 0) {
+            deckel = true
+            const f = kosten / roh
+            estPrivat = r2(estPrivat * f); estPendelBrutto = r2(estPendelBrutto * f); heimBrutto = r2(heimBrutto * f)
+            hinweise.push('ℹ️ ' + name + ': Kostendeckelung – pauschaler Rohwert (' + eur(roh) + ') über den tats. Gesamtkosten (' + eur(kosten) + '); Ansatz proportional auf die Kosten begrenzt. Entfernungspauschale danach berücksichtigt; USt separat (keine Übernahme der ESt-Deckelung).')
+          }
+        }
+
+        // nicht abziehbare Pendelkosten = Ansatz − Entfernungspauschale
+        const distAllow = entfPauschale(km, pendelTage, jahr)
+        const pendelNA = Math.max(0, r2(estPendelBrutto - distAllow))
+        sumPendelNA += pendelNA
+        if (estPendelBrutto > 0) det.push({ l: '   Pendeln Whg–Betrieb: Ansatz ' + eur(estPendelBrutto) + ' − Entf.pauschale ' + eur(distAllow) + ' = nicht abziehbar', v: pendelNA })
+
+        // nicht abziehbare Familienheimfahrten
+        if (heimBrutto > 0) {
+          const heimNA = Math.max(0, r2(heimBrutto - heimAllow))
+          sumHeimNA += heimNA
+          det.push({ l: '   Familienheimfahrten (0,002 %): Ansatz ' + eur(heimBrutto) + ' − ' + eur(heimAllow) + ' = nicht abziehbar', v: heimNA })
+        }
+
+        sumEst += estPrivat
+
+        // Umsatzsteuer (1-%-Vereinfachung 80 %, ohne E-Faktor; oder Fahrtenbuch vorsteuerbelastet)
+        if (fUst) {
+          if (nutzeFb) {
+            const vst = num(v.kostenVst)
+            const base = vst > 0 && gesKm > 0 ? r2((vst / gesKm) * privKm) : 0
+            if (base > 0) { sumUstBase += base; const u = r2(base * 0.19); sumUst += u
+              hinweise.push('ℹ️ ' + name + ' USt (Fahrtenbuch): vorsteuerbelastete Kosten auf Privat-km = ' + eur(base) + ' → USt 19 % ' + eur(u) + '. Nicht vorsteuerbelastete Kosten belegmäßig ausscheiden; E-/Hybrid-Kürzung gilt umsatzsteuerlich NICHT.') }
+            else hinweise.push('⚠️ ' + name + ' USt (Fahrtenbuch): vorsteuerbelastete Kosten fehlen – USt bitte belegmäßig ermitteln.')
+          } else {
+            const base = r2(blpAbg * 0.01 * monate * 0.80)
+            sumUstBase += base; sumUst += r2(base * 0.19)
+          }
+          if (deckel) hinweise.push('⚠️ ' + name + ': bei Kostendeckelung ist die USt gesondert (sachgerechte Schätzung) zu ermitteln – nicht aus der ESt-Deckelung ableiten.')
+        }
+
+        // Methodenvergleich (nur Privatanteil)
+        if (fbMoeglich && p1_privat > 0) {
+          const g = fb_privat < p1_privat ? 'Fahrtenbuch' : '1-%-Methode'
+          hinweise.push('📊 ' + name + ' Methodenvergleich (Privatanteil): 1 % = ' + eur(p1_privat) + ' · Fahrtenbuch = ' + eur(fb_privat) + ' → günstiger: ' + g + '.')
+        }
+      })
+
+      const erg = [...det, { l: 'Summe private Nutzungsentnahme (Betriebseinnahme, ESt)', v: sumEst, stark: 1 }]
+      if (sumPendelNA) erg.push({ l: 'Summe nicht abziehbare Pendelkosten (§ 4 Abs. 5 Nr. 6 EStG)', v: sumPendelNA })
+      if (sumHeimNA) erg.push({ l: 'Summe nicht abziehbare Familienheimfahrten', v: sumHeimNA })
+      if (fUst && sumUstBase) { erg.push({ l: 'USt-Bemessungsgrundlage (80 % v. 1 %, ohne E-Kürzung)', v: sumUstBase }); erg.push({ l: 'Umsatzsteuer 19 % (unentgeltliche Wertabgabe)', v: sumUst }) }
+
+      if (sumPendelNA) hinweise.push('Die nicht abziehbaren Pendelkosten (' + eur(sumPendelNA) + ', 0,03 % gekürzt um die Entfernungspauschale ' + (jahr >= 2026 ? '0,38 €/km ab dem 1. km' : 'gestaffelt') + ') sind außerbilanziell hinzuzurechnen (§ 4 Abs. 5 Satz 1 Nr. 6 EStG).')
+      if (fUst) hinweise.push('USt: Bemessungsgrundlage = 80 % des ungekürzten 1-%-Werts (20 % Abschlag für nicht vorsteuerbelastete Kosten), darauf 19 %. Die E-/Hybrid-Kürzung gilt NUR ertragsteuerlich, nicht umsatzsteuerlich. Wege Wohnung–Betrieb sind umsatzsteuerlich grundsätzlich unternehmerisch (keine Wertabgabe).')
+      else hinweise.push('USt nicht angesetzt (Fahrzeug nicht dem Unternehmen zugeordnet / kein Vorsteuerabzug). Bei voller Zuordnung Flag setzen.')
+
+      if (sumEst > 0) {
+        const kEntn = w.kEntnahme || '1880'
+        if (fUst && sumUst > 0) {
+          buchungen.push({ s: kEntn, st: 'Privat / Verrechnung', h: w.kErtragOhneUst || '8924', ht: 'Kfz-Nutzung (ESt-Wert)', betr: r2(sumEst), text: 'Private Kfz-Nutzung – ertragsteuerlicher Wert' })
+          buchungen.push({ s: kEntn, st: 'Privat / Verrechnung', h: w.kUst || '1776', ht: 'Umsatzsteuer 19 %', betr: r2(sumUst), text: 'USt auf private Kfz-Nutzung (80 % v. 1 %, ohne E-Kürzung)' })
+          hinweise.push('DATEV-Alternative bei gleicher Bemessung (Verbrenner): Netto-USt-Betrag auf ' + (w.kErtragUst || '8921') + ' mit USt-Automatik + Restbetrag auf ' + (w.kErtragOhneUst || '8924') + '. Bei E-/Hybrid weichen ESt- und USt-Bemessung ab → hier getrennt gebucht.')
+        } else {
+          buchungen.push({ s: kEntn, st: 'Privat / Verrechnung', h: w.kErtragOhneUst || '8924', ht: 'Kfz-Nutzung', betr: r2(sumEst), text: 'Private Kfz-Nutzung (ohne USt)' })
+        }
+      }
+
+      return { ergebnisse: erg, total: { l: 'Nutzungsentnahme (Betriebseinnahme, ESt)', v: sumEst }, hinweise, buchungen }
+    } },
+  kfzArbeitnehmer: { name: 'Dienstwagen – Arbeitnehmer (geldwerter Vorteil)', bereich: 'ba', typ: 'C', posLabel: 'Dienstwagen je Arbeitnehmer',
+    flags: [
+      { k: 'fUst', label: 'USt: Überlassung als entgeltlicher/tauschähnl. Umsatz (BMF 3.3.2026)' },
+      { k: 'fPauschal40', label: '§ 40 Abs. 2 EStG: Pendelvorteil pauschal 15 % (bis Entfernungspauschale)' } ],
+    felder: [ { k: 'notiz', l: 'Notiz', t: 'area' } ],
+    positionen: true,
+    posFelder: [
+      { k: 'an', l: 'Arbeitnehmer', t: 'text' },
+      { k: 'bez', l: 'Fahrzeug / Kennzeichen', t: 'text' },
+      { k: 'art', l: 'Antrieb', t: 'select', opt: [['verbrenner', 'Verbrenner'], ['mildhybrid', 'Mild-Hybrid'], ['hybrid', 'Plug-in-Hybrid'], ['elektro', 'Elektro (BEV)'], ['brennstoff', 'Brennstoffzelle'], ['sonstiges', 'Sonstiges']] },
+      { k: 'methode', l: 'Methode', t: 'select', opt: [['pauschal', '1-%-Methode'], ['fahrtenbuch', 'Fahrtenbuch']] },
+      { k: 'erstzulassung', l: 'Erstzulassung (BLP-Stichtag)', t: 'date' },
+      { k: 'anschaffung', l: 'Anschaffung/Leasingbeginn', t: 'date' },
+      { k: 'ueberlassung', l: 'erstmalige Überlassung an AN', t: 'date' },
+      { k: 'blp', l: 'Bruttolistenpreis', t: 'num' },
+      { k: 'monate', l: 'Monate Überlassung', t: 'num', def: '12' },
+      { k: 'reichweite', l: 'E-Reichweite km (Hybrid)', t: 'num' },
+      { k: 'co2', l: 'CO₂ g/km (Hybrid)', t: 'num' },
+      { k: 'ersteTS', l: 'erste Tätigkeitsstätte?', t: 'select', opt: [['ja', 'ja'], ['nein', 'nein (Sammelpunkt prüfen)']] },
+      { k: 'pendelKm', l: 'Entfernung Whg–erste TS (km)', t: 'num' },
+      { k: 'pendelMethode', l: 'Pendel-Bewertung', t: 'select', opt: [['monat', 'Monat 0,03 %'], ['einzel', 'Einzel 0,002 % (max. 180 T.)']] },
+      { k: 'pendelTage', l: 'Fahrten Whg–TS/Jahr (Einzelbew.)', t: 'num' },
+      { k: 'familienKm', l: 'Familienheimfahrt km (dopp. HH)', t: 'num' },
+      { k: 'familienFahrten', l: 'zusätzl. Heimfahrten (> 1/Woche)', t: 'num' },
+      { k: 'nutzerzahl', l: 'Nutzungsberechtigte (Pool)', t: 'num', def: '1' },
+      { k: 'fahrer', l: 'Fahrergestellung?', t: 'select', opt: [['nein', 'nein'], ['ja', 'ja (+50 %)']] },
+      { k: 'entgelt', l: 'Nutzungsentgelt/Zuzahlung €', t: 'num' },
+      { k: 'kosten', l: 'Fahrtenbuch: Gesamtkosten', t: 'num' },
+      { k: 'kmGesamt', l: 'Fahrtenbuch: Gesamt-km', t: 'num' },
+      { k: 'kmPrivat', l: 'Fahrtenbuch: Privat-km', t: 'num' },
+      { k: 'kmPendel', l: 'Fahrtenbuch: km Whg–TS', t: 'num' },
+      { k: 'kmFamilie', l: 'Fahrtenbuch: Familienheim-km', t: 'num' },
+      { k: 'fbOk', l: 'Fahrtenbuch ordnungsgemäß & belegt', t: 'check' } ],
+    rechnen: (w) => {
+      const r2 = x => Math.round(x * 100) / 100
+      const jahr = getStichtag().getFullYear()
+      const det = [], hinweise = [], buchungen = []
+      const fUst = !!w.fUst
+      let sumVorteil = 0, sumPauschal40 = 0, sumUst = 0
+
+      ;(w._pos || []).forEach(v => {
+        const name = (v.an || 'AN') + (v.bez ? ' · ' + v.bez : '')
+        const blp = num(v.blp)
+        if (!blp) { hinweise.push('⚠️ ' + name + ': kein Bruttolistenpreis – übersprungen.'); return }
         const blpAbg = Math.floor(blp / 100) * 100
         const monate = Math.min(12, Math.max(0, num(v.monate) || 12))
-        let red = 1, artL = 'Verbrenner · 1 %'
-        if (art === 'elektro') {
-          const limit = d < new Date('2024-01-01') ? 60000 : (d < new Date('2024-07-01') ? 70000 : 95000)
-          red = blpAbg <= limit ? 0.25 : 0.5
-          artL = 'Elektro · ' + (red === 0.25 ? '0,25 %' : '0,5 %') + ' (Grenze ' + eur(limit) + ')'
-        } else if (art === 'hybrid') {
-          const co2 = num(v.co2), rw = num(v.reichweite)
-          const need = d < new Date('2022-01-01') ? 40 : (d < new Date('2025-01-01') ? 60 : 80)
-          const ok = (co2 > 0 && co2 <= 50) || rw >= need
-          red = ok ? 0.5 : 1
-          artL = 'Hybrid · ' + (ok ? '0,5 % (begünstigt)' : '1 % (NICHT begünstigt)')
-          if (!ok) hinweise.push((v.bez || 'Fahrzeug') + ': Plug-in-Hybrid erfüllt die Voraussetzungen nicht (Reichweite ≥ ' + need + ' km oder CO₂ ≤ 50 g/km) → voller 1-%-Ansatz.')
+        const n = Math.max(1, num(v.nutzerzahl) || 1)
+        // Faktor: für AN gilt die 100.000-€-Grenze nur, wenn Anschaffung UND Überlassung
+        // im begünstigten Zeitraum liegen → maßgeblich ist das spätere der beiden Daten.
+        const dA = v.anschaffung ? new Date(v.anschaffung) : null
+        const dU = v.ueberlassung ? new Date(v.ueberlassung) : null
+        let datFaktor = v.anschaffung || v.ueberlassung || v.erstzulassung
+        if (dA && dU) datFaktor = dA > dU ? v.anschaffung : v.ueberlassung
+        const fk = kfzFaktor(v.art, blpAbg, datFaktor, { co2: v.co2, reichweite: v.reichweite })
+        if (fk.warn) hinweise.push('⚠️ ' + name + ': ' + fk.warn)
+        if (fk.f === 0.25) hinweise.push('ℹ️ ' + name + ': 0,25-%-Ansatz setzt bei Arbeitnehmern (100.000-€-Grenze) Anschaffung UND Überlassung im begünstigten Zeitraum voraus – beide Daten prüfen.')
+        const MBLP = blpAbg * fk.f
+
+        const methode = v.methode || 'pauschal'
+        const useFb = methode === 'fahrtenbuch'
+        const gesKm = num(v.kmGesamt), kosten = num(v.kosten)
+        const fbMoeglich = useFb && kosten > 0 && gesKm > 0 && v.fbOk
+        if (useFb && !v.fbOk) hinweise.push('⛔ ' + name + ': Fahrtenbuch nicht als ordnungsgemäß/belegt bestätigt → Rückfall auf 1-%-Methode (BFH VI R 44/20: keine Schätzung fehlender Treibstoffkosten).')
+        else if (useFb && !(kosten > 0 && gesKm > 0)) hinweise.push('⚠️ ' + name + ': Fahrtenbuch gewählt, aber Gesamtkosten/Gesamt-km fehlen → 1-%-Methode angesetzt.')
+
+        const km = Math.floor(num(v.pendelKm))
+        const ersteTS = (v.ersteTS || 'ja') === 'ja'
+        const einzel = (v.pendelMethode || 'monat') === 'einzel'
+        const pTage = num(v.pendelTage)
+        let privat, pendel = 0, familie = 0, pendelBasis40 = 0
+
+        if (fbMoeglich) {
+          const cpk = kosten / gesKm
+          privat = r2(cpk * num(v.kmPrivat)); pendel = r2(cpk * num(v.kmPendel)); familie = r2(cpk * num(v.kmFamilie))
+          det.push({ l: name + ' — Fahrtenbuch · ' + eur(r2(cpk)) + '/km · privat ' + num(v.kmPrivat) + ' km', v: privat })
+          if (pendel) { pendelBasis40 = pendel; det.push({ l: '   Pendeln Whg–TS (Fahrtenbuch)', v: pendel }) }
+          if (familie) det.push({ l: '   Familienheimfahrten (Fahrtenbuch)', v: familie })
+        } else {
+          privat = r2(MBLP * 0.01 * monate / n)
+          det.push({ l: name + ' — ' + fk.label + ' · ' + monate + ' Mon.' + (n > 1 ? ' · ÷ ' + n + ' Nutzer' : ''), v: privat })
+          if (ersteTS && km > 0) {
+            if (einzel) {
+              const t = Math.min(180, pTage)
+              if (pTage > 180) hinweise.push('⛔ ' + name + ': Einzelbewertung ist auf 180 Tage/Jahr begrenzt (' + pTage + ' erfasst) – gekappt.')
+              pendel = r2(MBLP * 0.00002 * km * t / n)
+              det.push({ l: '   Pendeln Einzelbewertung 0,002 % × ' + km + ' km × ' + t + ' Tage', v: pendel })
+            } else {
+              pendel = r2(MBLP * 0.0003 * km * monate / n)
+              det.push({ l: '   Pendeln Monatsmethode 0,03 % × ' + km + ' km × ' + monate + ' Mon.', v: pendel })
+            }
+            pendelBasis40 = pendel
+          } else if (!ersteTS) {
+            hinweise.push('ℹ️ ' + name + ': keine erste Tätigkeitsstätte → kein 0,03-/0,002-%-Zuschlag; Sammelpunkt/weiträumiges Tätigkeitsgebiet (§ 9 Abs. 1 S. 3 Nr. 4a EStG) gesondert prüfen.')
+          }
+          const fKm = Math.floor(num(v.familienKm)), fN = num(v.familienFahrten)
+          if (fKm > 0 && fN > 0) { familie = r2(MBLP * 0.00002 * fKm * fN); det.push({ l: '   zusätzliche Familienheimfahrten 0,002 % × ' + fKm + ' km × ' + fN + ' (erste wöchentl. bereits im 1-%-Wert)', v: familie }) }
         }
-        const redBLP = blpAbg * red
-        const nutz = r2(redBLP * 0.01 * monate)
-        const km = num(v.entfernung); const fahrt = km > 0 ? r2(redBLP * 0.0003 * km * monate) : 0
-        const kosten = num(v.kosten); const roh = nutz + fahrt
-        let entn = nutz, fhr = fahrt, deckel = false
-        if (kosten > 0 && roh > kosten) { deckel = true; entn = r2(nutz * kosten / roh); fhr = r2(kosten - entn) }
-        sumEntn += entn; sumFahrt += fhr
-        det.push({ l: (v.bez || 'Fahrzeug') + ' — ' + artL + ' · ' + monate + ' Mon. · BLP ' + eur(blpAbg), v: entn + fhr })
-        det.push({ l: '   private Nutzung (1 %' + (red !== 1 ? ' auf ' + (red * 100).toString().replace('.', ',') + ' % Basis' : '') + ')', v: entn })
-        if (fahrt) det.push({ l: '   Fahrten Whg–Betrieb (0,03 % × ' + km + ' km, nicht abziehbar)', v: fhr })
-        if (deckel) hinweise.push((v.bez || 'Fahrzeug') + ': Kostendeckelung greift – pauschaler Wert (' + eur(roh) + ') über den Gesamtkosten (' + eur(kosten) + '); Ansatz auf die Kosten begrenzt.')
+
+        let fahrerZ = 0
+        if ((v.fahrer || 'nein') === 'ja') { fahrerZ = r2(0.5 * (privat + pendel + familie)); det.push({ l: '   Fahrergestellung (+50 % der Nutzungswerte – LStR-Staffelung prüfen)', v: fahrerZ }) }
+
+        const brutto = r2(privat + pendel + familie + fahrerZ)
+        const entgelt = num(v.entgelt)
+        let vorteil = brutto - entgelt
+        if (entgelt > 0) det.push({ l: '   − Nutzungsentgelt/Zuzahlung', v: -entgelt })
+        if (vorteil < 0) { hinweise.push('⛔ ' + name + ': Nutzungsentgelt (' + eur(entgelt) + ') übersteigt den Vorteil (' + eur(brutto) + ') → kein negativer Vorteil; Überhang verfällt (keine jahresübergreifende Übertragung ohne zulässige Zuordnung).'); vorteil = 0 }
+        vorteil = r2(vorteil)
+
+        if (w.fPauschal40 && pendelBasis40 > 0 && ersteTS) {
+          const epTage = einzel ? Math.min(180, pTage) : Math.round(15 * monate)
+          const ep = entfPauschale(km, epTage, jahr)
+          const p40 = r2(Math.min(pendelBasis40, ep))
+          if (p40 > 0) { sumPauschal40 += p40; hinweise.push('ℹ️ ' + name + ': § 40 Abs. 2 EStG – Pendelvorteil bis Entfernungspauschale (' + eur(ep) + ') pauschal 15 % LSt: Basis ' + eur(p40) + ' (pausch. LSt ~ ' + eur(r2(p40 * 0.15)) + '); mindert die Werbungskostenbescheinigung, nicht regelversteuert.') }
+        }
+
+        sumVorteil += vorteil
+
+        if (fUst) {
+          const bruttoUst = fbMoeglich ? brutto
+            : r2(blpAbg * 0.01 * monate / n + (ersteTS && km > 0 ? (einzel ? blpAbg * 0.00002 * km * Math.min(180, pTage) : blpAbg * 0.0003 * km * monate) / n : 0))
+          const net = r2(bruttoUst / 1.19), u = r2(net * 0.19); sumUst += u
+          hinweise.push('ℹ️ ' + name + ' USt: Überlassung regelmäßig entgeltl./tauschähnl. Umsatz (BMF 3.3.2026). Bemessung OHNE E-/Hybrid-Kürzung; hier grob ' + eur(net) + ' netto → USt 19 % ' + eur(u) + '. Mindestbemessung, Nutzungsentgelt, Leistungsort (Auslandsfälle) separat prüfen.')
+        }
       })
-      const erg = [...det,
-        { l: 'Summe private Nutzungsentnahme (Betriebseinnahme)', v: sumEntn, stark: 1 }]
-      if (sumFahrt) erg.push({ l: 'Summe Fahrten Whg–Betrieb (nicht abziehbare BA)', v: sumFahrt })
-      if (sumFahrt) hinweise.push('Die 0,03-%-Beträge für Fahrten Wohnung–Betrieb (' + eur(sumFahrt) + ') sind nicht abziehbare Betriebsausgaben (§ 4 Abs. 5 Nr. 6 EStG) – außerbilanziell hinzurechnen (z. B. Konto 4679), gekürzt um die Entfernungspauschale.')
-      hinweise.push('Umsatzsteuer: die private Nutzung ist unentgeltliche Wertabgabe – Bemessungsgrundlage i. d. R. 1 % vom BLP OHNE E-/Hybrid-Reduzierung (ggf. 20 % pauschaler Abschlag für nicht mit Vorsteuer belastete Kosten); die Begünstigung gilt nur ertragsteuerlich.')
-      hinweise.push('Günstigerprüfung: Bei hohem Listenpreis und geringer Privatnutzung kann die Fahrtenbuchmethode günstiger sein.')
-      if (sumEntn > 0) buchungen.push({ s: w.kEntnahme || '1880', st: 'Privat / Verrechnung', h: w.kErtrag || '8921', ht: 'Private Kfz-Nutzung', betr: sumEntn, text: 'Private Kfz-Nutzung (1-%-Methode)' })
-      return { ergebnisse: erg, total: { l: 'Nutzungsentnahme (Betriebseinnahme)', v: sumEntn }, hinweise, buchungen }
+
+      const erg = [...det, { l: 'Steuer-/SV-pflichtiger geldwerter Vorteil (gesamt)', v: sumVorteil, stark: 1 }]
+      if (sumPauschal40) erg.push({ l: 'davon § 40 Abs. 2 EStG pauschal (15 %) – nicht regelversteuert', v: sumPauschal40 })
+      if (fUst && sumUst) erg.push({ l: 'Umsatzsteuer 19 % (Überlassung an AN)', v: sumUst })
+
+      hinweise.push('Lohnabrechnung: Der geldwerte Vorteil ist Bruttolohn/Sachbezug (§ 8 Abs. 2 EStG) – über Lohnarten als Brutto-Hinzurechnung/Netto-Abzug abzurechnen, KEINE Unternehmer-Privatentnahme. Bei Gesellschafter-Geschäftsführern zusätzlich vGA-Prüfung.')
+      if (!fUst) hinweise.push('USt der Fahrzeugüberlassung an Arbeitnehmer nicht angesetzt – nach BMF 3.3.2026 regelmäßig steuerbar; ggf. Flag setzen.')
+
+      return { ergebnisse: erg, total: { l: 'Geldwerter Vorteil (gesamt)', v: sumVorteil }, hinweise, buchungen }
+    } },
+  kfzLadestrom: { name: 'Ladestrom-Erstattung E-Dienstwagen (ab 2026)', bereich: 'ba', typ: 'C', posLabel: 'Ladestrom je Arbeitnehmer',
+    flags: [
+      { k: 'fPauschale', label: 'Strompreispauschale statt Einzelnachweis (kalenderjährlich einheitlich)' },
+      { k: 'fOeffentlich', label: 'Öffentlicher Ladestrom zusätzlich belegmäßig erstattet' } ],
+    felder: [
+      { k: 'kErstattung', l: 'Konto steuerfreier Auslagenersatz', t: 'text', def: '4137' },
+      { k: 'notiz', l: 'Notiz', t: 'area' } ],
+    positionen: true,
+    posFelder: [
+      { k: 'an', l: 'Arbeitnehmer', t: 'text' },
+      { k: 'kwh', l: 'nachgewiesene kWh (Ladung zuhause)', t: 'num' },
+      { k: 'tatsKosten', l: 'tats. Stromkosten € (Alternative)', t: 'num' },
+      { k: 'oeffentlich', l: 'öffentl. Ladestrom € (Beleg)', t: 'num' } ],
+    rechnen: (w) => {
+      const r2 = x => Math.round(x * 100) / 100
+      const jahr = getStichtag().getFullYear()
+      const satz = STROMPAUSCHALE[jahr] || STROMPAUSCHALE[2026]
+      const det = [], hinweise = []; let sum = 0
+      ;(w._pos || []).forEach(v => {
+        const name = v.an || 'AN'; const kwh = num(v.kwh); const oeff = num(v.oeffentlich)
+        let betr
+        if (w.fPauschale) { betr = r2(kwh * satz); det.push({ l: name + ' — Pauschale ' + kwh + ' kWh × ' + eur(satz), v: betr }) }
+        else { betr = num(v.tatsKosten); det.push({ l: name + ' — tatsächliche Stromkosten (Nachweis)', v: betr }) }
+        if (oeff > 0) { det.push({ l: '   + öffentlicher Ladestrom (Beleg)', v: oeff }); betr = r2(betr + oeff) }
+        sum += betr
+      })
+      hinweise.push('Strompreispauschale ' + jahr + ': ' + eur(satz) + '/kWh (auf volle Cent abgerundeter Destatis-Gesamtdurchschnittspreis 1. Halbjahr Vorjahr, Haushalte 5.000 bis unter 15.000 kWh) × nachgewiesene kWh – steuerfreier Auslagenersatz (§ 3 Nr. 50 EStG). Strommenge nachweisen; nur E-/Hybrid-Dienstwagen.')
+      hinweise.push('BMF 21.7.2026: gilt für nach dem 31.12.2025 beginnende Wirtschaftsjahre; Nichtbeanstandung der alten monatlichen Pauschalen bis 31.7.2026. Öffentlicher Ladestrom ist zusätzlich belegmäßig erstattbar.')
+      if (jahr < 2026) hinweise.push('⚠️ Wirtschaftsjahr < 2026: die neue Pauschale gilt noch nicht durchgängig – alte monatliche Pauschalen prüfen (Nichtbeanstandung bis 31.7.2026).')
+      return { ergebnisse: [...det, { l: 'Steuerfreier Auslagenersatz Ladestrom (gesamt)', v: sum, stark: 1 }], total: { l: 'Erstattung gesamt', v: sum }, hinweise, buchungen: [] }
     } },
   fahrtenbuch: { name: 'Fahrtenbuch', bereich: 'ba', typ: 'A' },
   telefon: { name: 'Private Telefonnutzung', bereich: 'ba', typ: 'A' },
