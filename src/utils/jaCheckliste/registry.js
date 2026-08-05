@@ -199,7 +199,52 @@ export const MODULE = {
   durchlaufend: { name: 'Durchlaufende Posten', bereich: 'ba', typ: 'A' },
   ustZahllast: { name: 'Umsatzsteuer-Verbindlichkeit', bereich: 'ba', typ: 'B', konto: '1776', bez: 'USt' },
   lohn: { name: 'Lohn und Gehalt', bereich: 'ba', typ: 'A' },
-  gewerbesteuer: { name: 'Gewerbesteuer (Hebesatz-Rechner)', bereich: 'ba', typ: 'C', hinweis: 'Hebesatz-Rechner folgt' },
+  gewerbesteuer: { name: 'Gewerbesteuer (Abstimmung & Berechnung)', bereich: 'ba', typ: 'C',
+    flags: [
+      { k: 'fBescheid', label: 'GewSt-Vorauszahlungsbescheid liegt vor' },
+      { k: 'fAbgestimmt', label: 'Vorauszahlungen mit Buchung abgestimmt' },
+      { k: 'fNachtraeglich', label: 'Nachträgliche Vorauszahlungen berücksichtigt' },
+      { k: 'fRueckstellung', label: 'GewSt-Rückstellung gebildet / geprüft' },
+      { k: 'f35', label: 'Messbetrag in ESt-Erklärung übertragen (§ 35 EStG)' },
+      { k: 'fZerlegung', label: 'Zerlegung auf mehrere Gemeinden geprüft' } ],
+    felder: [
+      { k: 'gewinn', l: 'Gewinn aus Gewerbebetrieb', t: 'num' },
+      { k: 'hinzu', l: '+ Hinzurechnungen (§ 8 GewStG)', t: 'num' },
+      { k: 'kuerz', l: '− Kürzungen (§ 9 GewStG)', t: 'num' },
+      { k: 'freibetrag', l: 'Freibetrag (24.500 € Einzel/PersG)', t: 'num', def: '24500' },
+      { k: 'hebesatz', l: 'Hebesatz %', t: 'num' },
+      { k: 'vzFestgesetzt', l: 'Vorauszahlungen lt. Bescheid (Gewerbeamt)', t: 'num' },
+      { k: 'vzGebucht', l: 'Vorauszahlungen lt. Buchung', t: 'num' },
+      { k: 'vzNachtraeglich', l: 'nachträgliche Vorauszahlung (noch nicht gebucht)', t: 'num' },
+      { k: 'kGewSt', l: 'Konto Gewerbesteuer', t: 'text', def: '4320' },
+      { k: 'kRueck', l: 'Konto GewSt-Rückstellung', t: 'text', def: '0956' },
+      { k: 'notiz', l: 'Notiz / Bescheiddaten (Datum, Aktenzeichen, Gemeinde)', t: 'area' } ],
+    rechnen: (w, ctx) => { const r2 = x => Math.round(x * 100) / 100
+      const ertrag = num(w.gewinn) + num(w.hinzu) - num(w.kuerz)
+      const ertragAbg = Math.floor(Math.max(0, ertrag) / 100) * 100
+      const fb = num(w.freibetrag); const nachFB = Math.max(0, ertragAbg - fb)
+      const messbetrag = r2(nachFB * 0.035); const hebe = num(w.hebesatz); const gewSt = r2(messbetrag * hebe / 100)
+      const vzGeb = num(w.vzGebucht), vzFest = num(w.vzFestgesetzt), vzNach = num(w.vzNachtraeglich)
+      const vzGesamt = vzGeb + vzNach; const rueck = r2(gewSt - vzGesamt); const erstattung = rueck < 0
+      const anr35 = r2(Math.min(messbetrag * 4, gewSt))
+      const erg = [
+        { l: 'Gewerbeertrag (Gewinn + Hinzurechnungen − Kürzungen)', v: ertrag },
+        { l: 'abgerundet auf volle 100 €', v: ertragAbg },
+        { l: '− Freibetrag', v: -fb },
+        { l: '= Gewerbeertrag nach Freibetrag', v: nachFB },
+        { l: 'Steuermessbetrag (× 3,5 %)', v: messbetrag, stark: 1 },
+        { l: 'Gewerbesteuer (Messbetrag × Hebesatz ' + (hebe || 0) + ' %)', v: gewSt },
+        { l: '− Vorauszahlungen (gebucht' + (vzNach ? ' + nachträglich' : '') + ')', v: -vzGesamt } ]
+      const total = { l: erstattung ? 'GewSt-Erstattungsanspruch' : 'GewSt-Rückstellung / Nachzahlung', v: Math.abs(rueck) }
+      const hinweise = [], buchungen = []
+      if ((vzGeb || vzFest) && Math.abs(vzGeb - vzFest) >= 0.01) hinweise.push('Vorauszahlungen lt. Buchung (' + eur(vzGeb) + ') weichen vom Bescheid des Gewerbeamts (' + eur(vzFest) + ') ab – Differenz ' + eur(vzGeb - vzFest) + ' klären / nachbuchen.')
+      else if (vzFest && vzGeb) hinweise.push('Vorauszahlungen stimmen mit dem Bescheid überein.')
+      if (vzNach > 0) hinweise.push('Nachträgliche Vorauszahlung ' + eur(vzNach) + ' noch buchen bzw. in der Abstimmung berücksichtigen.')
+      if (rueck > 0.01) { hinweise.push('Gewerbesteuer ist nicht abziehbare Betriebsausgabe (§ 4 Abs. 5b EStG) – Rückstellung außerbilanziell dem Gewinn wieder hinzurechnen.')
+        buchungen.push({ s: w.kGewSt || '4320', st: 'Gewerbesteuer', h: w.kRueck || '0956', ht: 'GewSt-Rückstellung', betr: rueck, text: 'GewSt-Rückstellung zum ' + getStichtag().toLocaleDateString('de-DE') }) }
+      else if (erstattung && Math.abs(rueck) >= 0.01) hinweise.push('Überzahlung ' + eur(Math.abs(rueck)) + ' – GewSt-Erstattungsanspruch aktivieren.')
+      if (messbetrag > 0) hinweise.push('§ 35 EStG (nur Einzelunternehmen/Personengesellschaften, nicht Kapitalgesellschaften): Steuerermäßigung = 4-facher Messbetrag (' + eur(messbetrag * 4) + '), höchstens die tatsächliche Gewerbesteuer (' + eur(anr35) + ') – Messbetrag in die ESt-Erklärung übernehmen.')
+      return { ergebnisse: erg, total, hinweise, buchungen } } },
   /* ── Aktiva (Bilanz) ── */
   anlagevermoegen: { name: 'Anlagevermögen', bereich: 'aktiva', typ: 'C',
     flags: [
