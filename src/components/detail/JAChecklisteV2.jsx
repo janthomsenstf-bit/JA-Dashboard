@@ -40,7 +40,7 @@ export default function JAChecklisteV2({ au, client, onUpdate }) {
   const data = useMemo(() => buildData(au, gw), [au?.jaChecklisteV2, gw])
   const ctx = { gw }
 
-  const bereiche = viewsOf(data)
+  const bereiche = (() => { const b = viewsOf(data); return b.includes('steuern') ? b : [...b, 'steuern'] })()
   const [view, setView] = useState(bereiche[0] || 'be')
   const [modTab, setModTab] = useState({})
   const [darOpen, setDarOpen] = useState(null)

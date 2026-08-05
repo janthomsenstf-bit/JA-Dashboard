@@ -261,7 +261,7 @@ export const MODULE = {
   durchlaufend: { name: 'Durchlaufende Posten', bereich: 'ba', typ: 'A' },
   ustZahllast: { name: 'Umsatzsteuer-Verbindlichkeit', bereich: 'ba', typ: 'B', konto: '1776', bez: 'USt' },
   lohn: { name: 'Lohn und Gehalt', bereich: 'ba', typ: 'A' },
-  gewerbesteuer: { name: 'Gewerbesteuer (Abstimmung & Berechnung)', bereich: 'ba', typ: 'C',
+  gewerbesteuer: { name: 'Gewerbesteuer (Abstimmung & Berechnung)', bereich: 'steuern', typ: 'C',
     flags: [
       { k: 'fBescheid', label: 'GewSt-Vorauszahlungsbescheid liegt vor' },
       { k: 'fAbgestimmt', label: 'Vorauszahlungen mit Buchung abgestimmt' },
@@ -473,7 +473,7 @@ export const MODULE = {
       return { ergebnisse: [...detail, { l: 'Ertrag laufendes Jahr', v: sumErtrag }],
         total: { l: 'Passiver RAP zum ' + getStichtag().toLocaleDateString('de-DE'), v: sumRap },
         buchungen, hinweise: ['Passive RAP: im Voraus erhaltene (vereinnahmte) Erträge, die wirtschaftlich das Folgejahr betreffen (§ 5 Abs. 5 Satz 1 Nr. 2 EStG).'] } } },
-  ustModul: { name: 'Umsatzsteuer (Konten & Verprobung)', bereich: 'ba', typ: 'C', kontoListe: true,
+  ustModul: { name: 'Umsatzsteuer (Konten & Verprobung)', bereich: 'steuern', typ: 'C', kontoListe: true,
     flags: [
       { k: 'fVa', label: 'USt-Voranmeldungen mit Jahressummen abgestimmt' },
       { k: 'fZm', label: 'Zusammenfassende Meldung / § 13b abgestimmt' },
@@ -550,10 +550,10 @@ MODULE.konUnklar   = kontoModul('Nicht zugeordnete Konten', 'ba')
 MODULE.darlehen    = { name: 'Darlehen (Verwaltung & Prüfung)', bereich: 'passiva', typ: 'C', custom: 'darlehen' }
 
 // ── Labels / Reihenfolge ──────────────────────────────────────────────────────
-export const BEREICH = { be: 'Betriebseinnahmen', ba: 'Betriebsausgaben', aktiva: 'Aktiva (Bilanz)', passiva: 'Passiva (Bilanz)' }
-export const VIEW_LABEL = { be: 'Betriebseinnahmen', ba: 'Betriebsausgaben', aktiva: 'Aktiva', passiva: 'Passiva', _: 'Weitere' }
-export const VIEW_ORDER = ['be', 'ba', 'aktiva', 'passiva', '_']
-export const BEREICH_FARBE = { be: '#16a34a', ba: '#ef4444', aktiva: '#2563eb', passiva: '#7c3aed', abstimmung: '#0891b2' }
+export const BEREICH = { be: 'Betriebseinnahmen', ba: 'Betriebsausgaben', aktiva: 'Aktiva (Bilanz)', passiva: 'Passiva (Bilanz)', steuern: 'Steuern' }
+export const VIEW_LABEL = { be: 'Betriebseinnahmen', ba: 'Betriebsausgaben', aktiva: 'Aktiva', passiva: 'Passiva', steuern: 'Steuern', _: 'Weitere' }
+export const VIEW_ORDER = ['be', 'ba', 'aktiva', 'passiva', 'steuern', '_']
+export const BEREICH_FARBE = { be: '#16a34a', ba: '#ef4444', aktiva: '#2563eb', passiva: '#7c3aed', steuern: '#b45309', abstimmung: '#0891b2' }
 
 export function modLists(mod) {
   if (mod.listen) return mod.listen
@@ -581,8 +581,8 @@ export function ensureKat(cl, bereich) {
   if (!cl.kategorien) cl.kategorien = []
   let k = cl.kategorien.find(x => x.bereich === bereich)
   if (k) return k
-  const namen = { be: 'Betriebseinnahmen', ba: 'Betriebsausgaben', aktiva: 'Aktive Bilanzposten', passiva: 'Passive Bilanzposten' }
-  const absch = { be: cl.gw === 'bilanz' ? 'guv' : 'euer', ba: cl.gw === 'bilanz' ? 'guv' : 'euer', aktiva: 'aktiva', passiva: 'passiva' }
+  const namen = { be: 'Betriebseinnahmen', ba: 'Betriebsausgaben', aktiva: 'Aktive Bilanzposten', passiva: 'Passive Bilanzposten', steuern: 'Steuern' }
+  const absch = { be: cl.gw === 'bilanz' ? 'guv' : 'euer', ba: cl.gw === 'bilanz' ? 'guv' : 'euer', aktiva: 'aktiva', passiva: 'passiva', steuern: 'steuern' }
   k = cat(namen[bereich] || bereich, bereich, absch[bereich] || '')
   cl.kategorien.push(k)
   return k

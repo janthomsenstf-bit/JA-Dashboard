@@ -40,6 +40,7 @@ export const JAC2_CSS = `
 .jac2 .viewtab.on.ba{color:var(--korr);border-color:var(--korr)}
 .jac2 .viewtab.on.aktiva{color:var(--accent);border-color:var(--accent)}
 .jac2 .viewtab.on.passiva{color:#6d28d9;border-color:#6d28d9}
+.jac2 .viewtab.steuern{color:#b45309} .jac2 .viewtab.on.steuern{color:#b45309;border-color:#b45309}
 .jac2 .viewtab.abst{color:#0891b2} .jac2 .viewtab.on.abst{color:#0891b2;border-color:#0891b2}
 
 .jac2 .modnav{display:flex;gap:7px;flex-wrap:wrap;margin:4px 0 14px}
