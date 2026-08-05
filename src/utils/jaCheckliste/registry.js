@@ -190,7 +190,69 @@ export const MODULE = {
   verpflegung: { name: 'Verpflegungsmehraufwand', bereich: 'ba', typ: 'C', hinweis: 'Pauschalen-Rechner folgt' },
   arbeitszimmer: { name: 'Häusliches Arbeitszimmer', bereich: 'ba', typ: 'C', hinweis: 'Rechner folgt' },
   kfzKosten: { name: 'Kfz-Kosten (Konto)', bereich: 'ba', typ: 'B', konto: '4500', bez: 'Kfz-Kosten' },
-  kfz1prozent: { name: 'Private Kfz-Nutzung (1-%-Methode)', bereich: 'ba', typ: 'C', hinweis: 'Rechner folgt' },
+  kfz1prozent: { name: 'Firmenfahrzeug – private Nutzung (1-%-Methode)', bereich: 'be', typ: 'C', posLabel: 'Firmenfahrzeuge',
+    flags: [
+      { k: 'fBetriebsvermoegen', label: 'Fahrzeug im Betriebsvermögen (> 50 % betrieblich)' },
+      { k: 'fFahrtenbuch', label: 'Fahrtenbuch als Alternative geprüft (Günstigerprüfung)' },
+      { k: 'fKostendeckel', label: 'Kostendeckelung geprüft' },
+      { k: 'fUst', label: 'Umsatzsteuer auf private Nutzung berücksichtigt' } ],
+    felder: [
+      { k: 'kEntnahme', l: 'Konto Gegenbuchung (Privat/Verrechnung)', t: 'text', def: '1880' },
+      { k: 'kErtrag', l: 'Konto Kfz-Nutzung (Ertrag)', t: 'text', def: '8921' },
+      { k: 'notiz', l: 'Notiz', t: 'area' } ],
+    positionen: true,
+    posFelder: [
+      { k: 'bez', l: 'Fahrzeug / Kennzeichen', t: 'text' },
+      { k: 'art', l: 'Antrieb', t: 'select', opt: [['verbrenner', 'Verbrenner'], ['elektro', 'Elektro (rein)'], ['hybrid', 'Plug-in-Hybrid']] },
+      { k: 'erstzulassung', l: 'Anschaffung / Erstzulassung', t: 'date' },
+      { k: 'blp', l: 'Bruttolistenpreis', t: 'num' },
+      { k: 'monate', l: 'Monate genutzt', t: 'num', def: '12' },
+      { k: 'reichweite', l: 'E-Reichweite km (Hybrid)', t: 'num' },
+      { k: 'co2', l: 'CO₂ g/km (Hybrid)', t: 'num' },
+      { k: 'entfernung', l: 'Entfernung Whg–Betrieb (km, 0,03 %)', t: 'num' },
+      { k: 'kosten', l: 'tatsächliche Gesamtkosten (Kostendeckelung)', t: 'num' } ],
+    rechnen: (w, ctx) => {
+      const r2 = x => Math.round(x * 100) / 100
+      const pos = w._pos || []; let sumEntn = 0, sumFahrt = 0; const det = [], hinweise = [], buchungen = []
+      pos.forEach(v => { const blp = num(v.blp); if (!blp) return
+        const art = v.art || 'verbrenner'
+        const d = v.erstzulassung ? new Date(v.erstzulassung) : getStichtag()
+        const blpAbg = Math.floor(blp / 100) * 100
+        const monate = Math.min(12, Math.max(0, num(v.monate) || 12))
+        let red = 1, artL = 'Verbrenner · 1 %'
+        if (art === 'elektro') {
+          const limit = d < new Date('2024-01-01') ? 60000 : (d < new Date('2024-07-01') ? 70000 : 95000)
+          red = blpAbg <= limit ? 0.25 : 0.5
+          artL = 'Elektro · ' + (red === 0.25 ? '0,25 %' : '0,5 %') + ' (Grenze ' + eur(limit) + ')'
+        } else if (art === 'hybrid') {
+          const co2 = num(v.co2), rw = num(v.reichweite)
+          const need = d < new Date('2022-01-01') ? 40 : (d < new Date('2025-01-01') ? 60 : 80)
+          const ok = (co2 > 0 && co2 <= 50) || rw >= need
+          red = ok ? 0.5 : 1
+          artL = 'Hybrid · ' + (ok ? '0,5 % (begünstigt)' : '1 % (NICHT begünstigt)')
+          if (!ok) hinweise.push((v.bez || 'Fahrzeug') + ': Plug-in-Hybrid erfüllt die Voraussetzungen nicht (Reichweite ≥ ' + need + ' km oder CO₂ ≤ 50 g/km) → voller 1-%-Ansatz.')
+        }
+        const redBLP = blpAbg * red
+        const nutz = r2(redBLP * 0.01 * monate)
+        const km = num(v.entfernung); const fahrt = km > 0 ? r2(redBLP * 0.0003 * km * monate) : 0
+        const kosten = num(v.kosten); const roh = nutz + fahrt
+        let entn = nutz, fhr = fahrt, deckel = false
+        if (kosten > 0 && roh > kosten) { deckel = true; entn = r2(nutz * kosten / roh); fhr = r2(kosten - entn) }
+        sumEntn += entn; sumFahrt += fhr
+        det.push({ l: (v.bez || 'Fahrzeug') + ' — ' + artL + ' · ' + monate + ' Mon. · BLP ' + eur(blpAbg), v: entn + fhr })
+        det.push({ l: '   private Nutzung (1 %' + (red !== 1 ? ' auf ' + (red * 100).toString().replace('.', ',') + ' % Basis' : '') + ')', v: entn })
+        if (fahrt) det.push({ l: '   Fahrten Whg–Betrieb (0,03 % × ' + km + ' km, nicht abziehbar)', v: fhr })
+        if (deckel) hinweise.push((v.bez || 'Fahrzeug') + ': Kostendeckelung greift – pauschaler Wert (' + eur(roh) + ') über den Gesamtkosten (' + eur(kosten) + '); Ansatz auf die Kosten begrenzt.')
+      })
+      const erg = [...det,
+        { l: 'Summe private Nutzungsentnahme (Betriebseinnahme)', v: sumEntn, stark: 1 }]
+      if (sumFahrt) erg.push({ l: 'Summe Fahrten Whg–Betrieb (nicht abziehbare BA)', v: sumFahrt })
+      if (sumFahrt) hinweise.push('Die 0,03-%-Beträge für Fahrten Wohnung–Betrieb (' + eur(sumFahrt) + ') sind nicht abziehbare Betriebsausgaben (§ 4 Abs. 5 Nr. 6 EStG) – außerbilanziell hinzurechnen (z. B. Konto 4679), gekürzt um die Entfernungspauschale.')
+      hinweise.push('Umsatzsteuer: die private Nutzung ist unentgeltliche Wertabgabe – Bemessungsgrundlage i. d. R. 1 % vom BLP OHNE E-/Hybrid-Reduzierung (ggf. 20 % pauschaler Abschlag für nicht mit Vorsteuer belastete Kosten); die Begünstigung gilt nur ertragsteuerlich.')
+      hinweise.push('Günstigerprüfung: Bei hohem Listenpreis und geringer Privatnutzung kann die Fahrtenbuchmethode günstiger sein.')
+      if (sumEntn > 0) buchungen.push({ s: w.kEntnahme || '1880', st: 'Privat / Verrechnung', h: w.kErtrag || '8921', ht: 'Private Kfz-Nutzung', betr: sumEntn, text: 'Private Kfz-Nutzung (1-%-Methode)' })
+      return { ergebnisse: erg, total: { l: 'Nutzungsentnahme (Betriebseinnahme)', v: sumEntn }, hinweise, buchungen }
+    } },
   fahrtenbuch: { name: 'Fahrtenbuch', bereich: 'ba', typ: 'A' },
   telefon: { name: 'Private Telefonnutzung', bereich: 'ba', typ: 'A' },
   beschraenktBA: { name: 'Beschränkt abziehbare Betriebsausgaben', bereich: 'ba', typ: 'A' },
