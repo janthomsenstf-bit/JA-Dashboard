@@ -366,6 +366,49 @@ export const MODULE = {
       return { ergebnisse: [...detail, { l: 'Ertrag laufendes Jahr', v: sumErtrag }],
         total: { l: 'Passiver RAP zum ' + getStichtag().toLocaleDateString('de-DE'), v: sumRap },
         buchungen, hinweise: ['Passive RAP: im Voraus erhaltene (vereinnahmte) Erträge, die wirtschaftlich das Folgejahr betreffen (§ 5 Abs. 5 Satz 1 Nr. 2 EStG).'] } } },
+  ustModul: { name: 'Umsatzsteuer (Konten & Verprobung)', bereich: 'ba', typ: 'C', kontoListe: true,
+    flags: [
+      { k: 'fVa', label: 'USt-Voranmeldungen mit Jahressummen abgestimmt' },
+      { k: 'fZm', label: 'Zusammenfassende Meldung / § 13b abgestimmt' },
+      { k: 'fVerprobung', label: 'Umsatzsteuer-Verprobung durchgeführt' } ],
+    felder: [
+      { k: 'erloese19', l: 'Bemessungsgrundlage 19 % (netto, lt. Erlöskonten)', t: 'num' },
+      { k: 'erloese7', l: 'Bemessungsgrundlage 7 % (netto)', t: 'num' },
+      { k: 'vzFA', l: 'geleistete USt-Vorauszahlungen lt. Steuerkonto (Finanzamt)', t: 'num' },
+      { k: 'kForderung', l: 'Konto Forderung USt', t: 'text', def: '1548' },
+      { k: 'kVerb', l: 'Konto Verbindlichkeit USt', t: 'text', def: '1790' },
+      { k: 'notiz', l: 'Notiz / Klärung Verprobungsdifferenz', t: 'area' } ],
+    listen: [{ key: 'konten', label: 'Umsatzsteuer-Konten (Rolle je Konto zuordnen)', rowNotes: true, felder: [
+      { k: 'konto', l: 'Konto', t: 'text' }, { k: 'bez', l: 'Bezeichnung', t: 'text' }, { k: 'saldo', l: 'Saldo', t: 'num' }, { k: 'vj', l: 'Vorjahr', t: 'num' },
+      { k: 'rolle', l: 'Rolle', t: 'select', opt: [['', '— Rolle —'], ['ust', 'USt (Ausgang)'], ['vst', 'Vorsteuer'], ['13b', '§ 13b'], ['vz', 'Vorauszahlung'], ['fordverb', 'Forderung/Verb.'], ['sonst', 'sonstige']] },
+      { k: 'ok', l: 'geprüft', t: 'check' } ] }],
+    rechnen: (w, ctx) => {
+      const rows = w.konten || []; let ust = 0, vst = 0, u13 = 0, vz = 0, fv = 0
+      rows.forEach(r => { if (!r) return; const s = num(r.saldo); const rolle = r.rolle || ustRolleGuess(r.konto, r.bez)
+        if (rolle === 'ust') ust += s; else if (rolle === 'vst') vst += s; else if (rolle === '13b') u13 += s; else if (rolle === 'vz') vz += s; else if (rolle === 'fordverb') fv += s })
+      const zahllast = ust + u13 - vst
+      const bmg19 = num(w.erloese19), bmg7 = num(w.erloese7); const soll = Math.round((bmg19 * 0.19 + bmg7 * 0.07) * 100) / 100
+      const verpr = Math.round((ust - soll) * 100) / 100
+      const vzFA = num(w.vzFA); const rest = zahllast - vzFA; const erstattung = rest < 0
+      const erg = [
+        { l: 'Ausgangsumsatzsteuer (gebucht)', v: ust },
+        { l: '+ Umsatzsteuer § 13b', v: u13 },
+        { l: '− Vorsteuer', v: -vst },
+        { l: '= Umsatzsteuer-Zahllast', v: zahllast, stark: 1 },
+        { l: '− geleistete Vorauszahlungen (Steuerkonto FA)', v: -vzFA } ]
+      if (bmg19 || bmg7) erg.push({ l: 'Verprobung: Soll-USt (19 % / 7 %)', v: soll }, { l: 'gebuchte Ausgangs-USt', v: ust }, { l: 'Verprobungsdifferenz', v: verpr })
+      const total = { l: erstattung ? 'USt-Erstattungsanspruch' : 'USt-Restschuld ans Finanzamt', v: Math.abs(rest) }
+      const hinweise = [], buchungen = []
+      if ((bmg19 || bmg7) && Math.abs(verpr) >= 1) hinweise.push('Verprobungsdifferenz ' + eur(verpr) + ' aufklären (z. B. § 13b-, steuerfreie/Ausfuhr-Umsätze, Anzahlungen, unentgeltliche Wertabgaben, Periodenverschiebungen).')
+      if ((vz || vzFA) && Math.abs(vz - vzFA) >= 0.01) hinweise.push('Vorauszahlungen lt. Buchung (' + eur(vz) + ') und lt. Steuerkonto FA (' + eur(vzFA) + ') weichen um ' + eur(Math.abs(vz - vzFA)) + ' ab – abstimmen.')
+      if ((ctx.gw || 'euer') === 'bilanz') {
+        if (Math.abs(rest) >= 0.01) {
+          if (erstattung) buchungen.push({ s: w.kForderung || '1548', st: 'Forderung Umsatzsteuer', h: '1780', ht: 'USt-Vorauszahlungen', betr: Math.abs(rest), text: 'USt-Erstattungsanspruch zum 31.12.' })
+          else buchungen.push({ s: '1780', st: 'USt-Vorauszahlungen', h: w.kVerb || '1790', ht: 'Verbindlichkeit Umsatzsteuer', betr: Math.abs(rest), text: 'USt-Restschuld zum 31.12.' })
+        }
+      } else hinweise.push('EÜR: USt wirkt sich erst bei Zahlung/Erstattung als Betriebsausgabe/-einnahme aus (§ 11 EStG) – keine Forderung/Verbindlichkeit ausweisen.')
+      return { ergebnisse: erg, total, hinweise, buchungen }
+    } },
   steuerrueck: { name: 'Steuerrückstellungen (GewSt/KSt)', bereich: 'passiva', typ: 'B', konto: '0955', bez: 'Steuerrückstellungen' },
   darlehenKonto: { name: 'Darlehen / Bankverbindlichkeiten (Konto)', bereich: 'passiva', typ: 'B', konto: '0630', bez: 'Darlehen' },
   sonstVerb: { name: 'Sonstige Verbindlichkeiten', bereich: 'passiva', typ: 'B', konto: '1700', bez: 'Sonstige Verb.' },
@@ -453,8 +496,19 @@ export function erloesKategorie(bez, konto) { const b = (bez || '').toLowerCase(
   if (n >= 8120 && n <= 8140) return 'erloeseAusfuhr'; if (n >= 8100 && n <= 8199) return 'erloeseSteuerfrei'
   return 'erloeseSonst' }
 
+// Rolle eines USt-Kontos aus der Bezeichnung ableiten (SKR03/04-übergreifend, textbasiert)
+export function ustRolleGuess(konto, bez) { const b = (bez || '').toLowerCase()
+  if (/vorsteuer/.test(b)) return 'vst'
+  if (/13\s*b|steuerschuld|reverse[- ]?charge|leistungsempfänger/.test(b)) return '13b'
+  if (/vorauszahlung|voranmeldung|ust-?va/.test(b)) return 'vz'
+  if (/forderung|erstattungsanspruch/.test(b) && /umsatzsteuer|ust/.test(b)) return 'fordverb'
+  if (/verbindlichkeit/.test(b) && /umsatzsteuer|ust/.test(b)) return 'fordverb'
+  if (/umsatzsteuer|\bust\b/.test(b)) return 'ust'
+  return '' }
+
 export function klassifiziereKonto(konto, bez) { const n = +konto; const b = (bez || '').toLowerCase()
   if (n >= 8000 && n <= 8999) return erloesKategorie(bez, konto)
+  if (/umsatzsteuer|vorsteuer|13\s*b|voranmeldung|ust-?va|ust-?zahllast/.test(b)) return 'ustModul'
   if (n >= 1 && n <= 999) {
     if (/rückstell|rueckstell/.test(b) || (n >= 950 && n <= 989)) return 'konRueckst'
     if (/darlehen|kredit|kreditinstitut|hypothek/.test(b) || (n >= 630 && n <= 699)) return 'konVerbindl'
