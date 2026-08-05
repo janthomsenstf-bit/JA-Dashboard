@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
 import {
-  MODULE, BEREICH, VIEW_LABEL, BEREICH_FARBE, STATUS, AUFTRAG,
+  MODULE, BEREICH, VIEW_LABEL, VIEW_ORDER, BEREICH_FARBE, STATUS, AUFTRAG,
   eur, num, uid, modLists, vorlageJA, ensureKat, neuerModulPunkt,
   viewsOf, alleP, fortschritt, setStichtag,
   klassifiziereKonto, kontoZiele, parseKontenText, applyKonten, fillExisting,
@@ -321,7 +321,6 @@ function AssistentModal({ gw, onApply, onClose }) {
 
 // ── SuSa-/Kontenabstimmliste-Import (Upload/Einfügen → Zuordnung → Übernehmen) ─
 const SUSA_DEMO = '8401 ; steuerpflichtige Erlöse ; 245000 ; 231000\n8300 ; Erlöse ermäßigt 7% ; 88000 ; 91500\n8120 ; Ausfuhrlieferungen ; 30000 ; 12000\n0410 ; Maschinen ; 120000 ; 95000\n0520 ; Fuhrpark ; 48000 ; 52000\n1200 ; Bank ; 91000 ; 60000\n1400 ; Forderungen aLL ; 42000 ; 38000\n1576 ; Vorsteuer ; 26400 ; 25100\n0630 ; Darlehen Bank ; 180000 ; 200000\n4120 ; Löhne und Gehälter ; 96000 ; 88000\n4930 ; Bürobedarf ; 3200 ; 2800'
-const ZIEL_BN = { be: 'Betriebseinnahmen', aktiva: 'Aktiva', passiva: 'Passiva', ba: 'Betriebsausgaben' }
 
 function SusaImport({ onApply, onFill, onClose }) {
   const [txt, setTxt] = useState('')
@@ -345,8 +344,9 @@ function SusaImport({ onApply, onFill, onClose }) {
 
   const opts = (sel, i) => (
     <select value={sel} onChange={e => setRows(rs => rs.map((x, j) => j === i ? { ...x, ziel: e.target.value } : x))}>
-      {['be', 'aktiva', 'passiva', 'ba'].map(bz => grp[bz]
-        ? <optgroup key={bz} label={ZIEL_BN[bz]}>{grp[bz].map(z => <option key={z.k} value={z.k}>{z.name}</option>)}</optgroup> : null)}
+      {VIEW_ORDER.filter(bz => grp[bz]).map(bz => (
+        <optgroup key={bz} label={VIEW_LABEL[bz] || bz}>{grp[bz].map(z => <option key={z.k} value={z.k}>{z.name}</option>)}</optgroup>
+      ))}
       <option value="__ignore">— ignorieren —</option>
     </select>
   )

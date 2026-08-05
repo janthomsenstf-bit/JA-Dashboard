@@ -261,7 +261,9 @@ export const MODULE = {
   durchlaufend: { name: 'Durchlaufende Posten', bereich: 'ba', typ: 'A' },
   ustZahllast: { name: 'Umsatzsteuer-Verbindlichkeit', bereich: 'ba', typ: 'B', konto: '1776', bez: 'USt' },
   lohn: { name: 'Lohn und Gehalt', bereich: 'ba', typ: 'A' },
-  gewerbesteuer: { name: 'Gewerbesteuer (Abstimmung & Berechnung)', bereich: 'steuern', typ: 'C',
+  gewerbesteuer: { name: 'Gewerbesteuer (Abstimmung & Berechnung)', bereich: 'steuern', typ: 'C', kontoListe: true,
+    listen: [{ key: 'konten', label: 'Gewerbesteuer-Konten (Vorauszahlungen, Rückstellung …)', rowNotes: true, felder: [
+      { k: 'konto', l: 'Konto', t: 'text' }, { k: 'bez', l: 'Bezeichnung', t: 'text' }, { k: 'saldo', l: 'Saldo', t: 'num' }, { k: 'vj', l: 'Vorjahr', t: 'num' }, { k: 'ok', l: 'geprüft', t: 'check' } ] }],
     flags: [
       { k: 'fBescheid', label: 'GewSt-Vorauszahlungsbescheid liegt vor' },
       { k: 'fAbgestimmt', label: 'Vorauszahlungen mit Buchung abgestimmt' },
@@ -615,7 +617,8 @@ export function ustRolleGuess(konto, bez) { const b = (bez || '').toLowerCase()
 
 export function klassifiziereKonto(konto, bez) { const n = +konto; const b = (bez || '').toLowerCase()
   if (n >= 8000 && n <= 8999) return erloesKategorie(bez, konto)
-  if (/umsatzsteuer|vorsteuer|13\s*b|voranmeldung|ust-?va|ust-?zahllast/.test(b)) return 'ustModul'
+  if (/gewerbesteuer|gewst/.test(b)) return 'gewerbesteuer'
+  if (/umsatzsteuer|vorsteuer|13\s*b|voranmeldung|ust-?va|ust-?zahllast|ust[\s-]?voraus/.test(b)) return 'ustModul'
   if (n >= 1 && n <= 999) {
     if (/rückstell|rueckstell/.test(b) || (n >= 950 && n <= 989)) return 'konRueckst'
     if (/darlehen|kredit|kreditinstitut|hypothek/.test(b) || (n >= 630 && n <= 699)) return 'konVerbindl'
