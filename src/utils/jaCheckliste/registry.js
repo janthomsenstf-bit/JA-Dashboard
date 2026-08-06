@@ -316,7 +316,9 @@ export const MODULE = {
         // Begünstigungsfaktor (nur ESt)
         const fk = kfzFaktor(v.art, blpAbg, datFaktor, { co2: v.co2, reichweite: v.reichweite })
         if (fk.warn) hinweise.push('⚠️ ' + name + ': ' + fk.warn)
-        const MBLP = blpAbg * fk.f
+        // ESt-Nutzungsbasis: bei E-/Hybrid den geviertelten/halbierten Wert auf 100 € abrunden
+        // (DATEV Dok. 5301038: 25 % × 56.220 = 14.055 → 14.000). Verbrenner = BLP abgerundet.
+        const MBLP = fk.f < 1 ? Math.floor(blp * fk.f / 100) * 100 : blpAbg * fk.f
 
         // Klassifizierung des Nutzungsumfangs (Ertragsteuer)
         // < 10 % → notwendiges Privatvermögen: keine Entnahme
@@ -443,15 +445,19 @@ export const MODULE = {
         erg.push({ l: '  = Wert mit USt (brutto) → ' + K.mitUst, v: mitUstBrutto })
         erg.push({ l: 'Gesamtentnahme (brutto, Summe der Buchungen)', v: gesamtBrutto, stark: 1 })
       } else if (divergenz) {
-        erg.push({ l: '  Umsatzsteuer 19 % (Bemessung 80 % ohne E-Kürzung)', v: sumUst })
-        erg.push({ l: 'Gesamtentnahme inkl. USt', v: gesamtBrutto, stark: 1 })
+        const ustDiffErg = r2(sumUst - r2(sumEst * 0.19))
+        erg.push({ l: '  ESt-Bemessung (E-/Hybrid-Faktor) netto', v: sumEst })
+        erg.push({ l: '  USt-Bemessung (80 % v. 1 %, ohne E-Kürzung) netto', v: sumUstBase })
+        erg.push({ l: '  Umsatzsteuer 19 % (auf 80 %-Basis)', v: sumUst })
+        erg.push({ l: '  USt-Differenz (als zusätzliche Wertabgabe)', v: ustDiffErg })
+        erg.push({ l: 'Unentgeltliche Wertabgabe gesamt (ESt-Wert netto + USt)', v: gesamtBrutto, stark: 1 })
       }
       if (sumPendelNA) erg.push({ l: 'Nachrichtlich: nicht abziehbare Pendelkosten (§ 4 Abs. 5 Nr. 6 EStG)', v: sumPendelNA })
       if (sumHeimNA) erg.push({ l: 'Nachrichtlich: nicht abziehbare Familienheimfahrten', v: sumHeimNA })
 
       if (sumPendelNA) hinweise.push('Die nicht abziehbaren Pendelkosten (' + eur(sumPendelNA) + ', 0,03 % gekürzt um die Entfernungspauschale ' + (jahr >= 2026 ? '0,38 €/km ab dem 1. km' : 'gestaffelt') + ') sind außerbilanziell hinzuzurechnen (§ 4 Abs. 5 S. 1 Nr. 6 EStG) – eigene DATEV-Buchung „Fahrten Wohnung–Betrieb", nicht Teil der Nutzungsentnahme.')
       if (fUst && sumUstBase > 0 && !divergenz) hinweise.push('Buchung nach DATEV (Dok. 5301656, SKR' + skr + '): Bruttobetrag „mit USt" (' + eur(mitUstBrutto) + ') auf ' + K.mitUst + ' – Automatikkonto zieht die USt selbst heraus; Anteil „ohne USt" (' + eur(ohneUst) + ') auf ' + K.ohneUst + '; Gegenkonto ' + K.gegen + '. Gegenkonto ' + K.gegen + ' nur für Voll­hafter/Einzelunternehmer – bei Teilhaftern ' + (skr === '04' ? '2530 (Fremdkapital) / 9480 (Eigenkapital)' : '1980 (Fremdkapital) / 9480 (Eigenkapital)') + '.')
-      if (divergenz) hinweise.push('⚠️ E-/Hybridfahrzeug: der ESt-Wert (mit Faktor) liegt unter der USt-Bemessung (80 % ohne Faktor) – der 20/80-Split nach Dok. 5301656 gilt nur für Verbrenner. Hier ESt-Wert auf ' + K.ohneUst + ' und USt gesondert auf ' + K.ust + '; verbindlich nach DATEV-Doku „Privatnutzung Elektrofahrzeuge" buchen.')
+      if (divergenz) hinweise.push('E-/Hybridfahrzeug (DATEV Dok. 5301038, SKR' + skr + '): ESt nach Faktor (25 %/50 %), USt aber auf 80 % des ungekürzten 1-%-Werts → 3 Buchungen: (1) Privatnutzung brutto ' + K.gegen + ' an ' + K.mitUst + ' (Automatikkonto), (2) USt-Differenz-Zwischenbuchung ' + K.ohneUst + ' an ' + K.mitUst + ', (3) USt-Differenz als Wertabgabe ' + K.gegen + ' an ' + K.ohneUst + '. Alternativ DATEV-Faktor-2-Kontenfunktion (15,9664 %). Gegenkonto ' + K.gegen + ' nur Voll­hafter/Einzelunternehmer (sonst ' + (skr === '04' ? '2530/9480' : '1980/9480') + ').')
       if (!fUst) hinweise.push('USt nicht angesetzt (kein Vorsteuerabzug / keine Unternehmenszuordnung) – volle Nutzungsentnahme ohne USt auf ' + K.ohneUst + '.')
 
       if (sumEst > 0) {
@@ -460,8 +466,11 @@ export const MODULE = {
           buchungen.push({ s: kGegen, st: 'Unentgeltl. Wertabgabe', h: (w.kErtragUst || K.mitUst), ht: 'Kfz-Nutzung 19 % USt (Automatik)', betr: mitUstBrutto, text: 'Privatnutzung Pkw mit USt' })
           if (ohneUst > 0) buchungen.push({ s: kGegen, st: 'Unentgeltl. Wertabgabe', h: (w.kErtragOhneUst || K.ohneUst), ht: 'Kfz-Nutzung ohne USt', betr: ohneUst, text: 'Privatnutzung Pkw ohne USt' })
         } else if (divergenz) {
-          buchungen.push({ s: kGegen, st: 'Unentgeltl. Wertabgabe', h: (w.kErtragOhneUst || K.ohneUst), ht: 'Kfz-Nutzung (ESt-Wert)', betr: sumEst, text: 'Privatnutzung Pkw (E-Fahrzeug, ESt-Wert)' })
-          buchungen.push({ s: kGegen, st: 'Unentgeltl. Wertabgabe', h: (w.kUst || K.ust), ht: 'Umsatzsteuer 19 %', betr: sumUst, text: 'USt private Kfz-Nutzung (E-Fahrzeug)' })
+          const kMit = w.kErtragUst || K.mitUst, kOhne = w.kErtragOhneUst || K.ohneUst
+          const b1 = r2(sumEst * 1.19), b2 = r2((sumUstBase - sumEst) * 1.19), b3 = r2(sumUst - r2(sumEst * 0.19))
+          buchungen.push({ s: kGegen, st: 'Unentgeltl. Wertabgabe', h: kMit, ht: 'Kfz-Nutzung 19 % USt (Automatik)', betr: b1, text: 'Privatnutzung Pkw (E-Fahrzeug)' })
+          buchungen.push({ s: kOhne, st: 'Kfz-Nutzung ohne USt', h: kMit, ht: 'Kfz-Nutzung 19 % USt (Automatik)', betr: b2, text: 'USt-Differenz 55 % (Zwischenbuchung)' })
+          buchungen.push({ s: kGegen, st: 'Unentgeltl. Wertabgabe', h: kOhne, ht: 'Kfz-Nutzung ohne USt', betr: b3, text: 'USt-Differenz als unentgeltliche Wertabgabe' })
         } else {
           buchungen.push({ s: kGegen, st: 'Unentgeltl. Wertabgabe', h: (w.kErtragOhneUst || K.ohneUst), ht: 'Kfz-Nutzung ohne USt', betr: sumEst, text: 'Privatnutzung Pkw ohne USt' })
         }
