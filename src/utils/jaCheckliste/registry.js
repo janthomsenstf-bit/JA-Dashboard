@@ -998,8 +998,62 @@ export const MODULE = {
   kasse: { name: 'Kassenbestand', bereich: 'aktiva', typ: 'B', konto: '1000', bez: 'Kasse' },
   sonstVg: { name: 'Sonstige Vermögensgegenstände', bereich: 'aktiva', typ: 'B', konto: '1500', bez: 'Sonstige VG' },
   bank: { name: 'Bankguthaben', bereich: 'aktiva', typ: 'B', konto: '1200', bez: 'Bank' },
-  rapAktiv: { name: 'Aktive Rechnungsabgrenzung (Bilanz)', bereich: 'aktiva', typ: 'C', positionen: true,
-    posFelder: [{ k: 'bez', l: 'Bezeichnung', t: 'text' }, { k: 'betrag', l: 'Betrag gesamt', t: 'num' }, { k: 'beginn', l: 'Beginn', t: 'date' }, { k: 'ende', l: 'Ende', t: 'date' }, { k: 'kAufw', l: 'Aufwandskonto', t: 'text', def: '4360' }] },
+  rapAktiv: { name: 'Aktive Rechnungsabgrenzung (RAP-Spiegel)', bereich: 'aktiva', typ: 'C', posLabel: 'Abgrenzungsposten',
+    felder: (ctx, w) => {
+      const skr = w.skr === '04' ? '04' : '03'
+      return [
+        { k: 'skr', l: 'Kontenrahmen', t: 'select', def: '03', opt: [['03', 'SKR 03'], ['04', 'SKR 04']] },
+        { k: 'kRap', l: 'RAP-Konto (Std. ' + (skr === '04' ? '1900' : '0980') + ')', t: 'text' },
+        { k: 'saldoKonto', l: 'Saldo lt. Konto RAP zum 31.12. (Abgleich)', t: 'num' },
+        { k: 'notiz', l: 'Notiz', t: 'area' } ]
+    },
+    positionen: true,
+    posFelder: [
+      { k: 'bez', l: 'Bezeichnung', t: 'text' },
+      { k: 'art', l: 'Art', t: 'select', opt: [['damnum', 'Damnum'], ['disagio', 'Disagio'], ['darlehen', 'Darlehen'], ['zinsen', 'Zinsen'], ['andere', 'andere Kosten']] },
+      { k: 'datum', l: 'Anlage / Beginn', t: 'date' },
+      { k: 'laufzeitM', l: 'Laufzeit (Monate)', t: 'num' },
+      { k: 'anfang', l: 'Anfangswert (abzugrenzend)', t: 'num' },
+      { k: 'kAufw', l: 'Aufwandskonto', t: 'text', def: '4360' } ],
+    rechnen: (w) => {
+      const r2 = x => Math.round(x * 100) / 100
+      const skr = w.skr === '04' ? '04' : '03'
+      const kRap = w.kRap || (skr === '04' ? '1900' : '0980')
+      const Stichtag = getStichtag(); const jahr = Stichtag.getFullYear(); const vjEnde = new Date((jahr - 1) + '-12-31')
+      const artL = { damnum: 'Damnum', disagio: 'Disagio', darlehen: 'Darlehen', zinsen: 'Zinsen', andere: 'andere Kosten' }
+      const det = [], hinweise = [], buchungen = []
+      let sStand31 = 0, sAuflWJ = 0, sStandAnfang = 0
+      ;(w._pos || []).forEach(v => {
+        const anfang = num(v.anfang); if (!anfang) return
+        const laufzeit = num(v.laufzeitM)
+        const monatlich = laufzeit > 0 ? anfang / laufzeit : 0
+        let stand31 = anfang, standAnfang = anfang, auflWJ = 0
+        if (v.datum && laufzeit > 0) {
+          const d = new Date(v.datum)
+          const m = (bis) => { if (d > bis) return 0; return Math.min(laufzeit, Math.max(0, (bis.getFullYear() - d.getFullYear()) * 12 + (bis.getMonth() - d.getMonth()) + 1)) }
+          stand31 = r2(anfang - monatlich * m(Stichtag))
+          standAnfang = r2(anfang - monatlich * m(vjEnde))
+          auflWJ = r2(standAnfang - stand31)
+        }
+        sStand31 = r2(sStand31 + stand31); sAuflWJ = r2(sAuflWJ + auflWJ); sStandAnfang = r2(sStandAnfang + standAnfang)
+        det.push({ l: (v.bez || 'Position') + ' (' + (artL[v.art] || 'Kosten') + ', ' + (laufzeit || '?') + ' Mon. ab ' + (v.datum || '?') + ') · Anfang ' + eur(anfang) + ' · Auflösung WJ ' + eur(auflWJ) + ' → Stand 31.12.', v: stand31 })
+        if (auflWJ > 0) buchungen.push({ s: v.kAufw || '4360', st: 'Auflösung RAP (Aufwand)', h: kRap, ht: 'Aktive RAP', betr: auflWJ, text: 'Auflösung ARAP ' + (v.bez || '') })
+      })
+      const erg = [...det,
+        { l: 'Stand 1.1. (gesamt)', v: sStandAnfang },
+        { l: '− Auflösung im Wirtschaftsjahr', v: -sAuflWJ },
+        { l: '= Stand 31.12. (gesamt)', v: sStand31, stark: 1 }]
+      if (w.saldoKonto != null && w.saldoKonto !== '') {
+        const saldo = num(w.saldoKonto); const diff = r2(saldo - sStand31)
+        erg.push({ l: 'Saldo lt. Konto RAP (' + kRap + ')', v: saldo })
+        erg.push({ l: 'Differenz (Konto − berechnet)', v: diff })
+        if (Math.abs(diff) < 0.005) hinweise.push('✔ Der Kontosaldo (' + eur(saldo) + ') stimmt mit der Summe der Einzelposten überein.')
+        else hinweise.push('⚠️ Differenz ' + eur(diff) + ' zwischen Kontosaldo (' + eur(saldo) + ') und der Summe der berechneten Einzel-Stände (' + eur(sStand31) + ') – fehlt ein Abgrenzungsposten, oder weicht eine Laufzeit/Auflösung ab?')
+      }
+      hinweise.push('Aktive RAP (§ 5 Abs. 5 S. 1 Nr. 1 EStG): Ausgabe vor dem Stichtag, die Aufwand für eine bestimmte Zeit danach ist. Auflösung linear über die Laufzeit (angefangener Monat = voller Monat). Buchung der Auflösung: Aufwand an ' + kRap + ' (SKR' + skr + ').')
+      hinweise.push('Damnum/Disagio über die Zins­bindungs-/Darlehenslaufzeit verteilen (linear oder Zinsstaffelmethode); Auflösung ist Zinsaufwand (z. B. SKR03 2130 / SKR04 7310) – Aufwandskonto je Position anpassen.')
+      return { ergebnisse: erg, total: { l: 'Aktiver RAP 31.12.', v: sStand31 }, hinweise, buchungen }
+    } },
   /* ── Passiva (Bilanz) ── */
   rueckstellungen: { name: 'Rückstellungen (Rückstellungsspiegel)', bereich: 'passiva', typ: 'C', posLabel: 'Rückstellungsspiegel',
     flags: [
@@ -1136,7 +1190,6 @@ export const MODULE = {
   sonstVerb: { name: 'Sonstige Verbindlichkeiten', bereich: 'passiva', typ: 'B', konto: '1700', bez: 'Sonstige Verb.' },
   ergebnisverwendung: { name: 'Ergebnisverwendung / Gewinnverteilung', bereich: 'passiva', typ: 'A' },
 }
-MODULE.rapAktiv.rechnen = MODULE.rap.rechnen // rapAktiv nutzt denselben RAP-Rechner
 
 export function KONTO_RECHNEN(w) { let sS = 0, sV = 0; const erg = [], hin = []
   ;(w.konten || []).forEach(k => { const s = num(k.saldo), v = num(k.vj); if (!(k.konto || s || v)) return; sS += s; sV += v; const d = s - v; const p = v ? Math.round(d / Math.abs(v) * 1000) / 10 : 0
