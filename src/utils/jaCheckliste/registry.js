@@ -249,7 +249,92 @@ export const MODULE = {
   geschenke: { name: 'Geschenke (35-€-Grenze)', bereich: 'ba', typ: 'C', hinweis: 'Grenzprüfung folgt' },
   reisekosten: { name: 'Reisekosten', bereich: 'ba', typ: 'A' },
   verpflegung: { name: 'Verpflegungsmehraufwand', bereich: 'ba', typ: 'C', hinweis: 'Pauschalen-Rechner folgt' },
-  arbeitszimmer: { name: 'Häusliches Arbeitszimmer', bereich: 'ba', typ: 'C', hinweis: 'Rechner folgt' },
+  arbeitszimmer: { name: 'Häusliches Arbeitszimmer', bereich: 'ba', typ: 'C',
+    felder: (ctx, w) => {
+      const skr = w.skr === '04' ? '04' : '03'
+      const nutzung = w.nutzung || 'mittelpunkt'
+      const f = [
+        { k: 'skr', l: 'Kontenrahmen', t: 'select', def: '03', opt: [['03', 'SKR 03'], ['04', 'SKR 04']] },
+        { k: 'nutzung', l: 'Abziehbarkeit', t: 'select', full: true, opt: [
+          ['mittelpunkt', 'Mittelpunkt der Tätigkeit → volle Kosten / Jahrespauschale 1.260 €'],
+          ['tagespauschale', 'Kein Mittelpunkt → Homeoffice-Tagespauschale 6 €/Tag'],
+          ['alt1250', 'Alte Rechtslage bis 2022 → Höchstbetrag 1.250 €'] ] },
+        { k: 'monate', l: 'Nutzungsmonate', t: 'num', def: '12' } ]
+      if (nutzung === 'tagespauschale') {
+        f.push({ k: 'homeofficeTage', l: 'Homeoffice-Tage (6 €/Tag, max. 1.260 €)', t: 'num' })
+      } else {
+        if (nutzung === 'mittelpunkt') f.push({ k: 'ansatz', l: 'Ansatz', t: 'select', opt: [['tatsaechlich', 'tatsächliche Kosten'], ['pauschale', 'Jahrespauschale 1.260 €']] })
+        f.push({ k: 'objekt', l: 'Objekt', t: 'select', opt: [['miete', 'Miete'], ['eigentum', 'Eigentum (AfA)']] })
+        f.push({ k: 'gesamtWohnflaeche', l: 'Gesamtwohnfläche m²', t: 'num' })
+        f.push({ k: 'azFlaeche', l: 'Fläche Arbeitszimmer m²', t: 'num' })
+        f.push({ k: 'miete', l: 'Miete/Jahr (100 %)', t: 'num' })
+        f.push({ k: 'versicherung', l: 'Versicherungen', t: 'num' })
+        f.push({ k: 'grundsteuer', l: 'Grundsteuer', t: 'num' })
+        f.push({ k: 'niederschlag', l: 'Niederschlagswasser', t: 'num' })
+        f.push({ k: 'abfall', l: 'Abfallbeseitigung', t: 'num' })
+        f.push({ k: 'strasse', l: 'Straßenreinigung', t: 'num' })
+        f.push({ k: 'stadtwerke', l: 'Stadtwerke Wasser/Strom/Gas', t: 'num' })
+        f.push({ k: 'schornstein', l: 'Schornsteinfeger', t: 'num' })
+        f.push({ k: 'renovierung', l: 'Renovierung / Heizung', t: 'num' })
+        f.push({ k: 'anderes', l: 'Anderes', t: 'num' })
+        if (w.objekt === 'eigentum') { f.push({ k: 'kaufpreis', l: 'Kaufpreis Gebäudeanteil (Eigentum)', t: 'num' }); f.push({ k: 'afaSatz', l: 'AfA-Satz % (§ 7 Abs. 4: 2/3 %)', t: 'num', def: '2' }) }
+      }
+      f.push({ k: 'kAufwand', l: 'Konto Arbeitszimmer (Std. ' + (skr === '04' ? '6348' : '4288') + ')', t: 'text' })
+      f.push({ k: 'kGegen', l: 'Gegenkonto Privateinlage (Std. ' + (skr === '04' ? '2180' : '1890') + ')', t: 'text' })
+      f.push({ k: 'notiz', l: 'Notiz', t: 'area' })
+      return f
+    },
+    rechnen: (w) => {
+      const r2 = x => Math.round(x * 100) / 100
+      const komma = x => String(r2(x)).replace('.', ',')
+      const skr = w.skr === '04' ? '04' : '03'
+      const kAufwand = w.kAufwand || (skr === '04' ? '6348' : '4288')
+      const kGegen = w.kGegen || (skr === '04' ? '2180' : '1890')
+      const nutzung = w.nutzung || 'mittelpunkt'
+      const monate = Math.min(12, Math.max(0, num(w.monate) || 12))
+      const erg = [], hinweise = [], buchungen = []
+      let abzug = 0
+
+      if (nutzung === 'tagespauschale') {
+        const tage = Math.max(0, Math.floor(num(w.homeofficeTage)))
+        const roh = r2(tage * 6); abzug = Math.min(roh, 1260)
+        erg.push({ l: 'Homeoffice-Tage (' + tage + ' × 6 €)', v: roh })
+        if (roh > 1260) erg.push({ l: 'Höchstbetrag Tagespauschale', v: 1260 })
+        erg.push({ l: 'abziehbare Tagespauschale', v: abzug, stark: 1 })
+        hinweise.push('Homeoffice-Tagespauschale (§ 4 Abs. 5 S. 1 Nr. 6c EStG): 6 €/Kalendertag mit überwiegend häuslicher Tätigkeit, höchstens 1.260 €/Jahr (= 210 Tage). Kein häusliches Arbeitszimmer nötig; für denselben Zeitraum nicht neben dem Arbeitszimmer-Abzug.')
+        if (abzug > 0) buchungen.push({ s: kAufwand, st: 'Häusl. Arbeitszimmer / Homeoffice', h: kGegen, ht: 'Privateinlage', betr: abzug, text: 'Homeoffice-Tagespauschale' })
+        return { ergebnisse: erg, total: { l: 'abziehbar', v: abzug }, hinweise, buchungen }
+      }
+
+      const ges = num(w.gesamtWohnflaeche), az = num(w.azFlaeche)
+      const anteil = ges > 0 ? az / ges : 0
+      const afa = w.objekt === 'eigentum' ? r2(num(w.kaufpreis) * (num(w.afaSatz) || 2) / 100) : 0
+      const kosten100 = r2(num(w.miete) + num(w.versicherung) + num(w.grundsteuer) + num(w.niederschlag) + num(w.abfall) + num(w.strasse) + num(w.stadtwerke) + num(w.schornstein) + num(w.renovierung) + num(w.anderes) + afa)
+      const anteilig = r2(kosten100 * anteil)
+
+      erg.push({ l: 'Gesamtkosten (100 %)' + (afa ? ' inkl. AfA ' + eur(afa) : ''), v: kosten100 })
+      erg.push({ l: 'Flächenanteil Arbeitszimmer (' + az + ' / ' + ges + ' m² = ' + komma(anteil * 100) + ' %) → anteilige Kosten', v: anteilig, stark: 1 })
+
+      if (nutzung === 'alt1250') {
+        abzug = Math.min(anteilig, 1250)
+        erg.push({ l: 'abziehbar (alte Rechtslage, Höchstbetrag 1.250 €)', v: abzug, stark: 1 })
+        hinweise.push('⚠️ Alte Rechtslage bis VZ 2022: Höchstbetrag 1.250 € (Arbeitszimmer, wenn kein anderer Arbeitsplatz). Ab VZ 2023 entfallen – für aktuelle Jahre „Mittelpunkt" oder „Tagespauschale" wählen.')
+      } else {
+        const jahrespausch = Math.min(1260, r2(105 * monate))
+        const ansatz = w.ansatz || 'tatsaechlich'
+        erg.push({ l: 'Alternative: Jahrespauschale (105 €/Monat × ' + monate + ', max. 1.260 €)', v: jahrespausch })
+        abzug = ansatz === 'pauschale' ? jahrespausch : anteilig
+        erg.push({ l: 'angesetzt: ' + (ansatz === 'pauschale' ? 'Jahrespauschale' : 'tatsächliche Kosten'), v: abzug, stark: 1 })
+        const guenstig = anteilig >= jahrespausch ? 'tatsächliche Kosten' : 'Jahrespauschale'
+        hinweise.push('Arbeitszimmer = Mittelpunkt der gesamten betrieblichen/beruflichen Tätigkeit (§ 4 Abs. 5 S. 1 Nr. 6b EStG): tatsächliche Kosten voll abziehbar ODER Wahlrecht Jahrespauschale 1.260 € (105 €/Monat, zeitanteilig). Günstiger hier: ' + guenstig + ' (' + eur(Math.max(anteilig, jahrespausch)) + ').')
+      }
+      if (ges > 0 && az > ges) hinweise.push('⚠️ Fläche Arbeitszimmer größer als Gesamtwohnfläche – Eingabe prüfen.')
+      if (w.objekt === 'eigentum') hinweise.push('Eigentum: AfA auf den Gebäudeanteil (§ 7 Abs. 4 EStG, i. d. R. 2 %/3 %). Prüfen, ob das Arbeitszimmer notwendiges Betriebsvermögen ist (→ spätere Entnahme/Veräußerung mit stillen Reserven); Grund und Boden ist nicht abschreibbar.')
+      hinweise.push('Buchung SKR' + skr + ': abziehbarer Anteil auf ' + kAufwand + ' (Aufwendungen häusliches Arbeitszimmer) an ' + kGegen + ' (Privateinlage, da privat getragen). Der nicht abziehbare Anteil bleibt privat.')
+
+      if (abzug > 0) buchungen.push({ s: kAufwand, st: 'Häusliches Arbeitszimmer', h: kGegen, ht: 'Privateinlage', betr: r2(abzug), text: 'Häusliches Arbeitszimmer (abziehbarer Anteil)' })
+      return { ergebnisse: erg, total: { l: 'abziehbarer Betrag', v: r2(abzug) }, hinweise, buchungen }
+    } },
   kfzKosten: { name: 'Kfz-Kosten (Konto)', bereich: 'ba', typ: 'B', konto: '4500', bez: 'Kfz-Kosten' },
   kfz1prozent: { name: 'Firmenfahrzeug – private Nutzung (Unternehmer)', bereich: 'be', typ: 'C', custom: 'kfz', posLabel: 'Firmenfahrzeuge',
     flags: [
