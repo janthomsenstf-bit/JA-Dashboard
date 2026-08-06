@@ -234,7 +234,7 @@ export const MODULE = {
   verpflegung: { name: 'Verpflegungsmehraufwand', bereich: 'ba', typ: 'C', hinweis: 'Pauschalen-Rechner folgt' },
   arbeitszimmer: { name: 'Häusliches Arbeitszimmer', bereich: 'ba', typ: 'C', hinweis: 'Rechner folgt' },
   kfzKosten: { name: 'Kfz-Kosten (Konto)', bereich: 'ba', typ: 'B', konto: '4500', bez: 'Kfz-Kosten' },
-  kfz1prozent: { name: 'Firmenfahrzeug – private Nutzung (Unternehmer)', bereich: 'be', typ: 'C', posLabel: 'Firmenfahrzeuge',
+  kfz1prozent: { name: 'Firmenfahrzeug – private Nutzung (Unternehmer)', bereich: 'be', typ: 'C', custom: 'kfz', posLabel: 'Firmenfahrzeuge',
     flags: [
       { k: 'fUst', label: 'Fahrzeug dem Unternehmen zugeordnet · Vorsteuerabzug (USt auf Privatnutzung ansetzen)' },
       { k: 'fFbOrdnung', label: 'Fahrtenbuch ordnungsgemäß (zeitnah, fortlaufend, geschlossen, vollständig)' },

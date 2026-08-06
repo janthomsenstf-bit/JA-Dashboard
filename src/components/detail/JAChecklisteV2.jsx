@@ -418,7 +418,9 @@ function ModulCard({ p, ctx, data, mutate, removePunkt, darOpen, setDarOpen }) {
       <div className="pp__b">
         {mod && mod.custom === 'darlehen'
           ? <Darlehen p={p} mutate={mutate} darOpen={darOpen} setDarOpen={setDarOpen} />
-          : <BodyByType p={p} ctx={ctx} mutate={mutate} setStatus={setStatus} />}
+          : mod && mod.custom === 'kfz'
+            ? <BodyKfz p={p} ctx={ctx} mutate={mutate} setStatus={setStatus} />
+            : <BodyByType p={p} ctx={ctx} mutate={mutate} setStatus={setStatus} />}
         <div className="ppfoot"><button className="linkdel" onClick={() => removePunkt(p.id)}>🗑&nbsp;Prüfpunkt entfernen</button></div>
       </div>
     </div>
@@ -786,6 +788,131 @@ function DarCard({ d, i, exp, onExp, dar, del, aktion }) {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// ── Firmenfahrzeug (Unternehmer) – Custom-Render: Grundfragen + Methoden-Reiter ─
+function BodyKfz({ p, ctx, mutate, setStatus }) {
+  const w = p.werte
+  const list = Array.isArray(w._pos) ? w._pos : []
+  const methode = w.methodeAktiv || 'pauschal'
+  const fUst = !!w.fUst
+
+  const setW = (k, v) => mutate(d => { findP(d, p.id).werte[k] = v })
+  const veh = (i) => (fn) => mutate(d => { const arr = findP(d, p.id).werte._pos; if (arr && arr[i]) fn(arr[i], arr) })
+  const addVeh = () => mutate(d => { const q = findP(d, p.id).werte; if (!Array.isArray(q._pos)) q._pos = []; q._pos.push({ art: 'verbrenner', methode, monate: '12' }) })
+  const delVeh = (i) => mutate(d => { findP(d, p.id).werte._pos.splice(i, 1) })
+
+  const rows = list.map((v, i) => ({ v, i })).filter(x => (x.v.methode || 'pauschal') === methode)
+
+  return (
+    <>
+      <div className="kfz-grundfragen">
+        <div className="kfz-gf">
+          <div className="kfz-frage">1 · Umsatzsteuer</div>
+          <div className="kfz-seg">
+            <button className={'kfz-segbtn' + (fUst ? ' on' : '')} onClick={() => setW('fUst', true)}>vorsteuerabzugsberechtigt · USt ansetzen</button>
+            <button className={'kfz-segbtn' + (!fUst ? ' on' : '')} onClick={() => setW('fUst', false)}>keine USt</button>
+          </div>
+        </div>
+        <div className="kfz-gf">
+          <div className="kfz-frage">2 · Methode</div>
+          <div className="kfz-seg">
+            <button className={'kfz-segbtn' + (methode === 'pauschal' ? ' on' : '')} onClick={() => setW('methodeAktiv', 'pauschal')}>1-%-Methode</button>
+            <button className={'kfz-segbtn fb' + (methode === 'fahrtenbuch' ? ' on' : '')} onClick={() => setW('methodeAktiv', 'fahrtenbuch')}>Fahrtenbuch</button>
+          </div>
+        </div>
+      </div>
+
+      {methode === 'fahrtenbuch' && (
+        <div className="chips2" style={{ marginBottom: '14px' }}>
+          {[['fFbOrdnung', 'Fahrtenbuch ordnungsgemäß (zeitnah, geschlossen, vollständig)'], ['fFbBelege', 'Gesamtkosten vollständig belegt (keine geschätzten Kraftstoffkosten)']].map(([k, l]) => (
+            <div key={k} className={'chk' + (w[k] ? ' on' : '')} onClick={() => setW(k, !w[k])}><span className="bx">{w[k] ? '✓' : ''}</span>{l}</div>
+          ))}
+        </div>
+      )}
+
+      <div className="darkopf">
+        <div className="darkpi"><small>Fahrzeuge · {methode === 'pauschal' ? '1-%-Methode' : 'Fahrtenbuch'}</small><b>{rows.length}</b></div>
+        <div style={{ flex: 1 }} />
+        <button className="btn btn-primary btn-sm" onClick={addVeh}>+ Fahrzeug</button>
+      </div>
+      {rows.length === 0
+        ? <div className="jhint" style={{ padding: '14px' }}>Noch kein Fahrzeug mit {methode === 'pauschal' ? '1-%-Methode' : 'Fahrtenbuch'}. Lege mit „+ Fahrzeug" eines an.</div>
+        : <div className="darlist">{rows.map(({ v, i }) => <KfzCard key={i} v={v} i={i} methode={methode} fUst={fUst} veh={veh(i)} del={() => delVeh(i)} />)}</div>}
+
+      <div className="darsec"><h6>Konten &amp; Buchung</h6><div className="dargrid">
+        <KfzF wv={w} setW={setW} k="kEntnahme" l="Gegenkonto (Privat/Verrechnung)" def="1880" />
+        {fUst && <KfzF wv={w} setW={setW} k="kErtragUst" l="Kfz-Nutzung m. USt (8921)" def="8921" />}
+        <KfzF wv={w} setW={setW} k="kErtragOhneUst" l="Kfz-Nutzung o. USt (8924)" def="8924" />
+        {fUst && <KfzF wv={w} setW={setW} k="kUst" l="Umsatzsteuer 19 % (1776)" def="1776" />}
+      </div></div>
+      <div className="darsec"><h6>Notiz</h6><textarea className="darnotiz" value={w.notiz || ''} onChange={e => setW('notiz', e.target.value)} placeholder="Bearbeitungsvermerk …" /></div>
+      <div className="darfoot">
+        <label className="darstatussel">Status&nbsp;<select value={p.status} onChange={e => setStatus(e.target.value)}>{Object.keys(STATUS).map(s => <option key={s} value={s}>{STATUS[s][1]}</option>)}</select></label>
+      </div>
+
+      <ErgebnisBox p={p} ctx={ctx} mutate={mutate} />
+    </>
+  )
+}
+function KfzF({ wv, setW, k, l, def }) {
+  return <label className="darf"><span>{l}</span><input className="mono" value={wv[k] == null ? '' : wv[k]} placeholder={def || ''} onChange={e => setW(k, e.target.value)} /></label>
+}
+function KfzCard({ v, i, methode, fUst, veh, del }) {
+  const F = (k, l, t, opt) => {
+    const val = v[k] == null ? '' : v[k]
+    if (t === 'select') return <label className="darf"><span>{l}</span><select value={val} onChange={e => veh(x => { x[k] = e.target.value })}><option value="">—</option>{opt.map(o => <option key={o[0]} value={o[0]}>{o[1]}</option>)}</select></label>
+    return <label className="darf"><span>{l}</span><input className={t === 'num' ? 'num' : ''} type={t === 'date' ? 'date' : 'text'} value={val} placeholder={k === 'monate' ? '12' : ''} onChange={e => veh(x => { x[k] = e.target.value })} /></label>
+  }
+  const art = v.art || 'verbrenner'
+  const istE = art === 'elektro' || art === 'brennstoff' || art === 'hybrid'
+  const artOpt = [['verbrenner', 'Verbrenner'], ['mildhybrid', 'Mild-Hybrid'], ['hybrid', 'Plug-in-Hybrid'], ['elektro', 'Elektro (BEV)'], ['brennstoff', 'Brennstoffzelle'], ['sonstiges', 'Sonstiges']]
+  return (
+    <div className="darcard open">
+      <div className="dardetail" style={{ paddingTop: '4px' }}>
+        <div className="kfzcardhead"><b>{v.bez || '(Fahrzeug / Kennzeichen?)'}</b><button className="linkdel" onClick={del}>🗑&nbsp;entfernen</button></div>
+        <div className="darsec"><h6>Fahrzeug</h6><div className="dargrid">
+          {F('bez', 'Fahrzeug / Kennzeichen', 'text')}
+          {F('art', 'Antrieb', 'select', artOpt)}
+          {F('betrAnteil', 'betriebl. Nutzung %', 'num')}
+          {F('erstzulassung', 'Erstzulassung (BLP)', 'date')}
+          {F('anschaffung', 'Anschaffung/Leasingbeginn', 'date')}
+          {F('blp', 'Bruttolistenpreis', 'num')}
+          {F('monate', 'Monate mit Privatnutzung', 'num')}
+          {istE && F('reichweite', 'E-Reichweite km (Hybrid)', 'num')}
+          {istE && F('co2', 'CO₂ g/km (Hybrid)', 'num')}
+        </div></div>
+        {methode === 'pauschal' ? (
+          <>
+            <div className="darsec"><h6>Wege &amp; Fahrten</h6><div className="dargrid">
+              {F('entfernung', 'Entfernung Whg–Betrieb (km)', 'num')}
+              {F('pendelTage', 'Pendeltage/Jahr', 'num')}
+              {F('heimEntfernung', 'Familienheimfahrt km (dopp. HH)', 'num')}
+              {F('heimFahrten', 'zusätzl. Heimfahrten (Anzahl)', 'num')}
+            </div></div>
+            <div className="darsec"><h6>Kostendeckelung{fUst ? ' · USt' : ''}</h6><div className="dargrid">
+              {F('kosten', 'tats. Gesamtkosten (Deckelung)', 'num')}
+              {fUst && F('kostenVst', 'davon vorsteuerbelastet', 'num')}
+            </div></div>
+          </>
+        ) : (
+          <>
+            <div className="darsec"><h6>Fahrtenbuch</h6><div className="dargrid">
+              {F('kosten', 'Gesamtkosten (begünstigt)', 'num')}
+              {fUst && F('kostenVst', 'davon vorsteuerbelastet', 'num')}
+              {F('kmGesamt', 'Gesamt-km', 'num')}
+              {F('kmPrivat', 'Privat-km', 'num')}
+              {F('kmPendel', 'km Whg–Betrieb', 'num')}
+            </div></div>
+            <div className="darsec"><h6>Entfernungspauschale</h6><div className="dargrid">
+              {F('entfernung', 'Entfernung Whg–Betrieb (km)', 'num')}
+              {F('pendelTage', 'Pendeltage/Jahr', 'num')}
+            </div></div>
+          </>
+        )}
+      </div>
     </div>
   )
 }

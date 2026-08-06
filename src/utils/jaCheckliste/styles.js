@@ -169,6 +169,17 @@ export const JAC2_CSS = `
 .jac2 .dargrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px}
 .jac2 .darf{display:flex;flex-direction:column;gap:4px;font-size:12.5px;font-weight:600;color:var(--ink2)}
 .jac2 .darf input,.jac2 .darf select{padding:8px 10px;border:1px solid var(--line2);border-radius:7px;font:inherit;font-size:13.5px;background:#fff}
+.jac2 .kfz-grundfragen{display:flex;flex-wrap:wrap;gap:14px 34px;padding:15px 18px;background:var(--surface2);border:1px solid var(--line);border-radius:12px;margin:8px 0 18px}
+.jac2 .kfz-gf{display:flex;flex-direction:column;gap:9px}
+.jac2 .kfz-frage{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);font-weight:700}
+.jac2 .kfz-seg{display:inline-flex;border:1px solid var(--line2);border-radius:10px;overflow:hidden;background:#fff;width:fit-content}
+.jac2 .kfz-segbtn{border:none;background:none;padding:10px 18px;font:inherit;font-size:13.5px;font-weight:600;color:var(--ink2);cursor:pointer;white-space:nowrap}
+.jac2 .kfz-segbtn+.kfz-segbtn{border-left:1px solid var(--line2)}
+.jac2 .kfz-segbtn:hover{background:var(--surface2)}
+.jac2 .kfz-segbtn.on{background:var(--accent);color:#fff}
+.jac2 .kfz-segbtn.on.fb{background:#0891b2}
+.jac2 .kfzcardhead{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:2px}
+.jac2 .kfzcardhead b{font-size:15px;color:var(--ink)}
 .jac2 .darnotiz{width:100%;min-height:56px;padding:9px 11px;border:1px solid var(--line2);border-radius:8px;font:inherit;font-size:13.5px}
 .jac2 .darcks{display:flex;flex-wrap:wrap;gap:8px}
 .jac2 .darck{display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:600;color:var(--ink2);background:var(--surface2);border:1px solid var(--line2);border-radius:8px;padding:7px 11px;cursor:pointer}
