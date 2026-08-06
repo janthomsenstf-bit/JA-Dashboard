@@ -107,6 +107,15 @@ export const KFZ_KONTEN = {
   '04': { gegen: '2130', mitUst: '4645', ohneUst: '4639', ust: '3806' },
 }
 
+// Gewerbesteuer: DATEV-Konten je Kontenrahmen (Dok. 5305413).
+// gewst=Aufwand, rueck=Rückstellung §4(5b), aufloesung=Ertrag Auflösung Rückstellung,
+// vorjahr=Nachzahlung/Erstattung Vorjahre §4(5b), forderung=Forderung Überzahlung,
+// verb=Verbindlichkeit Steuern (RLZ ≤ 1 J.), bank=Bank.
+export const GEWST_KONTEN = {
+  '03': { gewst: '4320', rueck: '0956', aufloesung: '2283', vorjahr: '2281', forderung: '1540', verb: '1737', bank: '1200' },
+  '04': { gewst: '7610', rueck: '3035', aufloesung: '7643', vorjahr: '7641', forderung: '1435', verb: '3701', bank: '1800' },
+}
+
 // ── Modul-Registry (Typ C = Fachanwendungen) ──────────────────────────────────
 export const MODULE = {
   bewirtung: { name: 'Bewirtungsaufwendungen', bereich: 'ba', typ: 'C',
@@ -644,21 +653,32 @@ export const MODULE = {
       { k: 'f35', label: 'Messbetrag in ESt-Erklärung übertragen (§ 35 EStG)' },
       { k: 'fZerlegung', label: 'Zerlegung auf mehrere Gemeinden geprüft' } ],
     felder: [
+      { k: 'skr', l: 'Kontenrahmen', t: 'select', def: '03', opt: [['03', 'SKR 03'], ['04', 'SKR 04']] },
+      { k: 'rechtsformKlasse', l: 'Rechtsform (§ 35 / KapGes)', t: 'select', opt: [['', '(aus Stammdaten)'], ['pers', 'Einzel / Personengesellschaft'], ['kap', 'Kapitalgesellschaft']] },
       { k: 'gewinn', l: 'Gewinn aus Gewerbebetrieb', t: 'num' },
       { k: 'hinzu', l: '+ Hinzurechnungen (§ 8 GewStG)', t: 'num' },
       { k: 'kuerz', l: '− Kürzungen (§ 9 GewStG)', t: 'num' },
-      { k: 'freibetrag', l: 'Freibetrag (24.500 € Einzel/PersG)', t: 'num', def: '24500' },
+      { k: 'freibetrag', l: 'Freibetrag (24.500 € nur Einzel/PersG)', t: 'num', def: '24500' },
       { k: 'hebesatz', l: 'Hebesatz %', t: 'num' },
       { k: 'vzFestgesetzt', l: 'Vorauszahlungen lt. Bescheid (Gewerbeamt)', t: 'num' },
       { k: 'vzGebucht', l: 'Vorauszahlungen lt. Buchung', t: 'num' },
-      { k: 'vzNachtraeglich', l: 'nachträgliche Vorauszahlung (noch nicht gebucht)', t: 'num' },
-      { k: 'kGewSt', l: 'Konto Gewerbesteuer', t: 'text', def: '4320' },
-      { k: 'kRueck', l: 'Konto GewSt-Rückstellung', t: 'text', def: '0956' },
+      { k: 'vzNachtraeglich', l: 'fällige, noch nicht gezahlte VZ (zum 31.12.)', t: 'num' },
+      { k: 'rueckVorjahr', l: 'GewSt-Rückstellung Vorjahr (Bilanz)', t: 'num' },
+      { k: 'gewStBescheid', l: 'tatsächliche GewSt Vorjahr lt. Bescheid', t: 'num' },
+      { k: 'vorjahrKorrektur', l: 'Erstattung(+)/Nachzahlung(−) Vorjahre aus BP/geänd. Bescheid', t: 'num' },
       { k: 'notiz', l: 'Notiz / Bescheiddaten (Datum, Aktenzeichen, Gemeinde)', t: 'area' } ],
     rechnen: (w, ctx) => { const r2 = x => Math.round(x * 100) / 100
+      const skr = w.skr === '04' ? '04' : '03'; const K = GEWST_KONTEN[skr]
+      // Rechtsform-Klasse: Modulfeld, sonst heuristisch aus den Stammdaten (ctx.rechtsform)
+      let rf = w.rechtsformKlasse || ''
+      const rfText = (ctx && ctx.rechtsform ? ctx.rechtsform : '').toLowerCase()
+      if (!rf && rfText) {
+        if (/co\.?\s*kg|&\s*co|\bkg\b|ohg|gbr|einzel|e\.?\s?k\b|partnerg|freiberuf/.test(rfText)) rf = 'pers'
+        else if (/gmbh|\bug\b|kgaa|\bag\b|mbh|kapital|körperschaft|limited|\bltd\b|\beg\b|genossensch/.test(rfText)) rf = 'kap'
+      }
       const ertrag = num(w.gewinn) + num(w.hinzu) - num(w.kuerz)
       const ertragAbg = Math.floor(Math.max(0, ertrag) / 100) * 100
-      const fb = num(w.freibetrag); const nachFB = Math.max(0, ertragAbg - fb)
+      const fb = rf === 'kap' ? 0 : num(w.freibetrag); const nachFB = Math.max(0, ertragAbg - fb)
       const messbetrag = r2(nachFB * 0.035); const hebe = num(w.hebesatz); const gewSt = r2(messbetrag * hebe / 100)
       const vzGeb = num(w.vzGebucht), vzFest = num(w.vzFestgesetzt), vzNach = num(w.vzNachtraeglich)
       const vzGesamt = vzGeb + vzNach; const rueck = r2(gewSt - vzGesamt); const erstattung = rueck < 0
@@ -666,20 +686,64 @@ export const MODULE = {
       const erg = [
         { l: 'Gewerbeertrag (Gewinn + Hinzurechnungen − Kürzungen)', v: ertrag },
         { l: 'abgerundet auf volle 100 €', v: ertragAbg },
-        { l: '− Freibetrag', v: -fb },
+        { l: '− Freibetrag' + (rf === 'kap' ? ' (KapGes: 0 €)' : ''), v: -fb },
         { l: '= Gewerbeertrag nach Freibetrag', v: nachFB },
         { l: 'Steuermessbetrag (× 3,5 %)', v: messbetrag, stark: 1 },
         { l: 'Gewerbesteuer (Messbetrag × Hebesatz ' + (hebe || 0) + ' %)', v: gewSt },
-        { l: '− Vorauszahlungen (gebucht' + (vzNach ? ' + nachträglich' : '') + ')', v: -vzGesamt } ]
+        { l: '− Vorauszahlungen (gebucht' + (vzNach ? ' + fällige' : '') + ')', v: -vzGesamt } ]
       const total = { l: erstattung ? 'GewSt-Erstattungsanspruch' : 'GewSt-Rückstellung / Nachzahlung', v: Math.abs(rueck) }
       const hinweise = [], buchungen = []
+
+      // Vorauszahlungs-Abstimmung
       if ((vzGeb || vzFest) && Math.abs(vzGeb - vzFest) >= 0.01) hinweise.push('Vorauszahlungen lt. Buchung (' + eur(vzGeb) + ') weichen vom Bescheid des Gewerbeamts (' + eur(vzFest) + ') ab – Differenz ' + eur(vzGeb - vzFest) + ' klären / nachbuchen.')
       else if (vzFest && vzGeb) hinweise.push('Vorauszahlungen stimmen mit dem Bescheid überein.')
-      if (vzNach > 0) hinweise.push('Nachträgliche Vorauszahlung ' + eur(vzNach) + ' noch buchen bzw. in der Abstimmung berücksichtigen.')
-      if (rueck > 0.01) { hinweise.push('Gewerbesteuer ist nicht abziehbare Betriebsausgabe (§ 4 Abs. 5b EStG) – Rückstellung außerbilanziell dem Gewinn wieder hinzurechnen.')
-        buchungen.push({ s: w.kGewSt || '4320', st: 'Gewerbesteuer', h: w.kRueck || '0956', ht: 'GewSt-Rückstellung', betr: rueck, text: 'GewSt-Rückstellung zum ' + getStichtag().toLocaleDateString('de-DE') }) }
-      else if (erstattung && Math.abs(rueck) >= 0.01) hinweise.push('Überzahlung ' + eur(Math.abs(rueck)) + ' – GewSt-Erstattungsanspruch aktivieren.')
-      if (messbetrag > 0) hinweise.push('§ 35 EStG (nur Einzelunternehmen/Personengesellschaften, nicht Kapitalgesellschaften): Steuerermäßigung = 4-facher Messbetrag (' + eur(messbetrag * 4) + '), höchstens die tatsächliche Gewerbesteuer (' + eur(anr35) + ') – Messbetrag in die ESt-Erklärung übernehmen.')
+      // Fällige, noch nicht gezahlte VZ zum 31.12. → Verbindlichkeit (DATEV Fall 1)
+      if (vzNach > 0) { hinweise.push('Fällige, aber zum 31.12. noch nicht gezahlte Vorauszahlung ' + eur(vzNach) + ' als Verbindlichkeit einbuchen (' + K.gewst + ' an ' + K.verb + ').')
+        buchungen.push({ s: K.gewst, st: 'Gewerbesteuer', h: K.verb, ht: 'Verbindlichkeit Steuern (RLZ ≤ 1 J.)', betr: r2(vzNach), text: 'GewSt-VZ fällig, noch nicht gezahlt' }) }
+
+      // Laufendes Jahr: Rückstellung (GewSt > VZ) bzw. Forderung (VZ > GewSt)
+      if (rueck > 0.01) {
+        hinweise.push('Gewerbesteuer ist nicht abziehbare Betriebsausgabe (§ 4 Abs. 5b EStG) – die Rückstellung außerbilanziell dem Gewinn wieder hinzurechnen.')
+        buchungen.push({ s: K.gewst, st: 'Gewerbesteuer', h: K.rueck, ht: 'GewSt-Rückstellung § 4 Abs. 5b', betr: rueck, text: 'GewSt-Rückstellung ' + getStichtag().getFullYear() })
+      } else if (erstattung && Math.abs(rueck) >= 0.01) {
+        hinweise.push('Überzahlung ' + eur(Math.abs(rueck)) + ' – Erstattungsanspruch aktivieren (' + K.forderung + ' an ' + K.gewst + ').')
+        buchungen.push({ s: K.forderung, st: 'Forderung GewSt-Überzahlung', h: K.gewst, ht: 'Gewerbesteuer', betr: r2(Math.abs(rueck)), text: 'GewSt-Erstattungsanspruch ' + getStichtag().getFullYear() })
+      }
+
+      // Vorjahres-Rückstellung abstimmen (DATEV Fall 4/5)
+      const rvj = num(w.rueckVorjahr), gbesch = num(w.gewStBescheid)
+      if (rvj > 0 || gbesch > 0) {
+        const diff = r2(rvj - gbesch)
+        erg.push({ l: 'Vorjahr: gebildete Rückstellung', v: rvj }, { l: 'Vorjahr: GewSt lt. Bescheid', v: gbesch })
+        if (Math.abs(diff) < 0.01) hinweise.push('Vorjahres-Rückstellung entspricht dem Bescheid – Verbrauch ' + eur(gbesch) + ' (' + K.rueck + ' an ' + K.bank + '), keine Auflösung/Nachzahlung.')
+        else if (diff > 0) {
+          hinweise.push('Vorjahres-Rückstellung (' + eur(rvj) + ') über dem Bescheid (' + eur(gbesch) + ') → Verbrauch ' + eur(gbesch) + ', Auflösung ' + eur(diff) + ' als Ertrag.')
+          if (gbesch > 0) buchungen.push({ s: K.rueck, st: 'GewSt-Rückstellung § 4 Abs. 5b', h: K.bank, ht: 'Bank', betr: r2(gbesch), text: 'GewSt Vorjahr (Verbrauch Rückstellung)' })
+          buchungen.push({ s: K.rueck, st: 'GewSt-Rückstellung § 4 Abs. 5b', h: K.aufloesung, ht: 'Ertrag Auflösung GewSt-Rückstellung § 4 Abs. 5b', betr: diff, text: 'Auflösung GewSt-Rückstellung Vorjahr' })
+        } else {
+          hinweise.push('Vorjahres-Rückstellung (' + eur(rvj) + ') unter dem Bescheid (' + eur(gbesch) + ') → Verbrauch ' + eur(rvj) + ', Nachzahlung ' + eur(-diff) + ' über ' + K.vorjahr + '.')
+          if (rvj > 0) buchungen.push({ s: K.rueck, st: 'GewSt-Rückstellung § 4 Abs. 5b', h: K.bank, ht: 'Bank', betr: r2(rvj), text: 'GewSt Vorjahr (Verbrauch Rückstellung)' })
+          buchungen.push({ s: K.vorjahr, st: 'GewSt-Nachzahlung Vorjahre § 4 Abs. 5b', h: K.bank, ht: 'Bank', betr: r2(-diff), text: 'GewSt-Nachzahlung Vorjahr' })
+        }
+      }
+
+      // Vorjahres-Korrektur aus Betriebsprüfung / geändertem Bescheid (DATEV Fall 2/3)
+      const vk = num(w.vorjahrKorrektur)
+      if (vk > 0.01) {
+        hinweise.push('Vorjahres-Erstattung ' + eur(vk) + ' (BP/geänderter Bescheid) – ' + K.bank + ' an ' + K.vorjahr + ' (§ 4 Abs. 5b: außerbilanziell zu neutralisieren).')
+        buchungen.push({ s: K.bank, st: 'Bank', h: K.vorjahr, ht: 'GewSt-Erstattung Vorjahre § 4 Abs. 5b', betr: r2(vk), text: 'GewSt-Erstattung Vorjahre (BP)' })
+      } else if (vk < -0.01) {
+        hinweise.push('Vorjahres-Nachzahlung ' + eur(-vk) + ' (BP/geänderter Bescheid) – ' + K.vorjahr + ' an ' + K.bank + ' (§ 4 Abs. 5b: nicht abziehbar).')
+        buchungen.push({ s: K.vorjahr, st: 'GewSt-Nachzahlung Vorjahre § 4 Abs. 5b', h: K.bank, ht: 'Bank', betr: r2(-vk), text: 'GewSt-Nachzahlung Vorjahre (BP)' })
+      }
+
+      // Rechtsform-Weiche: § 35 EStG vs. Kapitalgesellschaft
+      if (messbetrag > 0) {
+        if (rf === 'kap') hinweise.push('Kapitalgesellschaft: Gewerbesteuer ist nicht abziehbar (§ 4 Abs. 5b EStG) und wird außerbilanziell hinzugerechnet (Programmverbindung Jahresabschluss → KSt/GewSt). Keine Anrechnung nach § 35 EStG; kein Freibetrag von 24.500 €.')
+        else if (rf === 'pers') hinweise.push('§ 35 EStG (Einzel/PersG): Steuerermäßigung = 4-facher Messbetrag (' + eur(messbetrag * 4) + '), höchstens die tatsächliche Gewerbesteuer (' + eur(anr35) + ') – Messbetrag in die ESt-Erklärung übernehmen.')
+        else hinweise.push('§ 35 EStG (nur Einzel/PersG, nicht KapGes): 4-facher Messbetrag (' + eur(messbetrag * 4) + '), höchstens die tatsächliche GewSt (' + eur(anr35) + '). Rechtsform in den Stammdaten hinterlegen für den passenden Hinweis.')
+      }
+      if (rf !== 'kap' && rf !== 'pers') hinweise.push('Buchungskonten SKR' + skr + ': Aufwand ' + K.gewst + ', Rückstellung ' + K.rueck + ', Auflösung ' + K.aufloesung + ', Vorjahre ' + K.vorjahr + ', Forderung ' + K.forderung + ', Verbindlichkeit ' + K.verb + '.')
       return { ergebnisse: erg, total, hinweise, buchungen } } },
   /* ── Aktiva (Bilanz) ── */
   anlagevermoegen: { name: 'Anlagevermögen', bereich: 'aktiva', typ: 'C',
@@ -1140,7 +1204,7 @@ export function buildExportSheets(cl, meta) {
         (d.offen || []).forEach((o, oi) => rows.push([oi === 0 ? 'Offene Punkte' : '', o])) })
       bl.push({ name: 'Darlehen', rows }); return }
     const struktur = mod.flags || mod.felder || mod.positionen || mod.listen
-    if (!mod.rechnen && !struktur) return; const ctx = { gw: cl.gw || meta.gw }
+    if (!mod.rechnen && !struktur) return; const ctx = { gw: cl.gw || meta.gw, rechtsform: (cl.stammdaten && cl.stammdaten.rechtsform) || meta.rf || '' }
     const rows = [[p.titel], []]
     if (mod.flags) { mod.flags.forEach(fl => rows.push([fl.label, p.werte[fl.k] ? 'ja' : '—'])); rows.push([]) }
     if (mod.felder) { const felder = typeof mod.felder === 'function' ? mod.felder(ctx, p.werte) : mod.felder

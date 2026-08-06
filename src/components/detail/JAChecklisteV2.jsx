@@ -38,7 +38,7 @@ export default function JAChecklisteV2({ au, client, onUpdate }) {
   if (au?.jahr) setStichtag(au.jahr)
 
   const data = useMemo(() => buildData(au, gw), [au?.jaChecklisteV2, gw])
-  const ctx = { gw }
+  const ctx = { gw, rechtsform: data.stammdaten?.rechtsform || client?.rechtsform || au?.rechtsform || '' }
 
   const bereiche = (() => { const b = viewsOf(data); return b.includes('steuern') ? b : [...b, 'steuern'] })()
   const [view, setView] = useState(bereiche[0] || 'be')
