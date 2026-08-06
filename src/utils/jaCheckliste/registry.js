@@ -116,6 +116,14 @@ export const GEWST_KONTEN = {
   '04': { gewst: '7610', rueck: '3035', aufloesung: '7643', vorjahr: '7641', forderung: '1435', verb: '3701', bank: '1800' },
 }
 
+// Reisekosten Unternehmer: DATEV-Konten je Kontenrahmen (Dok. 5301708).
+// fahrt=Kfz Privat-Pkw, reise=Übernachtung/Reisenebenkosten, vma=Verpflegungspauschale (abzieh.),
+// verpflNA=Verpflegung nicht abziehbarer Teil (nur VSt), gegen=Privateinlage.
+export const REISE_KONTEN = {
+  '03': { fahrt: '4590', reise: '4676', vma: '4674', verpflNA: '4672', gegen: '1890', vst7: '1571', vst19: '1576' },
+  '04': { fahrt: '6590', reise: '6680', vma: '6674', verpflNA: '6672', gegen: '2180', vst7: '1401', vst19: '1406' },
+}
+
 // ── Modul-Registry (Typ C = Fachanwendungen) ──────────────────────────────────
 export const MODULE = {
   bewirtung: { name: 'Bewirtungsaufwendungen', bereich: 'ba', typ: 'C',
@@ -247,7 +255,82 @@ export const MODULE = {
   wareneinkauf: { name: 'Wareneinkauf / Materialaufwand', bereich: 'ba', typ: 'B', konto: '3400', bez: 'Wareneingang' },
   spenden: { name: 'Spenden', bereich: 'ba', typ: 'A' },
   geschenke: { name: 'Geschenke (35-€-Grenze)', bereich: 'ba', typ: 'C', hinweis: 'Grenzprüfung folgt' },
-  reisekosten: { name: 'Reisekosten', bereich: 'ba', typ: 'A' },
+  reisekosten: { name: 'Reisekosten Unternehmer', bereich: 'ba', typ: 'C', posLabel: 'Geschäftsreisen',
+    felder: (ctx, w) => {
+      const skr = w.skr === '04' ? '04' : '03'
+      return [
+        { k: 'skr', l: 'Kontenrahmen', t: 'select', def: '03', opt: [['03', 'SKR 03'], ['04', 'SKR 04']] },
+        { k: 'kGegen', l: 'Gegenkonto (privat verauslagt → Privateinlage ' + (skr === '04' ? '2180' : '1890') + ', sonst Bank)', t: 'text', full: true },
+        { k: 'notiz', l: 'Notiz', t: 'area' } ]
+    },
+    positionen: true,
+    posFelder: [
+      { k: 'anlass', l: 'Anlass / Ziel', t: 'text' },
+      { k: 'km', l: 'gefahrene km (0,30 €)', t: 'num' },
+      { k: 'tage28', l: 'Tage 24 h (28 €)', t: 'num' },
+      { k: 'tage14', l: 'Tage An-/Abreise / >8 h (14 €)', t: 'num' },
+      { k: 'fr', l: 'Frühstück gestellt (Anz.)', t: 'num' },
+      { k: 'mi', l: 'Mittag gestellt (Anz.)', t: 'num' },
+      { k: 'ab', l: 'Abendessen gestellt (Anz.)', t: 'num' },
+      { k: 'uebNetto', l: 'Übernachtung netto', t: 'num' },
+      { k: 'uebVst', l: 'USt Übern.', t: 'select', opt: [['', '—'], ['7', '7 %'], ['19', '19 %']] },
+      { k: 'nebenNetto', l: 'Reisenebenkosten netto', t: 'num' },
+      { k: 'nebenVst', l: 'USt Neben', t: 'select', opt: [['', '—'], ['7', '7 %'], ['19', '19 %']] },
+      { k: 'kfzNetto', l: 'tats. Kfz-Kosten netto (z. B. Reparatur)', t: 'num' },
+      { k: 'kfzVst', l: 'USt Kfz', t: 'select', opt: [['', '—'], ['19', '19 %'], ['7', '7 %']] },
+      { k: 'verpfl7', l: 'tats. Verpflegung Speisen netto (7 %)', t: 'num' },
+      { k: 'verpfl19', l: 'tats. Verpflegung Getränke netto (19 %)', t: 'num' } ],
+    rechnen: (w) => {
+      const r2 = x => Math.round(x * 100) / 100
+      const skr = w.skr === '04' ? '04' : '03'; const K = REISE_KONTEN[skr]
+      const kGegen = w.kGegen || K.gegen
+      const reisen = w._pos || []
+      const det = [], hinweise = [], buchungen = []
+      let sFahrt = 0, sKfzNetto = 0, sKfzBrutto = 0, sVma = 0, sUebNetto = 0, sNebenNetto = 0, sReiseBrutto = 0
+      let sVerpflNetto = 0, sV7Brutto = 0, sV19Brutto = 0, sVst7 = 0, sVst19 = 0
+      reisen.forEach(v => {
+        const anlass = v.anlass || 'Reise'
+        const fahrt = r2(num(v.km) * 0.30)
+        let vma = num(v.tage28) * 28 + num(v.tage14) * 14
+        const kuerz = num(v.fr) * 5.60 + num(v.mi) * 11.20 + num(v.ab) * 11.20
+        vma = Math.max(0, r2(vma - kuerz))
+        const ueb = num(v.uebNetto), uebVstP = num(v.uebVst) || 0, uebVst = r2(ueb * uebVstP / 100)
+        const neben = num(v.nebenNetto), nebenVstP = num(v.nebenVst) || 0, nebenVst = r2(neben * nebenVstP / 100)
+        const kfz = num(v.kfzNetto), kfzVstP = num(v.kfzVst) || 0, kfzVst = r2(kfz * kfzVstP / 100)
+        const v7 = num(v.verpfl7), v19 = num(v.verpfl19)
+        sFahrt += fahrt
+        sKfzNetto += kfz; sKfzBrutto += r2(kfz + kfzVst)
+        sVma += vma
+        sUebNetto += ueb; sNebenNetto += neben; sReiseBrutto += r2(ueb + uebVst + neben + nebenVst)
+        sVerpflNetto += r2(v7 + v19); sV7Brutto += r2(v7 * 1.07); sV19Brutto += r2(v19 * 1.19)
+        if (uebVstP === 7) sVst7 = r2(sVst7 + uebVst); else if (uebVstP) sVst19 = r2(sVst19 + uebVst)
+        if (nebenVstP === 7) sVst7 = r2(sVst7 + nebenVst); else if (nebenVstP) sVst19 = r2(sVst19 + nebenVst)
+        if (kfzVstP === 7) sVst7 = r2(sVst7 + kfzVst); else if (kfzVstP) sVst19 = r2(sVst19 + kfzVst)
+        sVst7 = r2(sVst7 + v7 * 0.07); sVst19 = r2(sVst19 + v19 * 0.19)
+        det.push({ l: anlass + ' — Fahrt ' + eur(fahrt) + ' · VMA ' + eur(vma) + (ueb ? ' · Übern. ' + eur(ueb) : '') + (kfz ? ' · Kfz ' + eur(kfz) : ''), v: r2(fahrt + kfz + vma + ueb + neben) })
+      })
+      const abz = r2(sFahrt + sKfzNetto + sVma + sUebNetto + sNebenNetto)
+      const erg = [...det, { l: 'Fahrtkosten (km-Pauschale 0,30 €/km)', v: sFahrt }]
+      if (sKfzNetto) erg.push({ l: 'außergewöhnliche Kfz-Kosten (netto)', v: sKfzNetto })
+      erg.push({ l: 'Verpflegungsmehraufwand (Pauschale)', v: sVma })
+      if (sUebNetto) erg.push({ l: 'Übernachtung (netto)', v: sUebNetto })
+      if (sNebenNetto) erg.push({ l: 'Reisenebenkosten (netto)', v: sNebenNetto })
+      erg.push({ l: '= abziehbare Betriebsausgaben', v: abz, stark: 1 })
+      if (sVst7 || sVst19) { erg.push({ l: 'Vorsteuer 7 %', v: sVst7 }); erg.push({ l: 'Vorsteuer 19 %', v: sVst19 }) }
+      if (sVerpflNetto) erg.push({ l: 'nachrichtl.: tats. Verpflegung nicht abziehbar (netto)', v: sVerpflNetto })
+
+      if (sFahrt > 0) buchungen.push({ s: K.fahrt, st: 'Kfz Privat-Pkw (km-Pauschale)', h: kGegen, ht: 'Privateinlage', betr: sFahrt, text: 'Km-Pauschale (0,30 €/km, ohne VSt)' })
+      if (sKfzBrutto > 0) buchungen.push({ s: K.fahrt, st: 'Kfz Privat-Pkw (tats. Kosten)', h: kGegen, ht: 'Privateinlage', betr: sKfzBrutto, text: 'Außergew. Kfz-Kosten inkl. Vorsteuer' })
+      if (sReiseBrutto > 0) buchungen.push({ s: K.reise, st: 'Übernachtung / Reisenebenkosten', h: kGegen, ht: 'Privateinlage', betr: sReiseBrutto, text: 'Übernachtung/Nebenkosten inkl. Vorsteuer' })
+      if (sVma > 0) buchungen.push({ s: K.vma, st: 'Verpflegungsmehraufwand', h: kGegen, ht: 'Privateinlage', betr: sVma, text: 'Verpflegungspauschale (ohne VSt)' })
+      if (sV7Brutto > 0) buchungen.push({ s: K.verpflNA, st: 'Verpflegung (nicht abz. Teil)', h: kGegen, ht: 'Privateinlage', betr: sV7Brutto, text: 'Tats. Verpflegung nicht abz. inkl. VSt 7 %' })
+      if (sV19Brutto > 0) buchungen.push({ s: K.verpflNA, st: 'Verpflegung (nicht abz. Teil)', h: kGegen, ht: 'Privateinlage', betr: sV19Brutto, text: 'Tats. Verpflegung nicht abz. inkl. VSt 19 %' })
+
+      hinweise.push('Verpflegungsmehraufwand nur als Pauschale abziehbar (Inland 2026: 14 € An-/Abreisetag bzw. > 8 h, 28 € bei 24 h; Kürzung bei gestellten Mahlzeiten: Frühstück −5,60 €, Mittag/Abendessen je −11,20 €). Die tatsächlichen Verpflegungskosten mindern den Gewinn NICHT – nur die Vorsteuer ist abziehbar (Buchung auf ' + K.verpflNA + ', nicht abziehbarer Teil).')
+      hinweise.push('Km-Pauschale (0,30 €/km, Privat-Pkw) ist ohne Vorsteuer; Vorsteuer nur aus tatsächlichen Kfz-Kosten, Übernachtung (7 %) und Reisenebenkosten. Konten SKR' + skr + ': Fahrt ' + K.fahrt + ', Übernachtung/Neben ' + K.reise + ', VMA ' + K.vma + ', nicht abz. Verpflegung ' + K.verpflNA + '; Gegenkonto ' + kGegen + '.')
+      hinweise.push('Bei privater Verauslagung Gegenkonto Privateinlage (' + (skr === '04' ? '2180' : '1890') + '); bei Zahlung vom Betriebskonto stattdessen Bank. Auslandsreisen: länderspezifische Pauschalen (BMF-Tabelle) gesondert. Bei längerer Tätigkeit an derselben auswärtigen Stätte 3-Monats-Frist beachten.')
+      return { ergebnisse: erg, total: { l: 'abziehbare Betriebsausgaben', v: abz }, hinweise, buchungen }
+    } },
   verpflegung: { name: 'Verpflegungsmehraufwand', bereich: 'ba', typ: 'C', hinweis: 'Pauschalen-Rechner folgt' },
   arbeitszimmer: { name: 'Häusliches Arbeitszimmer', bereich: 'ba', typ: 'C',
     felder: (ctx, w) => {
