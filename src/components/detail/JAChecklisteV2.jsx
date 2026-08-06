@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useRef } from 'react'
 import {
   MODULE, BEREICH, VIEW_LABEL, VIEW_ORDER, BEREICH_FARBE, STATUS, AUFTRAG,
   eur, num, uid, modLists, vorlageJA, ensureKat, neuerModulPunkt,
-  viewsOf, alleP, fortschritt, setStichtag, KFZ_KONTEN,
+  viewsOf, alleP, fortschritt, setStichtag, KFZ_KONTEN, STAMMDATEN_FELDER,
   klassifiziereKonto, kontoZiele, parseKontenText, applyKonten, fillExisting,
   sammleRueckfragen, aufbereitenText, markRueckfrage, buildExportSheets,
   assistAnalyse, applyAssist, ASS_BEISPIEL,
@@ -19,7 +19,7 @@ import { JAC2_CSS } from '../../utils/jaCheckliste/styles.js'
 // ── Datenmodell (Migration/Aufbau aus vorhandenem au.jaChecklisteV2) ──────────
 function buildData(au, gw) {
   const d = au?.jaChecklisteV2
-  if (d && Array.isArray(d.kategorien)) return { v: 2, gw, kategorien: d.kategorien, buchungen: d.buchungen || [] }
+  if (d && Array.isArray(d.kategorien)) return { v: 2, gw, kategorien: d.kategorien, buchungen: d.buchungen || [], stammdaten: d.stammdaten || {} }
   const kategorien = vorlageJA(gw)
   if (d && Array.isArray(d.punkte)) {
     d.punkte.forEach(p => {
@@ -27,7 +27,7 @@ function buildData(au, gw) {
       if (kat) kat.punkte.push({ id: p.id || uid(), titel: p.titel, typ: p.typ, modul: p.modul, konten: p.konten || [], status: p.status || 'offen', werte: p.werte || { _pos: [] } })
     })
   }
-  return { v: 2, gw, kategorien, buchungen: (d && d.buchungen) || [] }
+  return { v: 2, gw, kategorien, buchungen: (d && d.buchungen) || [], stammdaten: (d && d.stammdaten) || {} }
 }
 const clone = o => JSON.parse(JSON.stringify(o))
 const findP = (d, pid) => (d.kategorien || []).flatMap(k => k.punkte || []).find(p => p.id === pid)
@@ -52,7 +52,7 @@ export default function JAChecklisteV2({ au, client, onUpdate }) {
   const [flash, setFlash] = useState(null) // {pid,list,i,k}
   const contentRef = useRef(null)
 
-  const activeView = view === 'abstimmung' ? 'abstimmung' : (bereiche.includes(view) ? view : (bereiche[0] || 'be'))
+  const activeView = (view === 'abstimmung' || view === 'stammdaten') ? view : (bereiche.includes(view) ? view : (bereiche[0] || 'be'))
 
   // ── Persistenz ──
   const commit = (d) => onUpdate({ jaChecklisteV2: { ...d, v: 2 } })
@@ -97,7 +97,7 @@ export default function JAChecklisteV2({ au, client, onUpdate }) {
     exportSheets(sheets, 'Arbeitspapier_' + (client?.name || 'Mandant') + '_' + (au?.titel || 'JA'))
   }
 
-  const shownPunkte = activeView === 'abstimmung' ? [] : ((data.kategorien.find(k => (k.bereich || '_') === activeView) || {}).punkte || [])
+  const shownPunkte = (activeView === 'abstimmung' || activeView === 'stammdaten') ? [] : ((data.kategorien.find(k => (k.bereich || '_') === activeView) || {}).punkte || [])
   const activeMod = modTab[activeView] || (shownPunkte[0] && shownPunkte[0].id)
   const activePunkt = shownPunkte.find(p => p.id === activeMod) || shownPunkte[0]
 
@@ -124,6 +124,9 @@ export default function JAChecklisteV2({ au, client, onUpdate }) {
 
       {/* Bereichs-Menü */}
       <div className="viewnav">
+        <button className={'viewtab stammdaten' + (activeView === 'stammdaten' ? ' on' : '')} onClick={() => setView('stammdaten')}>
+          Stammdaten
+        </button>
         {bereiche.map(b => (
           <button key={b} className={'viewtab ' + b + (activeView === b ? ' on' : '')} onClick={() => setView(b)}>
             {VIEW_LABEL[b]}<span className="vn"> · {countBereich(data, b)}</span>
@@ -134,7 +137,9 @@ export default function JAChecklisteV2({ au, client, onUpdate }) {
         </button>
       </div>
 
-      {activeView === 'abstimmung' ? (
+      {activeView === 'stammdaten' ? (
+        <StammdatenView data={data} mutate={mutate} client={client} gw={gw} />
+      ) : activeView === 'abstimmung' ? (
         <Abstimmung data={data} filter={abstFilter} setFilter={setAbstFilter} onJump={jumpToKonto} />
       ) : (
         <>
@@ -188,6 +193,36 @@ export default function JAChecklisteV2({ au, client, onUpdate }) {
           onApply={items => { mutate(d => applyAssist(d, items)); setAssistOpen(false) }}
           onClose={() => setAssistOpen(false)} />
       )}
+    </div>
+  )
+}
+
+// ── Stammdaten & Auftrag (vorangestellter Reiter) ─────────────────────────────
+function StammdatenView({ data, mutate, client, gw }) {
+  const sd = data.stammdaten || {}
+  const setF = (k, v) => mutate(d => { if (!d.stammdaten) d.stammdaten = {}; d.stammdaten[k] = v })
+  const val = (f) => sd[f.k] != null ? sd[f.k] : (f.k === 'gewinnermittlung' ? gw : '')
+  const ph = (f) => f.k === 'name' ? (client?.name || '') : ''
+  return (
+    <div className="stammblock">
+      <div className="jhint" style={{ margin: '2px 0 14px' }}>Stammdaten &amp; Auftragsrahmen des Mandanten. Diese Angaben fließen als eigenes Blatt in den Excel-Export ein.</div>
+      {STAMMDATEN_FELDER.map(grp => (
+        <div className="darsec" key={grp.gruppe}>
+          <h6>{grp.gruppe}</h6>
+          <div className="dargrid">
+            {grp.felder.map(f => f.t === 'area' ? (
+              <label className="darf" key={f.k} style={{ gridColumn: '1 / -1' }}><span>{f.l}</span>
+                <textarea className="darnotiz" value={val(f)} placeholder={ph(f)} onChange={e => setF(f.k, e.target.value)} /></label>
+            ) : f.t === 'select' ? (
+              <label className="darf" key={f.k}><span>{f.l}</span>
+                <select value={val(f)} onChange={e => setF(f.k, e.target.value)}>{f.opt.map(o => <option key={o[0]} value={o[0]}>{o[1]}</option>)}</select></label>
+            ) : (
+              <label className="darf" key={f.k}><span>{f.l}</span>
+                <input value={val(f)} placeholder={ph(f)} onChange={e => setF(f.k, e.target.value)} /></label>
+            ))}
+          </div>
+        </div>
+      ))}
     </div>
   )
 }

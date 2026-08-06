@@ -925,9 +925,34 @@ MODULE.darlehen    = { name: 'Darlehen (Verwaltung & Prüfung)', bereich: 'passi
 
 // ── Labels / Reihenfolge ──────────────────────────────────────────────────────
 export const BEREICH = { be: 'Betriebseinnahmen', ba: 'Betriebsausgaben', aktiva: 'Aktiva (Bilanz)', passiva: 'Passiva (Bilanz)', steuern: 'Steuern' }
-export const VIEW_LABEL = { be: 'Betriebseinnahmen', ba: 'Betriebsausgaben', aktiva: 'Aktiva', passiva: 'Passiva', steuern: 'Steuern', _: 'Weitere' }
+export const VIEW_LABEL = { stammdaten: 'Stammdaten', be: 'Betriebseinnahmen', ba: 'Betriebsausgaben', aktiva: 'Aktiva', passiva: 'Passiva', steuern: 'Steuern', _: 'Weitere' }
 export const VIEW_ORDER = ['be', 'ba', 'aktiva', 'passiva', 'steuern', '_']
-export const BEREICH_FARBE = { be: '#16a34a', ba: '#ef4444', aktiva: '#2563eb', passiva: '#7c3aed', steuern: '#b45309', abstimmung: '#0891b2' }
+export const BEREICH_FARBE = { stammdaten: '#475569', be: '#16a34a', ba: '#ef4444', aktiva: '#2563eb', passiva: '#7c3aed', steuern: '#b45309', abstimmung: '#0891b2' }
+
+// ── Stammdaten & Auftrag (vorangestellter Sonder-Reiter, datengetrieben) ──────
+// Wird in data.stammdaten gespeichert und im Excel-Export als eigenes Blatt ausgegeben.
+export const STAMMDATEN_FELDER = [
+  { gruppe: 'Mandant & Kontakt', felder: [
+    { k: 'name', l: 'Mandant / Firma', t: 'text' },
+    { k: 'mandantennr', l: 'Mandantennummer', t: 'text' },
+    { k: 'ansprechpartner', l: 'Ansprechpartner', t: 'text' },
+    { k: 'telefon', l: 'Telefon', t: 'text' },
+    { k: 'email', l: 'E-Mail', t: 'text' },
+    { k: 'steuernr', l: 'Steuernummer', t: 'text' },
+    { k: 'ustid', l: 'USt-IdNr.', t: 'text' },
+    { k: 'adresse', l: 'Anschrift', t: 'area' } ] },
+  { gruppe: 'Besteuerung & Gewinnermittlung', felder: [
+    { k: 'versteuerung', l: 'Umsatzsteuer-Art', t: 'select', opt: [['', '—'], ['soll', 'Sollversteuerung (§ 16 UStG)'], ['ist', 'Istversteuerung (§ 20 UStG)'], ['klein', 'Kleinunternehmer (§ 19 UStG)']] },
+    { k: 'rechtsform', l: 'Rechtsform', t: 'text' },
+    { k: 'gewinnermittlung', l: 'Gewinnermittlung', t: 'select', opt: [['', '—'], ['euer', 'EÜR (§ 4 Abs. 3 EStG)'], ['bilanz', 'Bilanzierung (§ 4 Abs. 1 / § 5 EStG)']] },
+    { k: 'gwHinweis', l: 'Hinweis zur Gewinnermittlung', t: 'area' } ] },
+  { gruppe: 'Erlöse & USt-Besonderheiten', felder: [
+    { k: 'steuerfreieErloese', l: 'Steuerfreie / besondere Erlöse – Grund & Art (z. B. § 4 UStG, Ausfuhr, ig. Lieferung, § 13b)', t: 'area' } ] },
+  { gruppe: 'Prüfung & Besonderheiten', felder: [
+    { k: 'betriebspruefung', l: 'Betriebsprüfung (laufend/angekündigt, Zeitraum, Prüfer)', t: 'area' },
+    { k: 'rechtsbehelfe', l: 'Offene Rechtsbehelfe / Vorbehalt der Nachprüfung', t: 'area' },
+    { k: 'besonderheiten', l: 'Besonderheiten / Sonstiges', t: 'area' } ] },
+]
 
 export function modLists(mod) {
   if (mod.listen) return mod.listen
@@ -1086,6 +1111,16 @@ export function buildExportSheets(cl, meta) {
     ['Gewinnermittlung', (cl.gw || meta.gw) === 'bilanz' ? 'Bilanz' : 'EÜR'], ['Wirtschaftsjahr', meta.wj || ''], ['Checkliste', meta.checkliste || ''], [],
     ['Prüfpunkte gesamt', alleP(cl).length], ['davon erledigt', done],
     ['Rückfragen', alleP(cl).filter(p => p.status === 'rueck').length], ['Korrekturbedarf', alleP(cl).filter(p => p.status === 'korr').length]] })
+  const sd = cl.stammdaten || {}
+  const sdRows = [['Stammdaten & Auftrag'], []]
+  STAMMDATEN_FELDER.forEach(grp => { sdRows.push([grp.gruppe])
+    grp.felder.forEach(f => {
+      let v = (sd[f.k] != null && sd[f.k] !== '') ? sd[f.k]
+        : (f.k === 'name' ? (meta.mandant || '') : (f.k === 'gewinnermittlung' ? (cl.gw === 'bilanz' ? 'bilanz' : 'euer') : (f.k === 'rechtsform' ? (meta.rf || '') : '')))
+      if (f.t === 'select' && f.opt) { const o = f.opt.find(o => o[0] === v); if (o) v = o[1] }
+      sdRows.push([f.l, v]) })
+    sdRows.push([]) })
+  bl.push({ name: 'Stammdaten', rows: sdRows })
   const check = [['Kategorie', 'Typ', 'Prüfpunkt', 'Konto', 'Status', 'Saldo', 'Vorjahr', 'Abweichung', 'Notiz']]
   ;(cl.kategorien || []).forEach(k => (k.punkte || []).forEach(p => { const w = p.werte; const s = num(w.saldo), v = num(w.vj)
     check.push([k.name, p.typ, p.titel, (w.konto || (p.konten || [])[0] || ''), (STATUS[p.status] || STATUS.offen)[1],

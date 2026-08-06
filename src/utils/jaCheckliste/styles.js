@@ -42,6 +42,7 @@ export const JAC2_CSS = `
 .jac2 .viewtab.on.passiva{color:#6d28d9;border-color:#6d28d9}
 .jac2 .viewtab.steuern{color:#b45309} .jac2 .viewtab.on.steuern{color:#b45309;border-color:#b45309}
 .jac2 .viewtab.abst{color:#0891b2} .jac2 .viewtab.on.abst{color:#0891b2;border-color:#0891b2}
+.jac2 .viewtab.stammdaten{color:#475569} .jac2 .viewtab.on.stammdaten{color:#475569;border-color:#475569}
 
 .jac2 .modnav{display:flex;gap:7px;flex-wrap:wrap;margin:4px 0 14px}
 .jac2 .modtab{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line2);background:var(--surface);border-radius:9px;padding:8px 13px;font:inherit;font-size:13px;font-weight:600;color:var(--ink2);cursor:pointer}
