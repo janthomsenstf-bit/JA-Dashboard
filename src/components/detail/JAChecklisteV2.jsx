@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useRef } from 'react'
 import {
   MODULE, BEREICH, VIEW_LABEL, VIEW_ORDER, BEREICH_FARBE, STATUS, AUFTRAG,
   eur, num, uid, modLists, vorlageJA, ensureKat, neuerModulPunkt,
-  viewsOf, alleP, fortschritt, setStichtag,
+  viewsOf, alleP, fortschritt, setStichtag, KFZ_KONTEN,
   klassifiziereKonto, kontoZiele, parseKontenText, applyKonten, fillExisting,
   sammleRueckfragen, aufbereitenText, markRueckfrage, buildExportSheets,
   assistAnalyse, applyAssist, ASS_BEISPIEL,
@@ -798,6 +798,8 @@ function BodyKfz({ p, ctx, mutate, setStatus }) {
   const list = Array.isArray(w._pos) ? w._pos : []
   const methode = w.methodeAktiv || 'pauschal'
   const fUst = !!w.fUst
+  const skr = w.skr === '04' ? '04' : '03'
+  const KK = KFZ_KONTEN[skr]
 
   const setW = (k, v) => mutate(d => { findP(d, p.id).werte[k] = v })
   const veh = (i) => (fn) => mutate(d => { const arr = findP(d, p.id).werte._pos; if (arr && arr[i]) fn(arr[i], arr) })
@@ -823,6 +825,13 @@ function BodyKfz({ p, ctx, mutate, setStatus }) {
             <button className={'kfz-segbtn fb' + (methode === 'fahrtenbuch' ? ' on' : '')} onClick={() => setW('methodeAktiv', 'fahrtenbuch')}>Fahrtenbuch</button>
           </div>
         </div>
+        <div className="kfz-gf">
+          <div className="kfz-frage">3 · Kontenrahmen</div>
+          <div className="kfz-seg">
+            <button className={'kfz-segbtn' + (skr === '03' ? ' on' : '')} onClick={() => setW('skr', '03')}>SKR 03</button>
+            <button className={'kfz-segbtn' + (skr === '04' ? ' on' : '')} onClick={() => setW('skr', '04')}>SKR 04</button>
+          </div>
+        </div>
       </div>
 
       {methode === 'fahrtenbuch' && (
@@ -842,11 +851,11 @@ function BodyKfz({ p, ctx, mutate, setStatus }) {
         ? <div className="jhint" style={{ padding: '14px' }}>Noch kein Fahrzeug mit {methode === 'pauschal' ? '1-%-Methode' : 'Fahrtenbuch'}. Lege mit „+ Fahrzeug" eines an.</div>
         : <div className="darlist">{rows.map(({ v, i }) => <KfzCard key={i} v={v} i={i} methode={methode} fUst={fUst} veh={veh(i)} del={() => delVeh(i)} />)}</div>}
 
-      <div className="darsec"><h6>Konten &amp; Buchung</h6><div className="dargrid">
-        <KfzF wv={w} setW={setW} k="kEntnahme" l="Gegenkonto (Privat/Verrechnung)" def="1880" />
-        {fUst && <KfzF wv={w} setW={setW} k="kErtragUst" l="Kfz-Nutzung m. USt (8921)" def="8921" />}
-        <KfzF wv={w} setW={setW} k="kErtragOhneUst" l="Kfz-Nutzung o. USt (8924)" def="8924" />
-        {fUst && <KfzF wv={w} setW={setW} k="kUst" l="Umsatzsteuer 19 % (1776)" def="1776" />}
+      <div className="darsec"><h6>Konten &amp; Buchung · SKR{skr}</h6><div className="dargrid">
+        <KfzF wv={w} setW={setW} k="kEntnahme" l="Gegenkonto (Privat/Verrechnung)" def={KK.gegen} />
+        {fUst && <KfzF wv={w} setW={setW} k="kErtragUst" l={'Kfz-Nutzung m. USt (' + KK.mitUst + ')'} def={KK.mitUst} />}
+        <KfzF wv={w} setW={setW} k="kErtragOhneUst" l={'Kfz-Nutzung o. USt (' + KK.ohneUst + ')'} def={KK.ohneUst} />
+        {fUst && <KfzF wv={w} setW={setW} k="kUst" l={'Umsatzsteuer 19 % (' + KK.ust + ')'} def={KK.ust} />}
       </div></div>
       <div className="darsec"><h6>Notiz</h6><textarea className="darnotiz" value={w.notiz || ''} onChange={e => setW('notiz', e.target.value)} placeholder="Bearbeitungsvermerk …" /></div>
       <div className="darfoot">
@@ -895,6 +904,7 @@ function KfzCard({ v, i, methode, fUst, veh, del }) {
             <div className="darsec"><h6>Kostendeckelung{fUst ? ' · USt' : ''}</h6><div className="dargrid">
               {F('kosten', 'tats. Gesamtkosten (Deckelung)', 'num')}
               {fUst && F('kostenVst', 'davon vorsteuerbelastet', 'num')}
+              {fUst && F('ustAnteil', 'USt-Privatanteil % (bei Deckelung)', 'num')}
             </div></div>
           </>
         ) : (

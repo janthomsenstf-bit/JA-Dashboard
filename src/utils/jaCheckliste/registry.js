@@ -99,6 +99,14 @@ export function entfPauschale(km, tage, jahr) {
 // des Vorjahres (Haushalte 5.000–15.000 kWh). Gilt für WJ ab 1.1.2026.
 export const STROMPAUSCHALE = { 2026: 0.34 }
 
+// Kfz-Privatnutzung: DATEV-Konten je Kontenrahmen (Dok. 5301656, Verbrenner/Unternehmer).
+// gegen = Gegenkonto (unentgeltl. Wertabgabe), mitUst = Automatikkonto 19 % (Brutto),
+// ohneUst = Konto ohne USt (20 %-/nicht vorsteuerbelasteter Anteil), ust = USt-Sammelkonto.
+export const KFZ_KONTEN = {
+  '03': { gegen: '1880', mitUst: '8921', ohneUst: '8924', ust: '1776' },
+  '04': { gegen: '2130', mitUst: '4645', ohneUst: '4639', ust: '3806' },
+}
+
 // ── Modul-Registry (Typ C = Fachanwendungen) ──────────────────────────────────
 export const MODULE = {
   bewirtung: { name: 'Bewirtungsaufwendungen', bereich: 'ba', typ: 'C',
@@ -264,16 +272,19 @@ export const MODULE = {
       { k: 'heimFahrten', l: 'zusätzl. Heimfahrten (Anzahl)', t: 'num' },
       { k: 'kosten', l: 'tats. Gesamtkosten (Deckelung/Fahrtenbuch)', t: 'num' },
       { k: 'kostenVst', l: 'davon vorsteuerbelastet (USt)', t: 'num' },
+      { k: 'ustAnteil', l: 'USt-Privatanteil % (bei Kostendeckelung)', t: 'num' },
       { k: 'kmGesamt', l: 'Fahrtenbuch: Gesamt-km', t: 'num' },
       { k: 'kmPrivat', l: 'Fahrtenbuch: Privat-km', t: 'num' },
       { k: 'kmPendel', l: 'Fahrtenbuch: km Whg–Betrieb', t: 'num' } ],
     rechnen: (w) => {
       const r2 = x => Math.round(x * 100) / 100
       const jahr = getStichtag().getFullYear()
+      const skr = w.skr === '04' ? '04' : '03'
+      const K = KFZ_KONTEN[skr]
       const pos = w._pos || []
       const det = [], hinweise = [], buchungen = []
       const fUst = !!w.fUst
-      let sumEst = 0, sumUstBase = 0, sumUst = 0, sumPendelNA = 0, sumHeimNA = 0
+      let sumEst = 0, sumUstBase = 0, sumPendelNA = 0, sumHeimNA = 0
 
       if (w.fVerbot) {
         hinweise.push('ℹ️ Privatnutzung ausgeschlossen (schriftliches, tatsächlich kontrolliertes Verbot) – keine Nutzungsentnahme angesetzt. Nachweis/Kontrolle dokumentieren.')
@@ -311,6 +322,7 @@ export const MODULE = {
           const est = kosten > 0 ? r2(kosten * privAnteil) : 0
           det.push({ l: name + ' — gewillkürtes BV (' + r2(anteil) + ' %) · anteilige tats. Kosten (Privatanteil ' + Math.round(privAnteil * 100) + ' %)', v: est })
           sumEst += est
+          if (fUst) { const vst = num(v.kostenVst); if (vst > 0) sumUstBase += r2(vst * privAnteil) }
           hinweise.push('ℹ️ ' + name + ': betriebliche Nutzung 10–50 % → Zuordnungswahlrecht (gewillkürtes BV). Bei Zuordnung KEINE 1-%-Methode, sondern private Nutzung = tats. Gesamtkosten × Privatanteil. E-/Hybrid-Begünstigung nach § 6 EStG stichtagsabhängig prüfen.')
           if (methode === 'pauschal') hinweise.push('⛔ ' + name + ': 1-%-Methode bei ≤ 50 % betrieblicher Nutzung unzulässig – tatsächliche Kosten angesetzt.')
           if (!kosten) hinweise.push('⚠️ ' + name + ': tatsächliche Gesamtkosten fehlen – anteilige Bewertung unvollständig.')
@@ -330,6 +342,7 @@ export const MODULE = {
         const fbMoeglich = kosten > 0 && gesKm > 0
         if (useFb && !fbMoeglich) hinweise.push('⚠️ ' + name + ': Fahrtenbuch gewählt, aber Gesamtkosten/Gesamt-km fehlen – 1-%-Methode angesetzt.')
         const nutzeFb = useFb && fbMoeglich
+        const privAnteil = gesKm > 0 ? privKm / gesKm : 0
 
         // Werte beider Methoden (für Vergleich)
         const p1_privat = r2(MBLP * 0.01 * monate)
@@ -379,19 +392,24 @@ export const MODULE = {
 
         sumEst += estPrivat
 
-        // Umsatzsteuer (1-%-Vereinfachung 80 %, ohne E-Faktor; oder Fahrtenbuch vorsteuerbelastet)
+        // USt-Bemessung: Netto-Anteil, der USt trägt.
+        // 1-%-Methode (Verbrenner): 80 % des ungekürzten 1-%-Werts.
+        // Fahrtenbuch: Privatanteil × vorsteuerbelastete Kosten.
+        // Kostendeckelung: geschätzter Privatanteil × vorsteuerbelastete Kosten (DATEV Dok. 5301656).
         if (fUst) {
-          if (nutzeFb) {
+          let baseNet = 0
+          if (deckel) {
+            const ua = num(v.ustAnteil), vst = num(v.kostenVst)
+            if (ua > 0 && vst > 0) baseNet = r2(vst * ua / 100)
+            else hinweise.push('⚠️ ' + name + ': USt bei Kostendeckelung sachgerecht schätzen – Felder „USt-Privatanteil %" und „davon vorsteuerbelastet" erfassen.')
+          } else if (nutzeFb) {
             const vst = num(v.kostenVst)
-            const base = vst > 0 && gesKm > 0 ? r2((vst / gesKm) * privKm) : 0
-            if (base > 0) { sumUstBase += base; const u = r2(base * 0.19); sumUst += u
-              hinweise.push('ℹ️ ' + name + ' USt (Fahrtenbuch): vorsteuerbelastete Kosten auf Privat-km = ' + eur(base) + ' → USt 19 % ' + eur(u) + '. Nicht vorsteuerbelastete Kosten belegmäßig ausscheiden; E-/Hybrid-Kürzung gilt umsatzsteuerlich NICHT.') }
-            else hinweise.push('⚠️ ' + name + ' USt (Fahrtenbuch): vorsteuerbelastete Kosten fehlen – USt bitte belegmäßig ermitteln.')
+            if (vst > 0 && privAnteil > 0) baseNet = r2(vst * privAnteil)
+            else hinweise.push('⚠️ ' + name + ' USt (Fahrtenbuch): „davon vorsteuerbelastet" fehlt – USt belegmäßig ermitteln.')
           } else {
-            const base = r2(blpAbg * 0.01 * monate * 0.80)
-            sumUstBase += base; sumUst += r2(base * 0.19)
+            baseNet = r2(blpAbg * 0.01 * monate * 0.80)
           }
-          if (deckel) hinweise.push('⚠️ ' + name + ': bei Kostendeckelung ist die USt gesondert (sachgerechte Schätzung) zu ermitteln – nicht aus der ESt-Deckelung ableiten.')
+          sumUstBase += baseNet
         }
 
         // Methodenvergleich (nur Privatanteil)
@@ -401,27 +419,46 @@ export const MODULE = {
         }
       })
 
-      const erg = [...det, { l: 'Summe private Nutzungsentnahme (Betriebseinnahme, ESt)', v: sumEst, stark: 1 }]
-      if (sumPendelNA) erg.push({ l: 'Summe nicht abziehbare Pendelkosten (§ 4 Abs. 5 Nr. 6 EStG)', v: sumPendelNA })
-      if (sumHeimNA) erg.push({ l: 'Summe nicht abziehbare Familienheimfahrten', v: sumHeimNA })
-      if (fUst && sumUstBase) { erg.push({ l: 'USt-Bemessungsgrundlage (80 % v. 1 %, ohne E-Kürzung)', v: sumUstBase }); erg.push({ l: 'Umsatzsteuer 19 % (unentgeltliche Wertabgabe)', v: sumUst }) }
+      sumEst = r2(sumEst); sumUstBase = r2(sumUstBase)
+      const sumUst = r2(sumUstBase * 0.19)
+      const ohneUst = r2(sumEst - sumUstBase)
+      const mitUstBrutto = r2(sumUstBase + sumUst)
+      const gesamtBrutto = r2(sumEst + sumUst)
+      const divergenz = fUst && sumUstBase > 0 && ohneUst < 0
 
-      if (sumPendelNA) hinweise.push('Die nicht abziehbaren Pendelkosten (' + eur(sumPendelNA) + ', 0,03 % gekürzt um die Entfernungspauschale ' + (jahr >= 2026 ? '0,38 €/km ab dem 1. km' : 'gestaffelt') + ') sind außerbilanziell hinzuzurechnen (§ 4 Abs. 5 Satz 1 Nr. 6 EStG).')
-      if (fUst) hinweise.push('USt: Bemessungsgrundlage = 80 % des ungekürzten 1-%-Werts (20 % Abschlag für nicht vorsteuerbelastete Kosten), darauf 19 %. Die E-/Hybrid-Kürzung gilt NUR ertragsteuerlich, nicht umsatzsteuerlich. Wege Wohnung–Betrieb sind umsatzsteuerlich grundsätzlich unternehmerisch (keine Wertabgabe).')
-      else hinweise.push('USt nicht angesetzt (Fahrzeug nicht dem Unternehmen zugeordnet / kein Vorsteuerabzug). Bei voller Zuordnung Flag setzen.')
+      const erg = [...det, { l: 'Private Nutzung (ESt-Betriebseinnahme, netto)', v: sumEst, stark: 1 }]
+      if (fUst && sumUstBase > 0 && !divergenz) {
+        erg.push({ l: '  davon ohne USt (20 %-Pauschalabschlag / nicht vorsteuerbelastet) → ' + K.ohneUst, v: ohneUst })
+        erg.push({ l: '  davon umsatzsteuerpflichtig (netto)', v: sumUstBase })
+        erg.push({ l: '  + Umsatzsteuer 19 %', v: sumUst })
+        erg.push({ l: '  = Wert mit USt (brutto) → ' + K.mitUst, v: mitUstBrutto })
+        erg.push({ l: 'Gesamtentnahme (brutto, Summe der Buchungen)', v: gesamtBrutto, stark: 1 })
+      } else if (divergenz) {
+        erg.push({ l: '  Umsatzsteuer 19 % (Bemessung 80 % ohne E-Kürzung)', v: sumUst })
+        erg.push({ l: 'Gesamtentnahme inkl. USt', v: gesamtBrutto, stark: 1 })
+      }
+      if (sumPendelNA) erg.push({ l: 'Nachrichtlich: nicht abziehbare Pendelkosten (§ 4 Abs. 5 Nr. 6 EStG)', v: sumPendelNA })
+      if (sumHeimNA) erg.push({ l: 'Nachrichtlich: nicht abziehbare Familienheimfahrten', v: sumHeimNA })
+
+      if (sumPendelNA) hinweise.push('Die nicht abziehbaren Pendelkosten (' + eur(sumPendelNA) + ', 0,03 % gekürzt um die Entfernungspauschale ' + (jahr >= 2026 ? '0,38 €/km ab dem 1. km' : 'gestaffelt') + ') sind außerbilanziell hinzuzurechnen (§ 4 Abs. 5 S. 1 Nr. 6 EStG) – eigene DATEV-Buchung „Fahrten Wohnung–Betrieb", nicht Teil der Nutzungsentnahme.')
+      if (fUst && sumUstBase > 0 && !divergenz) hinweise.push('Buchung nach DATEV (Dok. 5301656, SKR' + skr + '): Bruttobetrag „mit USt" (' + eur(mitUstBrutto) + ') auf ' + K.mitUst + ' – Automatikkonto zieht die USt selbst heraus; Anteil „ohne USt" (' + eur(ohneUst) + ') auf ' + K.ohneUst + '; Gegenkonto ' + K.gegen + '. Gegenkonto ' + K.gegen + ' nur für Voll­hafter/Einzelunternehmer – bei Teilhaftern ' + (skr === '04' ? '2530 (Fremdkapital) / 9480 (Eigenkapital)' : '1980 (Fremdkapital) / 9480 (Eigenkapital)') + '.')
+      if (divergenz) hinweise.push('⚠️ E-/Hybridfahrzeug: der ESt-Wert (mit Faktor) liegt unter der USt-Bemessung (80 % ohne Faktor) – der 20/80-Split nach Dok. 5301656 gilt nur für Verbrenner. Hier ESt-Wert auf ' + K.ohneUst + ' und USt gesondert auf ' + K.ust + '; verbindlich nach DATEV-Doku „Privatnutzung Elektrofahrzeuge" buchen.')
+      if (!fUst) hinweise.push('USt nicht angesetzt (kein Vorsteuerabzug / keine Unternehmenszuordnung) – volle Nutzungsentnahme ohne USt auf ' + K.ohneUst + '.')
 
       if (sumEst > 0) {
-        const kEntn = w.kEntnahme || '1880'
-        if (fUst && sumUst > 0) {
-          buchungen.push({ s: kEntn, st: 'Privat / Verrechnung', h: w.kErtragOhneUst || '8924', ht: 'Kfz-Nutzung (ESt-Wert)', betr: r2(sumEst), text: 'Private Kfz-Nutzung – ertragsteuerlicher Wert' })
-          buchungen.push({ s: kEntn, st: 'Privat / Verrechnung', h: w.kUst || '1776', ht: 'Umsatzsteuer 19 %', betr: r2(sumUst), text: 'USt auf private Kfz-Nutzung (80 % v. 1 %, ohne E-Kürzung)' })
-          hinweise.push('DATEV-Alternative bei gleicher Bemessung (Verbrenner): Netto-USt-Betrag auf ' + (w.kErtragUst || '8921') + ' mit USt-Automatik + Restbetrag auf ' + (w.kErtragOhneUst || '8924') + '. Bei E-/Hybrid weichen ESt- und USt-Bemessung ab → hier getrennt gebucht.')
+        const kGegen = w.kEntnahme || K.gegen
+        if (fUst && sumUstBase > 0 && !divergenz) {
+          buchungen.push({ s: kGegen, st: 'Unentgeltl. Wertabgabe', h: (w.kErtragUst || K.mitUst), ht: 'Kfz-Nutzung 19 % USt (Automatik)', betr: mitUstBrutto, text: 'Privatnutzung Pkw mit USt' })
+          if (ohneUst > 0) buchungen.push({ s: kGegen, st: 'Unentgeltl. Wertabgabe', h: (w.kErtragOhneUst || K.ohneUst), ht: 'Kfz-Nutzung ohne USt', betr: ohneUst, text: 'Privatnutzung Pkw ohne USt' })
+        } else if (divergenz) {
+          buchungen.push({ s: kGegen, st: 'Unentgeltl. Wertabgabe', h: (w.kErtragOhneUst || K.ohneUst), ht: 'Kfz-Nutzung (ESt-Wert)', betr: sumEst, text: 'Privatnutzung Pkw (E-Fahrzeug, ESt-Wert)' })
+          buchungen.push({ s: kGegen, st: 'Unentgeltl. Wertabgabe', h: (w.kUst || K.ust), ht: 'Umsatzsteuer 19 %', betr: sumUst, text: 'USt private Kfz-Nutzung (E-Fahrzeug)' })
         } else {
-          buchungen.push({ s: kEntn, st: 'Privat / Verrechnung', h: w.kErtragOhneUst || '8924', ht: 'Kfz-Nutzung', betr: r2(sumEst), text: 'Private Kfz-Nutzung (ohne USt)' })
+          buchungen.push({ s: kGegen, st: 'Unentgeltl. Wertabgabe', h: (w.kErtragOhneUst || K.ohneUst), ht: 'Kfz-Nutzung ohne USt', betr: sumEst, text: 'Privatnutzung Pkw ohne USt' })
         }
       }
 
-      return { ergebnisse: erg, total: { l: 'Nutzungsentnahme (Betriebseinnahme, ESt)', v: sumEst }, hinweise, buchungen }
+      return { ergebnisse: erg, total: { l: fUst && sumUstBase > 0 ? 'Gesamtentnahme (brutto)' : 'Nutzungsentnahme (ESt)', v: fUst && sumUstBase > 0 ? gesamtBrutto : sumEst }, hinweise, buchungen }
     } },
   kfzArbeitnehmer: { name: 'Dienstwagen – Arbeitnehmer (geldwerter Vorteil)', bereich: 'ba', typ: 'C', posLabel: 'Dienstwagen je Arbeitnehmer',
     flags: [
