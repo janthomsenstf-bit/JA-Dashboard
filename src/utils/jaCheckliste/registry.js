@@ -149,45 +149,6 @@ export const MODULE = {
         if (rap > 0) buchungen.push({ s: '1900', st: 'Aktive RAP', h: p.kAufw || '4360', ht: 'Aufwand', betr: rap, text: 'ARAP ' + (p.bez || '') }) })
       return { ergebnisse: [...detail, { l: 'Aufwand laufendes Jahr', v: sumAufw }],
         total: { l: 'Aktiver RAP zum ' + _stichtag.toLocaleDateString('de-DE'), v: sumRap }, buchungen } } },
-  umsatzsteuer: { name: 'Umsatzsteuer-Abstimmung', bereich: 'ba', typ: 'C',
-    felder: (ctx, w) => { const gw = w.gw || ctx.gw; const f = [
-      { k: 'gw', l: 'Gewinnermittlung', t: 'select', opt: [['bilanz', 'Bilanzierung'], ['euer', 'EÜR (§ 4 Abs. 3)']], def: ctx.gw },
-      { k: 'ust', l: 'Umsatzsteuer lt. Konten', t: 'num' },
-      { k: 'vst', l: 'Vorsteuer lt. Konten', t: 'num' },
-      { k: 'vzBuch', l: 'USt-Vorauszahlungen lt. Buchungskonto', t: 'num' },
-      { k: 'vzFA', l: 'geleistet lt. Steuerkonto (Finanzamt)', t: 'num' }]
-      if (gw === 'euer') {
-        f.push({ k: 'p11', l: '§ 11 – Vorauszahlung um den Jahreswechsel (10-Tage-Regel)', t: 'select', full: true, opt: [
-          ['nein', 'nicht einschlägig'],
-          ['dez', 'Dez.-/Q4-Vorauszahlung bis 10.01. gezahlt → altes Jahr'],
-          ['jan', 'Januar-Vorauszahlung für Dez. Vorjahr → gehört ins Vorjahr']] })
-        f.push({ k: 'p11betrag', l: 'davon betroffener Betrag', t: 'num' })
-      } else {
-        f.push({ k: 'kForderung', l: 'Konto Forderung USt', t: 'text', def: '1548' })
-        f.push({ k: 'kVerb', l: 'Konto Verbindlichkeit USt', t: 'text', def: '1790' })
-      }
-      return f },
-    rechnen: (w, ctx) => { const gw = w.gw || ctx.gw
-      const ust = num(w.ust), vst = num(w.vst), vzBuch = num(w.vzBuch), vzFA = num(w.vzFA)
-      const zahllast = ust - vst, rest = zahllast - vzFA, diffKonto = vzBuch - vzFA, erstattung = rest < 0
-      const erg = [{ l: 'Umsatzsteuer (Erlöse)', v: ust }, { l: 'abzüglich Vorsteuer', v: -vst },
-        { l: 'Zahllast lt. Buchführung', v: zahllast, stark: 1 },
-        { l: 'geleistete Vorauszahlungen (Steuerkonto)', v: -vzFA }]
-      const total = { l: erstattung ? 'USt-Erstattungsanspruch' : 'USt-Restschuld ans Finanzamt', v: Math.abs(rest) }
-      const hinweise = [], buchungen = []
-      if (Math.abs(diffKonto) >= 0.01) hinweise.push('Buchungskonto (' + eur(vzBuch) + ') und Steuerkonto (' + eur(vzFA) + ') weichen um ' + eur(Math.abs(diffKonto)) + ' ab – Vorauszahlungen zunächst abstimmen und nachbuchen.')
-      if (gw === 'bilanz') {
-        if (Math.abs(rest) >= 0.01) {
-          if (erstattung) buchungen.push({ s: w.kForderung || '1548', st: 'Forderung Umsatzsteuer', h: '1780', ht: 'USt-Vorauszahlungen', betr: Math.abs(rest), text: 'USt-Erstattungsanspruch zum 31.12.' })
-          else buchungen.push({ s: '1780', st: 'USt-Vorauszahlungen', h: w.kVerb || '1790', ht: 'Verbindlichkeit Umsatzsteuer', betr: Math.abs(rest), text: 'USt-Restschuld zum 31.12.' })
-        }
-      } else {
-        hinweise.push('EÜR: keine Forderung/Verbindlichkeit ausweisen – die USt wirkt sich erst bei Zahlung bzw. Erstattung als Betriebsausgabe/-einnahme aus (§ 11 EStG).')
-        const b = num(w.p11betrag)
-        if (w.p11 === 'dez' && b > 0) hinweise.push('10-Tage-Regel: ' + eur(b) + ' (Dez./Q4-Vorauszahlung, bis 10.01. gezahlt) sind als regelmäßig wiederkehrende Ausgabe noch dem laufenden Jahr zuzuordnen.')
-        if (w.p11 === 'jan' && b > 0) hinweise.push('10-Tage-Regel: ' + eur(b) + ' (Januar-Vorauszahlung für Dez. des Vorjahres) gehören ins Vorjahr – im laufenden Jahr nicht als Betriebsausgabe erfassen.')
-      }
-      return { ergebnisse: erg, total, buchungen, hinweise } } },
   /* ── Betriebseinnahmen ── */
   erloeseStpfl: { name: 'Steuerpflichtige Erlöse (19 %)', bereich: 'be', typ: 'C',
     flags: [{ k: 'fPlausibel', label: 'Erlöse plausibel / mit Vorjahr abgestimmt' }, { k: 'fUst', label: 'USt-Ausweis geprüft' }],
