@@ -1,8 +1,8 @@
-import { useState, useMemo, useEffect, useRef } from 'react'
+import { useState, useMemo, useEffect, useRef, Fragment } from 'react'
 import {
   MODULE, BEREICH, VIEW_LABEL, VIEW_ORDER, BEREICH_FARBE, STATUS, AUFTRAG,
   eur, num, uid, modLists, vorlageJA, ensureKat, neuerModulPunkt,
-  viewsOf, alleP, fortschritt, setStichtag, KFZ_KONTEN, STAMMDATEN_FELDER,
+  viewsOf, alleP, fortschritt, setStichtag, getStichtag, KFZ_KONTEN, STAMMDATEN_FELDER, ustAbstimmung, UST_KONTEN, ust10Tage,
   klassifiziereKonto, kontoZiele, parseKontenText, applyKonten, fillExisting,
   sammleRueckfragen, aufbereitenText, markRueckfrage, buildExportSheets,
   assistAnalyse, applyAssist, ASS_BEISPIEL,
@@ -194,6 +194,174 @@ export default function JAChecklisteV2({ au, client, onUpdate }) {
           onClose={() => setAssistOpen(false)} />
       )}
     </div>
+  )
+}
+
+// ── Umsatzsteuer-Abstimmung (Custom-Render) ───────────────────────────────────
+function BodyUst({ p, ctx, mutate, setStatus }) {
+  const w = p.werte
+  const setF = (k, v) => mutate(d => { findP(d, p.id).werte[k] = v })
+  const tog = (k) => mutate(d => { const q = findP(d, p.id).werte; q[k] = !q[k] })
+  const rowSet = (key, i, k, v) => mutate(d => { const q = findP(d, p.id).werte; if (!q[key]) q[key] = []; while (q[key].length <= i) q[key].push({}); q[key][i][k] = v })
+  const listAdd = (key, row) => mutate(d => { const q = findP(d, p.id).werte; (q[key] || (q[key] = [])).push(row || {}) })
+  const listDel = (key, i) => mutate(d => { findP(d, p.id).werte[key].splice(i, 1) })
+  const rfAdd = (t) => mutate(d => { const q = findP(d, p.id).werte; if ((q.rueckfragen || []).some(x => x.t === t && t)) return; (q.rueckfragen || (q.rueckfragen = [])).push({ t: t || '', ok: false }) })
+  const rfSet = (i, patch) => mutate(d => { Object.assign(findP(d, p.id).werte.rueckfragen[i], patch) })
+  const rfDel = (i) => mutate(d => { findP(d, p.id).werte.rueckfragen.splice(i, 1) })
+  const histFromVorschlag = () => mutate(d => {
+    const q = findP(d, p.id); const mod = MODULE[q.modul]
+    const bs = (mod.rechnen(q.werte, ctx).buchungen) || []
+    if (!bs.length) return
+    if (!q.werte.buchhistorie) q.werte.buchhistorie = []
+    const heute = new Date().toLocaleDateString('de-DE')
+    bs.forEach(b => q.werte.buchhistorie.push({ datum: heute, soll: b.s, haben: b.h || '', betrag: b.betr, text: b.text, vermerk: '' }))
+  })
+
+  const seg = (k, opts, def) => { const cur = w[k] || def; return (
+    <div className="ust-seg">{opts.map(o => <button key={o[0]} className={'ust-segb' + (cur === o[0] ? ' on' : '')} onClick={() => setF(k, o[0])}>{o[1]}</button>)}</div>) }
+
+  const besteuerung = w.besteuerung || 'soll'
+  const euer = besteuerung === 'euer'
+  const quelle = w.quelle || 'steuerkonto'
+  const skr = w.skr === '04' ? '04' : '03'
+  const K = UST_KONTEN[skr]
+  const jahrWJ = getStichtag().getFullYear()
+  const va = w.voranmeldung || 'monat'
+  const zeitraeume = va === 'quartal' ? ['Q1', 'Q2', 'Q3', 'Q4'] : (va === 'jahr' || va === 'keine' ? ['Jahr'] : ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'])
+  const a = ustAbstimmung(w)
+  const rf = Array.isArray(w.rueckfragen) ? w.rueckfragen : []
+  const ampel = rf.filter(x => !x.ok).length > 0 ? 'rot' : (Math.abs(a.differenz) < 0.005 ? 'gruen' : 'gelb')
+  const ampelTxt = { gruen: 'Buchhaltung und Finanzamt stimmen überein.', gelb: 'Abweichung muss geprüft werden.', rot: 'Unterlagen/Rückfragen offen.' }
+  const chk = { chkSteuerkonto: 'Steuerkonto geprüft', chkProtokolle: 'Übermittlungsprotokolle geprüft', chkKonten: 'USt-Konten der Buchhaltung geprüft', chkZahlungen: 'Zahlungen / Erstattungen geprüft', chkDiff: 'Differenzen geklärt', chkBuchung: 'Abschlussbuchung vorgenommen' }
+  const fehlendVorlagen = ['Steuerkonto USt', 'USt-Jahreserklärung Vorjahr', 'Zahlungsnachweise', ...zeitraeume.map(z => 'UStVA ' + z)]
+
+  return (
+    <>
+      <div className="ust-sec"><h6>A · Stammdaten Umsatzsteuer</h6>
+        <div className="ust-grid3">
+          <div><div className="ust-lbl">Besteuerungsart</div>{seg('besteuerung', [['soll', 'Soll'], ['ist', 'Ist'], ['euer', 'EÜR']], 'soll')}</div>
+          <div><div className="ust-lbl">Voranmeldung</div>{seg('voranmeldung', [['monat', 'Monatl.'], ['quartal', 'Quartal'], ['jahr', 'nur Jahr'], ['keine', 'keine']], 'monat')}</div>
+          <div><div className="ust-lbl">Dauerfristverlängerung</div>
+            <div className="chips2">
+              <div className={'chk' + (w.dauerfrist ? ' on' : '')} onClick={() => tog('dauerfrist')}><span className="bx">{w.dauerfrist ? '✓' : ''}</span>vorhanden</div>
+              <div className={'chk' + (w.sondervz ? ' on' : '')} onClick={() => tog('sondervz')}><span className="bx">{w.sondervz ? '✓' : ''}</span>Sondervorauszahlung</div>
+            </div>
+            {w.sondervz && <div className="ust-11">
+              <label className="darf"><span>Vorjahres-Zahllast</span><input className="num" value={w.sonderVj || ''} onChange={e => setF('sonderVj', e.target.value)} /></label>
+              <button className="ust-qa" onClick={() => setF('sondervzBetrag', String(Math.round(num(w.sonderVj) / 11 * 100) / 100))}>1/11 →</button>
+              <label className="darf"><span>Sondervorauszahlung 1/11 ({K.sonder})</span><input className="num" value={w.sondervzBetrag || ''} onChange={e => setF('sondervzBetrag', e.target.value)} /></label>
+            </div>}
+          </div>
+          <div><div className="ust-lbl">Kontenrahmen</div>{seg('skr', [['03', 'SKR 03'], ['04', 'SKR 04']], '03')}</div>
+        </div>
+        {euer && <div className="ust-euerbadge">EÜR: eigener Prüfbereich – zeitliche Zuordnung der USt-Zahlungen nach § 11 EStG (Zu-/Abfluss), siehe unten.</div>}
+      </div>
+
+      <div className="ust-sec"><h6>B · Datenquelle</h6>
+        {seg('quelle', [['steuerkonto', 'Steuerkonto liegt vor'], ['protokolle', 'kein Steuerkonto → Übermittlungsprotokolle']], 'steuerkonto')}
+      </div>
+
+      <div className="ust-sec"><h6>C · Gemeldet ans Finanzamt</h6>
+        {quelle === 'steuerkonto' ? (
+          <>
+            {seg('skModus', [['jahr', 'Jahresbetrag'], ['einzel', 'Einzelabstimmung']], 'jahr')}
+            {(w.skModus || 'jahr') === 'jahr'
+              ? <label className="darf" style={{ maxWidth: 360, marginTop: 8 }}><span>USt-Zahllast gesamt lt. Steuerkonto (Zahlungen − Erstattungen)</span><input className="num" value={w.skJahr || ''} onChange={e => setF('skJahr', e.target.value)} /></label>
+              : <><table className="ust-tab"><thead><tr><th>Zeitraum</th><th>Art</th><th>Betrag</th><th /></tr></thead><tbody>
+                {(w.skPos || []).map((r, i) => <tr key={i}>
+                  <td><input value={r.zeitraum || ''} onChange={e => rowSet('skPos', i, 'zeitraum', e.target.value)} /></td>
+                  <td><select value={r.art || 'vz'} onChange={e => rowSet('skPos', i, 'art', e.target.value)}><option value="vz">Vorauszahlung</option><option value="erstattung">Erstattung</option></select></td>
+                  <td><input className="num" value={r.betrag || ''} onChange={e => rowSet('skPos', i, 'betrag', e.target.value)} /></td>
+                  <td><button className="del" onClick={() => listDel('skPos', i)}>×</button></td></tr>)}
+              </tbody></table><button className="addbtn" onClick={() => listAdd('skPos', { art: 'vz' })}>+ Zeile</button></>}
+          </>
+        ) : (
+          <table className="ust-tab"><thead><tr><th>Zeitraum</th><th>Bemessungsgrdl.</th><th>USt</th><th>Vorsteuer</th><th>Zahllast/Erst.</th></tr></thead><tbody>
+            {zeitraeume.map((z, i) => { const r = (w.uva || [])[i] || {}; return <tr key={z}>
+              <td className="ust-tz">{z}</td>
+              <td><input className="num" value={r.bmg || ''} onChange={e => rowSet('uva', i, 'bmg', e.target.value)} /></td>
+              <td><input className="num" value={r.ust || ''} onChange={e => rowSet('uva', i, 'ust', e.target.value)} /></td>
+              <td><input className="num" value={r.vst || ''} onChange={e => rowSet('uva', i, 'vst', e.target.value)} /></td>
+              <td><input className="num" value={r.zahllast || ''} onChange={e => rowSet('uva', i, 'zahllast', e.target.value)} /></td></tr> })}
+          </tbody></table>
+        )}
+        <div className="ust-sum">Summe gemeldet: <b>{eur(a.gemeldet)}</b></div>
+      </div>
+
+      <div className="ust-sec"><h6>D · Laut Buchhaltung</h6>
+        {seg('buchModus', [['gesamt', 'Gesamtbetrag'], ['periodisch', 'periodisch']], 'gesamt')}
+        {(w.buchModus || 'gesamt') === 'gesamt'
+          ? <label className="darf" style={{ maxWidth: 360, marginTop: 8 }}><span>USt-Vorauszahlungen / USt-Verrechnung lt. Buchhaltung</span><input className="num" value={w.buchGesamt || ''} onChange={e => setF('buchGesamt', e.target.value)} /></label>
+          : <table className="ust-tab"><thead><tr><th>Zeitraum</th><th>Betrag lt. Buchhaltung</th></tr></thead><tbody>
+            {zeitraeume.map((z, i) => { const r = (w.buchPos || [])[i] || {}; return <tr key={z}><td className="ust-tz">{z}</td><td><input className="num" value={r.betrag || ''} onChange={e => rowSet('buchPos', i, 'betrag', e.target.value)} /></td></tr> })}
+          </tbody></table>}
+        <div className="ust-sum">Summe gebucht: <b>{eur(a.gebucht)}</b></div>
+      </div>
+
+      <div className={'ust-abgleich ' + ampel}>
+        <div className="ust-abrow"><span>Gemeldet ans Finanzamt</span><b>{eur(a.gemeldet)}</b></div>
+        <div className="ust-abrow"><span>./. in Buchhaltung erfasst</span><b>{eur(a.gebucht)}</b></div>
+        <div className="ust-abdiff"><span>= Differenz</span><b>{(a.differenz > 0 ? '+' : '') + eur(a.differenz)}</b></div>
+      </div>
+
+      <ErgebnisBox p={p} ctx={ctx} mutate={mutate} />
+
+      <div className="ust-sec"><h6>Buchungs-Historie (dokumentiert · wird exportiert)</h6>
+        <button className="ust-qa" onClick={histFromVorschlag}>＋ aktuellen Buchungsvorschlag übernehmen</button>
+        {(w.buchhistorie || []).length > 0 && <table className="ust-tab ust-hist"><thead><tr><th>Datum</th><th>Soll</th><th>Haben</th><th>Betrag</th><th>Buchungstext</th><th>Vermerk</th><th /></tr></thead><tbody>
+          {(w.buchhistorie || []).map((h, i) => <tr key={i}>
+            <td><input value={h.datum || ''} onChange={e => rowSet('buchhistorie', i, 'datum', e.target.value)} /></td>
+            <td><input className="mono" value={h.soll || ''} onChange={e => rowSet('buchhistorie', i, 'soll', e.target.value)} /></td>
+            <td><input className="mono" value={h.haben || ''} onChange={e => rowSet('buchhistorie', i, 'haben', e.target.value)} /></td>
+            <td><input className="num" value={h.betrag || ''} onChange={e => rowSet('buchhistorie', i, 'betrag', e.target.value)} /></td>
+            <td><input value={h.text || ''} onChange={e => rowSet('buchhistorie', i, 'text', e.target.value)} /></td>
+            <td><input value={h.vermerk || ''} onChange={e => rowSet('buchhistorie', i, 'vermerk', e.target.value)} /></td>
+            <td><button className="del" onClick={() => listDel('buchhistorie', i)}>×</button></td></tr>)}
+        </tbody></table>}
+        <button className="addbtn" onClick={() => listAdd('buchhistorie', {})}>+ Zeile</button>
+        <div className="ust-hint">Dokumentiere hier, was wohin gebucht wurde – die Historie erscheint als eigenes Blatt im Excel-Export, damit ein Dritter es nachvollziehen kann.</div>
+      </div>
+
+      <div className="ust-sec"><h6>F · Abschluss &amp; Prüfstatus</h6>
+        <div className={'ust-ampel ' + ampel}>{ampel === 'gruen' ? '🟢 Abgestimmt' : ampel === 'gelb' ? '🟡 Differenz vorhanden' : '🔴 Abstimmung offen'} — {ampelTxt[ampel]}</div>
+        <div className="chips2" style={{ marginTop: 10 }}>
+          {Object.keys(chk).map(k => <div key={k} className={'chk' + (w[k] ? ' on' : '')} onClick={() => tog(k)}><span className="bx">{w[k] ? '✓' : ''}</span>{chk[k]}</div>)}
+        </div>
+        <div className="ust-fehlend">
+          <div className="ust-lbl">Fehlende Unterlagen / Rückfragen (→ Mandanten-Rückfragen)</div>
+          <div className="ust-quickadd">{fehlendVorlagen.map(t => <button key={t} className="ust-qa" onClick={() => rfAdd(t)}>+ {t}</button>)}</div>
+          {rf.map((q, i) => <div className="rritem" key={i}><input type="checkbox" title="erledigt" checked={!!q.ok} onChange={e => rfSet(i, { ok: e.target.checked })} /><input className="rrtext" value={q.t || ''} onChange={e => rfSet(i, { t: e.target.value })} /><button className="del" onClick={() => rfDel(i)}>×</button></div>)}
+          <button className="addbtn" onClick={() => rfAdd('')}>+ freie Rückfrage</button>
+        </div>
+        <div className="darfoot"><label className="darstatussel">Status&nbsp;<select value={p.status} onChange={e => setStatus(e.target.value)}>{Object.keys(STATUS).map(s => <option key={s} value={s}>{STATUS[s][1]}</option>)}</select></label></div>
+      </div>
+
+      {euer && <div className="ust-sec euer"><h6>§ 11 · USt-Zahlungen rund um den Jahreswechsel (EÜR · 10-Tage-Regel)</h6>
+        <div className="ust-hint">Trage je USt-Vorauszahlung rund um den Jahreswechsel den <b>Zeitraum</b>, das <b>Zahlungsdatum</b> und ggf. <b>SEPA</b> ein. Das System prüft die 10-Tage-Regel (§ 11 Abs. 2 S. 2 EStG) und ordnet dem wirtschaftlichen Jahr <b>{jahrWJ}</b> oder dem Jahr der Zahlung zu.</div>
+        <table className="ust-tab"><thead><tr><th>USt-Zeitraum</th><th>Zahlungsdatum</th><th>SEPA</th><th>Betrag</th><th>Fälligkeit</th><th>Zuordnung</th><th /></tr></thead><tbody>
+          {(w.euerPos || []).map((r, i) => { const t = ust10Tage(r, jahrWJ, w.dauerfrist, K); return <Fragment key={i}><tr>
+            <td><select value={r.zeitraum || 'dez'} onChange={e => rowSet('euerPos', i, 'zeitraum', e.target.value)}><option value="dez">Dezember</option><option value="q4">Q4</option><option value="nov">November</option><option value="sonst">sonstiger</option></select></td>
+            <td><input type="date" value={r.zahldatum || ''} onChange={e => rowSet('euerPos', i, 'zahldatum', e.target.value)} /></td>
+            <td style={{ textAlign: 'center' }}><input type="checkbox" checked={!!r.sepa} onChange={e => rowSet('euerPos', i, 'sepa', e.target.checked)} /></td>
+            <td><input className="num" value={r.betrag || ''} onChange={e => rowSet('euerPos', i, 'betrag', e.target.value)} /></td>
+            <td className="ust-tz" style={{ fontWeight: 400 }}>{t.faelligTxt}</td>
+            <td><span className={'ust-zuord ' + t.zuordnung} title={t.begr}>{t.zuordnung === 'wirtschaft' ? '→ Jahr ' + t.jahr + (t.weekend ? ' ⚠️' : '') : t.zuordnung === 'zahlung' ? '→ Jahr ' + t.jahrZahlung : '—'}</span></td>
+            <td><button className="del" onClick={() => listDel('euerPos', i)}>×</button></td></tr>
+            {t.buchung && <tr className="ust-bu-row"><td /><td colSpan={6}><span className="ust-bu-lbl">Buchungsvorschlag § 11:</span> <b>{t.buchung.s}</b> (Umsatzsteuervorauszahlung) an <b>{t.buchung.h}</b> (Sonstige Verbindlichkeiten § 11 Abs. 2 S. 2 EStG) – Betriebsausgabe wirtschaftl. Jahr {t.jahr}; Zahlung {t.jahr + 1}: {t.buchung.h} an Bank. <button className="ust-bu-add" onClick={() => mutate(d => { const q = findP(d, p.id).werte; if (!q.buchhistorie) q.buchhistorie = []; q.buchhistorie.push({ datum: r.zahldatum ? r.zahldatum.split('-').reverse().join('.') : '', soll: t.buchung.s, haben: t.buchung.h, betrag: t.buchung.betr, text: t.buchung.text, vermerk: '§ 11 Abs. 2 S. 2 EStG (10-Tage-Regel)' }) })}>→ in Historie</button></td></tr>}</Fragment> })}
+        </tbody></table>
+        <button className="addbtn" onClick={() => listAdd('euerPos', { zeitraum: 'dez' })}>+ Zeile</button>
+        <div className="ust-hint">„Kurze Zeit" = 10 Tage; maßgeblich die Fälligkeit nach § 18 Abs. 1 S. 4 UStG (10. Tag nach VZ-Zeitraum), § 108 Abs. 3 AO (Werktagsverschiebung) unbeachtlich. <b>SEPA-Lastschrift:</b> Abfluss gilt am Fälligkeitstag (bei Kontodeckung), auch bei späterer Abbuchung. <b>Dauerfristverlängerung</b> verschiebt die Fälligkeit → i. d. R. Jahr der Zahlung (strittig, BFH VIII R 1/20 & 25/20). ⚠️ = 10.01. fällt auf Wochenende/Feiertag → Einzelfall prüfen. Prüfhinweis, keine automatische Entscheidung.</div>
+      </div>}
+
+      <div className="darsec"><h6>Konten (Bilanz, SKR{skr}) &amp; Notiz</h6><div className="dargrid">
+        <label className="darf"><span>USt-Verrechnung</span><input className="mono" value={w.kVerr || ''} placeholder={K.verr} onChange={e => setF('kVerr', e.target.value)} /></label>
+        <label className="darf"><span>Forderung aus USt-VZ</span><input className="mono" value={w.kForderung || ''} placeholder={K.ford} onChange={e => setF('kForderung', e.target.value)} /></label>
+        <label className="darf"><span>Verbindlichkeit aus USt-VZ</span><input className="mono" value={w.kVerb || ''} placeholder={K.verb} onChange={e => setF('kVerb', e.target.value)} /></label>
+        <label className="darf"><span>USt-Forderung frühere Jahre / BP (→ {K.frueher})</span><input className="num" value={w.fruehereBetrag || ''} onChange={e => setF('fruehereBetrag', e.target.value)} /></label>
+      </div>
+        <textarea className="darnotiz" style={{ marginTop: 8 }} value={w.notiz || ''} placeholder="Notiz / Klärung der Differenz …" onChange={e => setF('notiz', e.target.value)} />
+      </div>
+    </>
   )
 }
 
@@ -455,7 +623,9 @@ function ModulCard({ p, ctx, data, mutate, removePunkt, darOpen, setDarOpen }) {
           ? <Darlehen p={p} mutate={mutate} darOpen={darOpen} setDarOpen={setDarOpen} />
           : mod && mod.custom === 'kfz'
             ? <BodyKfz p={p} ctx={ctx} mutate={mutate} setStatus={setStatus} />
-            : <BodyByType p={p} ctx={ctx} mutate={mutate} setStatus={setStatus} />}
+            : mod && mod.custom === 'ust'
+              ? <BodyUst p={p} ctx={ctx} mutate={mutate} setStatus={setStatus} />
+              : <BodyByType p={p} ctx={ctx} mutate={mutate} setStatus={setStatus} />}
         <div className="ppfoot"><button className="linkdel" onClick={() => removePunkt(p.id)}>🗑&nbsp;Prüfpunkt entfernen</button></div>
       </div>
     </div>

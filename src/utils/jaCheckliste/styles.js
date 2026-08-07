@@ -181,6 +181,53 @@ export const JAC2_CSS = `
 .jac2 .kfz-segbtn.on.fb{background:#0891b2}
 .jac2 .kfzcardhead{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:2px}
 .jac2 .kfzcardhead b{font-size:15px;color:var(--ink)}
+.jac2 .ust-sec{border:1px solid var(--line2);border-radius:11px;padding:12px 14px;margin:10px 0;background:#fff}
+.jac2 .ust-sec.euer{background:#fffbeb;border-color:#fcd34d}
+.jac2 .ust-sec>h6{margin:0 0 10px;font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);font-weight:700}
+.jac2 .ust-grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px}
+.jac2 .ust-lbl{font-size:12px;font-weight:700;color:var(--ink2);margin-bottom:5px}
+.jac2 .ust-seg{display:inline-flex;flex-wrap:wrap;border:1px solid var(--line2);border-radius:9px;overflow:hidden;background:#fff}
+.jac2 .ust-segb{border:none;background:none;padding:8px 13px;font:inherit;font-size:12.5px;font-weight:600;color:var(--ink2);cursor:pointer;white-space:nowrap;border-right:1px solid var(--line2)}
+.jac2 .ust-segb:last-child{border-right:none}
+.jac2 .ust-segb:hover{background:var(--surface2)}
+.jac2 .ust-segb.on{background:var(--accent);color:#fff}
+.jac2 .ust-euerbadge{margin-top:10px;font-size:12.5px;color:#92400e;background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;padding:7px 10px}
+.jac2 .ust-tab{width:100%;border-collapse:collapse;margin-top:8px;font-size:13px}
+.jac2 .ust-tab th{text-align:right;font-size:11px;color:var(--muted);font-weight:700;padding:2px 6px;border-bottom:1px solid var(--line)}
+.jac2 .ust-tab th:first-child{text-align:left}
+.jac2 .ust-tab td{padding:2px 4px}
+.jac2 .ust-tab td.ust-tz{font-weight:600;color:var(--ink2);white-space:nowrap;padding-right:8px}
+.jac2 .ust-tab input,.jac2 .ust-tab select{width:100%;padding:5px 7px;border:1px solid var(--line2);border-radius:6px;font:inherit;font-size:13px;text-align:right}
+.jac2 .ust-tab td:first-child input{text-align:left}
+.jac2 .ust-tab select{text-align:left}
+.jac2 .ust-sum{margin-top:8px;text-align:right;font-size:13px;color:var(--ink2)}.jac2 .ust-sum b{color:var(--ink);font-size:15px}
+.jac2 .ust-abgleich{border-radius:12px;padding:12px 18px;margin:12px 0;border:2px solid}
+.jac2 .ust-abgleich.gruen{background:var(--ok-bg);border-color:var(--ok)}
+.jac2 .ust-abgleich.gelb{background:#fef3c7;border-color:#f59e0b}
+.jac2 .ust-abgleich.rot{background:var(--korr-bg);border-color:var(--korr)}
+.jac2 .ust-abrow{display:flex;justify-content:space-between;font-size:14px;color:var(--ink2);padding:2px 0}
+.jac2 .ust-abdiff{display:flex;justify-content:space-between;align-items:center;border-top:1px solid rgba(0,0,0,.12);margin-top:6px;padding-top:8px;font-size:16px;font-weight:800;color:var(--ink)}
+.jac2 .ust-abdiff b{font-size:22px}
+.jac2 .ust-ampel{font-size:13.5px;font-weight:600;padding:8px 12px;border-radius:8px}
+.jac2 .ust-ampel.gruen{background:var(--ok-bg);color:var(--ok)}
+.jac2 .ust-ampel.gelb{background:#fef3c7;color:#b45309}
+.jac2 .ust-ampel.rot{background:var(--korr-bg);color:var(--korr)}
+.jac2 .ust-fehlend{margin-top:14px}
+.jac2 .ust-quickadd{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}
+.jac2 .ust-qa{border:1px dashed var(--line2);background:var(--surface2);border-radius:7px;padding:4px 9px;font:inherit;font-size:12px;color:var(--ink2);cursor:pointer}
+.jac2 .ust-qa:hover{border-color:var(--rueck);color:var(--rueck)}
+.jac2 .ust-hint{margin-top:8px;font-size:12.5px;color:var(--ink2);background:var(--surface2);border-radius:8px;padding:8px 10px}
+.jac2 .ust-11{display:flex;align-items:flex-end;gap:8px;margin-top:6px;flex-wrap:wrap}
+.jac2 .ust-11 .darf{max-width:150px}
+.jac2 .ust-hist input{font-size:12.5px}
+.jac2 .ust-zuord{display:inline-block;font-size:12px;font-weight:700;padding:3px 8px;border-radius:7px;white-space:nowrap;cursor:help}
+.jac2 .ust-zuord.wirtschaft{background:var(--ok-bg);color:var(--ok)}
+.jac2 .ust-zuord.zahlung{background:#fef3c7;color:#b45309}
+.jac2 .ust-zuord.unklar{background:var(--surface2);color:var(--muted)}
+.jac2 .ust-bu-row td{background:var(--ok-bg);font-size:12px;color:var(--ink2);padding:5px 8px;border-top:none}
+.jac2 .ust-bu-lbl{font-weight:700;color:var(--ok)}
+.jac2 .ust-bu-add{margin-left:8px;font-size:11.5px;font-weight:600;border:1px solid var(--ok);color:var(--ok);background:transparent;border-radius:6px;padding:1px 7px;cursor:pointer}
+.jac2 .ust-bu-add:hover{background:var(--ok);color:#fff}
 .jac2 .darnotiz{width:100%;min-height:56px;padding:9px 11px;border:1px solid var(--line2);border-radius:8px;font:inherit;font-size:13.5px}
 .jac2 .darcks{display:flex;flex-wrap:wrap;gap:8px}
 .jac2 .darck{display:inline-flex;align-items:center;gap:7px;font-size:13px;font-weight:600;color:var(--ink2);background:var(--surface2);border:1px solid var(--line2);border-radius:8px;padding:7px 11px;cursor:pointer}

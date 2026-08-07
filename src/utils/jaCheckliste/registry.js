@@ -124,6 +124,70 @@ export const REISE_KONTEN = {
   '04': { fahrt: '6590', reise: '6680', vma: '6674', verpflNA: '6672', gegen: '2180', vst7: '1401', vst19: '1406' },
 }
 
+// Umsatzsteuer: DATEV-Konten je Kontenrahmen (Docs 5305392/5305395/5361623/5360338/5360341).
+// verr=USt-Vorauszahlungen(Verrechnung), verb=Verbindlichkeiten aus USt-VZ, ford=Forderungen aus USt-VZ,
+// sonder=Sondervorauszahlung 1/11, frueher=USt-Forderungen frühere Jahre, bank; EÜR: verb11 §11 Abs.2 S.2,
+// lfd=USt laufendes Jahr, vj=USt Vorjahr.
+export const UST_KONTEN = {
+  '03': { verr: '1780', verb: '1797', ford: '1545', sonder: '1781', frueher: '1539', bank: '1200', verb11: '1704', lfd: '1789', vj: '1790' },
+  '04': { verr: '3820', verb: '3860', ford: '1420', sonder: '3830', frueher: '1425', bank: '1800', verb11: '3509', lfd: '3840', vj: '3841' },
+}
+
+// Umsatzsteuer-Abstimmung: Gemeldet (Steuerkonto oder UStVA-Protokolle) vs. Gebucht (Buchhaltung).
+export function ustAbstimmung(w) {
+  const r2 = x => Math.round(x * 100) / 100
+  const quelle = w.quelle || 'steuerkonto'
+  let gemeldet = 0, sUst = 0, sVst = 0, sBmg = 0
+  if (quelle === 'protokolle') {
+    (w.uva || []).forEach(r => { if (!r) return; gemeldet += num(r.zahllast); sUst += num(r.ust); sVst += num(r.vst); sBmg += num(r.bmg) })
+  } else if (w.skModus === 'jahr') { gemeldet = num(w.skJahr) }
+  else { (w.skPos || []).forEach(r => { if (r) gemeldet += (r.art === 'erstattung' ? -num(r.betrag) : num(r.betrag)) }) }
+  let gebucht = 0
+  if (w.buchModus === 'periodisch') { (w.buchPos || []).forEach(r => { if (r) gebucht += num(r.betrag) }) }
+  else { gebucht = num(w.buchGesamt) }
+  const zahllastAusUstVst = r2(sUst - sVst)
+  return {
+    quelle, gemeldet: r2(gemeldet), gebucht: r2(gebucht), differenz: r2(gemeldet - gebucht),
+    hatBmg: sUst > 0 || sVst > 0 || sBmg > 0, sUst: r2(sUst), sVst: r2(sVst), sBmg: r2(sBmg),
+    zahllastAusUstVst, plausDiff: r2(gemeldet - zahllastAusUstVst),
+  }
+}
+
+// § 11 Abs. 2 S. 2 EStG (EÜR): 10-Tage-Regel für USt-Vorauszahlungen um den Jahreswechsel
+// (Erlass FinMin SH 14.02.2022, Dok. 7013061). Fälligkeit = 10. Tag nach VZ-Zeitraum
+// (§ 18 Abs. 1 S. 4 UStG); § 108 Abs. 3 AO (Werktagsverschiebung) bleibt unberücksichtigt.
+// SEPA-Lastschrift: Abfluss gilt am Fälligkeitstag (bei Kontodeckung), spätere Abbuchung unbeachtlich.
+export function ust10Tage(row, jahr, dauerfrist, K) {
+  const fmt = d => (d && !isNaN(d)) ? d.toLocaleDateString('de-DE') : ''
+  const y = parseInt(jahr, 10) || getStichtag().getFullYear()
+  const grenz = new Date(y + 1, 0, 10) // 10.01. des Folgejahres
+  const z = (row.zeitraum || 'dez').toLowerCase()
+  let faellig = /nov/.test(z) ? new Date(y, 11, 10) : new Date(y + 1, 0, 10) // Nov → 10.12.; Dez/Q4 → 10.01.
+  if (dauerfrist) faellig = new Date(faellig.getFullYear(), faellig.getMonth() + 1, 10)
+  const parseD = s => { if (!s) return null; const p = String(s).split('-'); if (p.length < 3) return null; const d = new Date(+p[0], +p[1] - 1, +p[2]); return isNaN(d) ? null : d }
+  const zahl = parseD(row.zahldatum)
+  const abfluss = row.sepa ? faellig : zahl
+  const boundary = !/nov/.test(z); const wd = grenz.getDay(); const weekend = boundary && (wd === 0 || wd === 6)
+  let zuordnung = 'unklar', begr = ''
+  if (!abfluss || isNaN(abfluss)) { begr = 'Zahlungsdatum fehlt – bei SEPA genügt der Zeitraum.' }
+  else if (dauerfrist && faellig > grenz) { zuordnung = 'zahlung'; begr = 'Dauerfristverlängerung: Fälligkeit ' + fmt(faellig) + ' liegt außerhalb der 10 Tage → Jahr der Zahlung (strittig, BFH VIII R 1/20 & 25/20).' }
+  else if (faellig <= grenz && abfluss <= grenz) { zuordnung = 'wirtschaft'; begr = 'Fälligkeit (' + fmt(faellig) + ') und ' + (row.sepa ? 'SEPA-Abfluss (= Fälligkeit)' : 'Zahlung (' + fmt(zahl) + ')') + ' bis zum 10.01. → wirtschaftliches Jahr ' + y + '.' }
+  else { zuordnung = 'zahlung'; begr = (faellig > grenz ? 'Fälligkeit ' + fmt(faellig) + ' außerhalb der 10 Tage' : 'Abfluss ' + fmt(abfluss) + ' nach dem 10.01.') + ' → Jahr der Zahlung.' }
+  const jahrZahlung = abfluss && !isNaN(abfluss) ? abfluss.getFullYear() : y + 1
+  // Buchungsvorschlag nur für den Klassiker: Betriebsausgabe (USt-VZ) fällt wirtschaftlich ins alte Jahr,
+  // Zahlung erfolgt aber erst im Folgejahr innerhalb der 10 Tage → Abgrenzung über § 11-Verbindlichkeit (1704/3509).
+  let buchung = null, buchungTxt = ''
+  const betr = num(row.betrag)
+  const klassiker = zuordnung === 'wirtschaft' && jahrZahlung > y // im Folgejahr gezahlt, aber altem Jahr zugeordnet
+  if (K && klassiker && betr > 0) {
+    const zTxt = fmt(abfluss)
+    buchung = { s: K.lfd, st: 'Umsatzsteuervorauszahlung (Betriebsausgabe)', h: K.verb11, ht: 'Sonstige Verbindlichkeiten § 11 Abs. 2 S. 2 EStG', betr: Math.round(betr * 100) / 100,
+      text: 'USt-VZ § 11 Abs. 2 S. 2 EStG – Betriebsausgabe wirtschaftl. Jahr ' + y + ' (Zahlung ' + zTxt + ', innerhalb 10 Tage)' }
+    buchungTxt = 'Abgrenzung ' + y + ': ' + K.lfd + ' (Umsatzsteuervorauszahlung) an ' + K.verb11 + ' (Sonstige Verbindlichkeiten § 11 Abs. 2 S. 2 EStG) ' + eur(Math.round(betr * 100) / 100) + '. Zahlung ' + (y + 1) + ': ' + K.verb11 + ' an Bank.'
+  }
+  return { faelligTxt: fmt(faellig), abflussTxt: fmt(abfluss), zuordnung, begr, weekend, jahr: y, jahrZahlung, klassiker, buchung, buchungTxt }
+}
+
 // ── Modul-Registry (Typ C = Fachanwendungen) ──────────────────────────────────
 export const MODULE = {
   bewirtung: { name: 'Bewirtungsaufwendungen', bereich: 'ba', typ: 'C',
@@ -1103,48 +1167,44 @@ export const MODULE = {
       return { ergebnisse: [...detail, { l: 'Ertrag laufendes Jahr', v: sumErtrag }],
         total: { l: 'Passiver RAP zum ' + getStichtag().toLocaleDateString('de-DE'), v: sumRap },
         buchungen, hinweise: ['Passive RAP: im Voraus erhaltene (vereinnahmte) Erträge, die wirtschaftlich das Folgejahr betreffen (§ 5 Abs. 5 Satz 1 Nr. 2 EStG).'] } } },
-  ustModul: { name: 'Umsatzsteuer (Konten & Verprobung)', bereich: 'steuern', typ: 'C', kontoListe: true,
-    flags: [
-      { k: 'fVa', label: 'USt-Voranmeldungen mit Jahressummen abgestimmt' },
-      { k: 'fZm', label: 'Zusammenfassende Meldung / § 13b abgestimmt' },
-      { k: 'fVerprobung', label: 'Umsatzsteuer-Verprobung durchgeführt' } ],
-    felder: [
-      { k: 'erloese19', l: 'Bemessungsgrundlage 19 % (netto, lt. Erlöskonten)', t: 'num' },
-      { k: 'erloese7', l: 'Bemessungsgrundlage 7 % (netto)', t: 'num' },
-      { k: 'vzFA', l: 'geleistete USt-Vorauszahlungen lt. Steuerkonto (Finanzamt)', t: 'num' },
-      { k: 'kForderung', l: 'Konto Forderung USt', t: 'text', def: '1548' },
-      { k: 'kVerb', l: 'Konto Verbindlichkeit USt', t: 'text', def: '1790' },
-      { k: 'notiz', l: 'Notiz / Klärung Verprobungsdifferenz', t: 'area' } ],
-    listen: [{ key: 'konten', label: 'Umsatzsteuer-Konten (Rolle je Konto zuordnen)', rowNotes: true, felder: [
-      { k: 'konto', l: 'Konto', t: 'text' }, { k: 'bez', l: 'Bezeichnung', t: 'text' }, { k: 'saldo', l: 'Saldo', t: 'num' }, { k: 'vj', l: 'Vorjahr', t: 'num' },
-      { k: 'rolle', l: 'Rolle', t: 'select', opt: [['', '— Rolle —'], ['ust', 'USt (Ausgang)'], ['vst', 'Vorsteuer'], ['13b', '§ 13b'], ['vz', 'Vorauszahlung'], ['fordverb', 'Forderung/Verb.'], ['sonst', 'sonstige']] },
-      { k: 'ok', l: 'geprüft', t: 'check' } ] }],
+  ustModul: { name: 'Umsatzsteuer-Abstimmung (Jahresabschluss)', bereich: 'steuern', typ: 'C', custom: 'ust', kontoListe: true,
+    listen: [{ key: 'konten', label: 'USt-Konten der Buchhaltung (optional, aus SuSa)', felder: [
+      { k: 'konto', l: 'Konto', t: 'text' }, { k: 'bez', l: 'Bezeichnung', t: 'text' }, { k: 'saldo', l: 'Saldo', t: 'num' } ] }],
     rechnen: (w, ctx) => {
-      const rows = w.konten || []; let ust = 0, vst = 0, u13 = 0, vz = 0, fv = 0
-      rows.forEach(r => { if (!r) return; const s = num(r.saldo); const rolle = r.rolle || ustRolleGuess(r.konto, r.bez)
-        if (rolle === 'ust') ust += s; else if (rolle === 'vst') vst += s; else if (rolle === '13b') u13 += s; else if (rolle === 'vz') vz += s; else if (rolle === 'fordverb') fv += s })
-      const zahllast = ust + u13 - vst
-      const bmg19 = num(w.erloese19), bmg7 = num(w.erloese7); const soll = Math.round((bmg19 * 0.19 + bmg7 * 0.07) * 100) / 100
-      const verpr = Math.round((ust - soll) * 100) / 100
-      const vzFA = num(w.vzFA); const rest = zahllast - vzFA; const erstattung = rest < 0
+      const r2 = x => Math.round(x * 100) / 100
+      const a = ustAbstimmung(w)
+      const euer = (w.besteuerung || (ctx && ctx.gw === 'euer' ? 'euer' : 'soll')) === 'euer'
+      const gemeldetLbl = a.quelle === 'protokolle' ? 'Gemeldet lt. UStVA-Protokollen' : 'Gemeldet lt. Steuerkonto'
       const erg = [
-        { l: 'Ausgangsumsatzsteuer (gebucht)', v: ust },
-        { l: '+ Umsatzsteuer § 13b', v: u13 },
-        { l: '− Vorsteuer', v: -vst },
-        { l: '= Umsatzsteuer-Zahllast', v: zahllast, stark: 1 },
-        { l: '− geleistete Vorauszahlungen (Steuerkonto FA)', v: -vzFA } ]
-      if (bmg19 || bmg7) erg.push({ l: 'Verprobung: Soll-USt (19 % / 7 %)', v: soll }, { l: 'gebuchte Ausgangs-USt', v: ust }, { l: 'Verprobungsdifferenz', v: verpr })
-      const total = { l: erstattung ? 'USt-Erstattungsanspruch' : 'USt-Restschuld ans Finanzamt', v: Math.abs(rest) }
+        { l: gemeldetLbl, v: a.gemeldet },
+        { l: 'Erfasst lt. Buchhaltung', v: a.gebucht },
+        { l: 'Differenz (gemeldet − gebucht)', v: a.differenz, stark: 1 } ]
+      if (a.quelle === 'protokolle' && a.hatBmg) erg.push({ l: 'Plausibilität: USt − Vorsteuer lt. UStVA', v: a.zahllastAusUstVst })
+      const skr = w.skr === '04' ? '04' : '03'; const K = UST_KONTEN[skr]
       const hinweise = [], buchungen = []
-      if ((bmg19 || bmg7) && Math.abs(verpr) >= 1) hinweise.push('Verprobungsdifferenz ' + eur(verpr) + ' aufklären (z. B. § 13b-, steuerfreie/Ausfuhr-Umsätze, Anzahlungen, unentgeltliche Wertabgaben, Periodenverschiebungen).')
-      if ((vz || vzFA) && Math.abs(vz - vzFA) >= 0.01) hinweise.push('Vorauszahlungen lt. Buchung (' + eur(vz) + ') und lt. Steuerkonto FA (' + eur(vzFA) + ') weichen um ' + eur(Math.abs(vz - vzFA)) + ' ab – abstimmen.')
-      if ((ctx.gw || 'euer') === 'bilanz') {
-        if (Math.abs(rest) >= 0.01) {
-          if (erstattung) buchungen.push({ s: w.kForderung || '1548', st: 'Forderung Umsatzsteuer', h: '1780', ht: 'USt-Vorauszahlungen', betr: Math.abs(rest), text: 'USt-Erstattungsanspruch zum 31.12.' })
-          else buchungen.push({ s: '1780', st: 'USt-Vorauszahlungen', h: w.kVerb || '1790', ht: 'Verbindlichkeit Umsatzsteuer', betr: Math.abs(rest), text: 'USt-Restschuld zum 31.12.' })
-        }
-      } else hinweise.push('EÜR: USt wirkt sich erst bei Zahlung/Erstattung als Betriebsausgabe/-einnahme aus (§ 11 EStG) – keine Forderung/Verbindlichkeit ausweisen.')
-      return { ergebnisse: erg, total, hinweise, buchungen }
+      if (Math.abs(a.differenz) < 0.005) hinweise.push('✅ Abgestimmt: Buchhaltung und Finanzamt stimmen überein.')
+      else hinweise.push('Gegenüber dem Finanzamt wurden ' + eur(a.gemeldet) + ' gemeldet; in der Buchhaltung sind ' + eur(a.gebucht) + ' erfasst → Differenz ' + eur(a.differenz) + '. Differenz prüfen und ggf. Umsatzsteuer-' + (a.differenz > 0 ? 'verbindlichkeit' : 'forderung') + ' nachbuchen (Vorschlag, nicht automatisch buchen).')
+      if (a.quelle === 'protokolle' && a.hatBmg && Math.abs(a.plausDiff) >= 1) hinweise.push('Plausibilität: Summe der gemeldeten Zahllasten (' + eur(a.gemeldet) + ') weicht von „USt − Vorsteuer" (' + eur(a.zahllastAusUstVst) + ') um ' + eur(a.plausDiff) + ' ab – Erfassung der Protokolle prüfen (§ 13b, steuerfreie/Ausfuhr-Umsätze, Anzahlungen, Sondervorauszahlung/Dauerfristverlängerung).')
+      if (!euer && Math.abs(a.differenz) >= 0.01) {
+        const kVerr = w.kVerr || K.verr
+        if (a.differenz > 0) buchungen.push({ s: kVerr, st: 'USt-Vorauszahlungen', h: w.kVerb || K.verb, ht: 'Verbindlichkeiten aus USt-Vorauszahlungen', betr: r2(a.differenz), text: 'USt-Verbindlichkeit 31.12. (Differenz Meldung/Buchung)' })
+        else buchungen.push({ s: w.kForderung || K.ford, st: 'Forderungen aus USt-Vorauszahlungen', h: kVerr, ht: 'USt-Vorauszahlungen', betr: r2(Math.abs(a.differenz)), text: 'USt-Forderung 31.12. (Differenz Meldung/Buchung)' })
+        hinweise.push('Buchung nach DATEV (SKR' + skr + '): ' + (a.differenz > 0 ? kVerr + ' an ' + (w.kVerb || K.verb) + ' (Verbindlichkeiten aus USt-Vorauszahlungen)' : (w.kForderung || K.ford) + ' (Forderungen aus USt-Vorauszahlungen) an ' + kVerr) + '. Betrifft i. d. R. die Voranmeldungen Nov/Dez bzw. Q4 (unterjährige Abgrenzung nicht zwingend).')
+      }
+      if (w.sondervz && num(w.sondervzBetrag) > 0) {
+        buchungen.push({ s: K.sonder, st: 'USt-Sondervorauszahlung 1/11', h: K.bank, ht: 'Bank', betr: r2(num(w.sondervzBetrag)), text: 'USt-Sondervorauszahlung 1/11 (Dauerfristverlängerung)' })
+        hinweise.push('Sondervorauszahlung 1/11 (Dauerfristverlängerung, 1/11 der Vorjahres-Zahllast) → ' + K.sonder + ' an ' + K.bank + '; sie wird auf die letzte Voranmeldung des Jahres angerechnet – bei der Abstimmung berücksichtigen.')
+      }
+      if (num(w.fruehereBetrag) !== 0) hinweise.push('USt-Forderung frühere Jahre / aus Betriebsprüfung (' + eur(r2(num(w.fruehereBetrag))) + ') auf Konto ' + K.frueher + ' (SKR' + skr + ', Sonstige Vermögensgegenstände) ausweisen – außerhalb des USt-Gruppensaldos des laufenden Jahres.')
+      if (euer) hinweise.push('EÜR (§ 11 EStG): keine USt-Forderung/-Verbindlichkeit bilanzieren. Regelmäßig wiederkehrende USt-VZ (10-Tage-Regel) über ' + K.verb11 + ' (Sonstige Verbindlichkeiten § 11 Abs. 2 S. 2); Dezember-VZ mit ' + K.lfd + ' (USt laufendes Jahr) neutralisieren, Zahlung im Folgejahr über ' + K.vj + ' (USt Vorjahr). Zu-/Abfluss rund um den Jahreswechsel prüfen.')
+      if (euer && (w.euerPos || []).length) {
+        const jahr = getStichtag().getFullYear(); let nAlt = 0, nNeu = 0, nWarn = 0, nBu = 0
+        ;(w.euerPos || []).forEach(r => { if (!r) return; const t = ust10Tage(r, jahr, w.dauerfrist, K); if (t.zuordnung === 'wirtschaft') nAlt++; else if (t.zuordnung === 'zahlung') nNeu++; if (t.weekend && t.zuordnung === 'wirtschaft') nWarn++
+          if (t.buchung) { buchungen.push(t.buchung); nBu++ } })
+        hinweise.push('§ 11 10-Tage-Regel: ' + nAlt + ' Zahlung(en) dem wirtschaftlichen Jahr ' + jahr + ' zugeordnet, ' + nNeu + ' dem Jahr der Zahlung' + (nWarn ? ' – ' + nWarn + ' mit Wochenend-/Feiertags-Warnung (Einzelfall prüfen)' : '') + '.')
+        if (nBu) hinweise.push('Buchungsvorschlag (SKR' + skr + ') für ' + nBu + ' im Folgejahr gezahlte, aber dem alten Jahr zuzurechnende USt-VZ: ' + K.lfd + ' (Umsatzsteuervorauszahlung) an ' + K.verb11 + ' (Sonstige Verbindlichkeiten § 11 Abs. 2 S. 2 EStG); Zahlung im Folgejahr ' + K.verb11 + ' an Bank. Nur Vorschlag – nicht automatisch buchen.')
+      }
+      return { ergebnisse: erg, total: { l: 'Differenz Meldung/Buchung', v: a.differenz }, hinweise, buchungen }
     } },
   steuerrueck: { name: 'Steuerrückstellungen (GewSt/KSt)', bereich: 'passiva', typ: 'B', konto: '0955', bez: 'Steuerrückstellungen' },
   darlehenKonto: { name: 'Darlehen / Bankverbindlichkeiten (Konto)', bereich: 'passiva', typ: 'B', konto: '0630', bez: 'Darlehen' },
@@ -1394,6 +1454,33 @@ export function buildExportSheets(cl, meta) {
         ['Status', (STATUS[d.status || 'offen'])[1]], ['Notiz', d.notiz || '']);
         (d.offen || []).forEach((o, oi) => rows.push([oi === 0 ? 'Offene Punkte' : '', o])) })
       bl.push({ name: 'Darlehen', rows }); return }
+    if (mod.custom === 'ust') {
+      const w = p.werte; const a = ustAbstimmung(w)
+      const bt = { soll: 'Sollversteuerung', ist: 'Istversteuerung', euer: 'EÜR (§ 4 Abs. 3)' }
+      const vaL = { monat: 'monatlich', quartal: 'vierteljährlich', jahr: 'nur Jahreserklärung', keine: 'keine' }
+      const rows = [['Umsatzsteuer-Abstimmung – ' + (meta.mandant || '')], [],
+        ['Besteuerungsart', bt[w.besteuerung] || 'Sollversteuerung'],
+        ['Voranmeldung', vaL[w.voranmeldung] || 'monatlich'],
+        ['Dauerfristverlängerung', w.dauerfrist ? 'ja' : '—'],
+        ['Sondervorauszahlung 1/11', w.sondervz ? num(w.sondervzBetrag) : '—'],
+        ['Datenquelle', a.quelle === 'protokolle' ? 'UStVA-Übermittlungsprotokolle' : 'Steuerkonto'], [],
+        ['Gemeldet ans Finanzamt', a.gemeldet], ['Erfasst lt. Buchhaltung', a.gebucht], ['Differenz (gemeldet − gebucht)', a.differenz],
+        ['Status', (STATUS[p.status] || STATUS.offen)[1]], []]
+      const rr = (mod.rechnen(w, { gw: cl.gw || meta.gw }).buchungen) || []
+      if (rr.length) { rows.push(['Buchungsvorschläge', 'Soll', 'Haben', 'Betrag', 'Text']); rr.forEach(b => rows.push(['', b.s, b.h || '', b.betr, b.text])); rows.push([]) }
+      const hist = w.buchhistorie || []
+      if (hist.length) { rows.push(['Buchungs-Historie', 'Datum', 'Soll', 'Haben', 'Betrag', 'Text', 'Vermerk']); hist.forEach(h => rows.push(['', h.datum || '', h.soll || '', h.haben || '', num(h.betrag), h.text || '', h.vermerk || ''])); rows.push([]) }
+      if (w.besteuerung === 'euer' && (w.euerPos || []).length) {
+        const jahr = getStichtag().getFullYear()
+        const Ke = UST_KONTEN[w.skr === '04' ? '04' : '03']
+        const zL = { dez: 'Dezember', q4: 'Q4', nov: 'November', sonst: 'sonstiger' }
+        rows.push(['§ 11 · USt-Zahlungen Jahreswechsel', 'Zeitraum', 'Zahlungsdatum', 'SEPA', 'Betrag', 'Fälligkeit', 'Zuordnung', 'Buchungsvorschlag'])
+        w.euerPos.forEach(r => { if (!r) return; const t = ust10Tage(r, jahr, w.dauerfrist, Ke)
+          rows.push(['', zL[r.zeitraum] || r.zeitraum || '', r.zahldatum || '', r.sepa ? 'ja' : '—', num(r.betrag), t.faelligTxt, t.zuordnung === 'wirtschaft' ? 'wirtsch. Jahr ' + t.jahr : t.zuordnung === 'zahlung' ? 'Jahr der Zahlung ' + t.jahrZahlung : 'unklar', t.buchungTxt || '']) })
+        rows.push([])
+      }
+      if (w.notiz) rows.push([], ['Notiz', w.notiz])
+      bl.push({ name: 'USt-Abstimmung', rows }); return }
     const struktur = mod.flags || mod.felder || mod.positionen || mod.listen
     if (!mod.rechnen && !struktur) return; const ctx = { gw: cl.gw || meta.gw, rechtsform: (cl.stammdaten && cl.stammdaten.rechtsform) || meta.rf || '' }
     const rows = [[p.titel], []]
