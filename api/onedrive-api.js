@@ -377,6 +377,52 @@ export default async function handler(req, res) {
       return ok({ item: d })
     }
 
+    // ── moveItem ─────────────────────────────────────────────────────────────
+    // Verschiebt eine Datei in einen Zielordner UND benennt sie optional um –
+    // in EINEM Graph-PATCH (parentReference + name). Das ist ein echtes
+    // Verschieben (keine Kopie), das Original wird nicht dupliziert.
+    // Sicherheitsregeln:
+    //   - Zielordner wird bei Bedarf angelegt (ensureFolderPath).
+    //   - KEIN Überschreiben: bei Namenskonflikt im Ziel → 409, Datei bleibt unangetastet.
+    if (action === 'moveItem') {
+      const { itemId, zielordner, neuerName } = params
+      if (!itemId) return fail(400, 'itemId fehlt')
+
+      const pathParts = String(zielordner ?? '').split('/').map(s => s.trim()).filter(Boolean)
+      if (pathParts.length === 0) return fail(400, 'Zielordner fehlt')
+
+      const name = String(neuerName ?? '').trim()
+      if (name && /[\\/:*?"<>|]/.test(name)) {
+        return fail(400, 'Der Name enthält unzulässige Zeichen ( \\ / : * ? " < > | )')
+      }
+
+      // Zielordner sicherstellen (rekursiv anlegen, falls nicht vorhanden)
+      let zielFolderId
+      try {
+        zielFolderId = await ensureFolderPath(tokens, pathParts)
+      } catch (e) {
+        return fail(500, `Zielordner konnte nicht angelegt werden: ${String(e)}`)
+      }
+
+      // Umbenennen + Verschieben; conflictBehavior 'fail' → niemals überschreiben
+      const body = { parentReference: { id: zielFolderId } }
+      if (name) body.name = name
+      const r = await graphFetch(`${GRAPH}/me/drive/items/${itemId}?@microsoft.graph.conflictBehavior=fail`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      }, tokens)
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok) {
+        const msg = d.error?.message ?? 'move failed'
+        if (r.status === 409 || /already exists|nameAlreadyExists/i.test(msg)) {
+          return fail(409, `„${name || 'Die Datei'}" existiert im Zielordner bereits – nicht verschoben.`)
+        }
+        return fail(r.status, msg)
+      }
+      return ok({ item: d })
+    }
+
     // ── listRootContents ─────────────────────────────────────────────────────
     if (action === 'listRootContents') {
       const r = await graphFetch(`${GRAPH}/me/drive/root/children?$select=id,name,folder,size,lastModifiedDateTime`, {}, tokens)

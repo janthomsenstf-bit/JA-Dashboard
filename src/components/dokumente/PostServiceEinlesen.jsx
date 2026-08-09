@@ -153,6 +153,23 @@ export default function PostServiceEinlesen({ clients = [], tokens, onUpdateToke
       : prev))
   }, [])
 
+  // Ablage AUSFÜHREN: Datei umbenennen + verschieben (Graph move, keine Kopie).
+  // Erst nach ausdrücklichem Klick. Bei Namenskonflikt bricht das Backend ab
+  // (kein Überschreiben) – die Datei bleibt dann unangetastet im Eingangsordner.
+  const setzeAblage = (dateiId, patch) =>
+    setErgebnisse(prev => (prev[dateiId] ? { ...prev, [dateiId]: { ...prev[dateiId], ...patch } } : prev))
+
+  const ablegenAusfuehren = useCallback(async (datei, zielordner, dateiname) => {
+    if (!zielordner || !dateiname) return
+    setzeAblage(datei.id, { ablageStatus: 'laeuft', ablageFehler: null })
+    try {
+      await callApi('moveItem', { itemId: datei.id, zielordner, neuerName: dateiname }, tokens, onUpdateTokens)
+      setzeAblage(datei.id, { ablageStatus: 'fertig', ablagePfad: `${zielordner}/${dateiname}` })
+    } catch (e) {
+      setzeAblage(datei.id, { ablageStatus: 'fehler', ablageFehler: e?.message ?? 'Ablage fehlgeschlagen.' })
+    }
+  }, [tokens, onUpdateTokens])
+
   const fmtGroesse = b => (!b ? '–' : b < 1024*1024 ? `${(b/1024).toFixed(0)} KB` : `${(b/1024/1024).toFixed(1)} MB`)
 
   return (
@@ -224,6 +241,7 @@ export default function PostServiceEinlesen({ clients = [], tokens, onUpdateToke
                 onErkennen={() => dateiErkennen(d)}
                 onMandant={clientId => mandantWechseln(d, clientId)}
                 onWahl={patch => wahlAendern(d.id, patch)}
+                onAblegen={(zo, dn) => ablegenAusfuehren(d, zo, dn)}
                 fmtGroesse={fmtGroesse}
               />
             ))}
@@ -235,7 +253,7 @@ export default function PostServiceEinlesen({ clients = [], tokens, onUpdateToke
 }
 
 // ── Eine Datei-Zeile mit Erkennungs-Ergebnis + Vorschlag/Aktionen ─────────────
-function DateiKarte({ datei, ergebnis, clients = [], onErkennen, onMandant, onWahl, fmtGroesse }) {
+function DateiKarte({ datei, ergebnis, clients = [], onErkennen, onMandant, onWahl, onAblegen, fmtGroesse }) {
   const status = ergebnis?.status
   const sk = SICHERHEIT_STIL[ergebnis?.sicherheit] ?? null
 
@@ -278,6 +296,7 @@ function DateiKarte({ datei, ergebnis, clients = [], onErkennen, onMandant, onWa
           clients={clients}
           onMandant={onMandant}
           onWahl={onWahl}
+          onAblegen={onAblegen}
         />
       )}
     </div>
@@ -285,13 +304,29 @@ function DateiKarte({ datei, ergebnis, clients = [], onErkennen, onMandant, onWa
 }
 
 // ── Vorschlag + Aktionen für eine erkannte Datei ──────────────────────────────
-function VorschlagPanel({ ergebnis, clients = [], onMandant, onWahl }) {
+function VorschlagPanel({ ergebnis, clients = [], onMandant, onWahl, onAblegen }) {
   const wahl = ergebnis.wahl ?? {}
   const kandidaten = ergebnis.kandidaten ?? []
   const kandidat = kandidaten.find(k => k.clientId === wahl.clientId) ?? null
   const kannAblegen = !!wahl.clientId
   const entschieden = !!wahl.aktion
   const ak = AKTION_STIL[wahl.aktion] ?? null
+  const ablageStatus = ergebnis.ablageStatus
+
+  // Bereits abgelegt → Datei ist verschoben; nur noch Ergebnis zeigen
+  if (ablageStatus === 'fertig') {
+    return (
+      <div style={{ padding: '0 15px 14px' }}>
+        <div style={{ fontSize: '12.5px', color: '#15803d', background: '#16a34a14', border: '1px solid #16a34a33', borderRadius: '9px', padding: '10px 12px' }}>
+          <strong>✅ Abgelegt</strong> unter{' '}
+          <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, wordBreak: 'break-all' }}>{ergebnis.ablagePfad}</span>
+          {wahl.aktion === 'senden' && (
+            <div style={{ marginTop: '5px', color: 'var(--text-muted)' }}>→ E-Mail an den Mandanten folgt in Stufe 5.</div>
+          )}
+        </div>
+      </div>
+    )
+  }
 
   const alleMandanten = clients
     .filter(c => !c.archiviert)
@@ -398,15 +433,45 @@ function VorschlagPanel({ ergebnis, clients = [], onMandant, onWahl }) {
           >⏳ Zurückstellen</button>
         </div>
       ) : (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: '12px', fontWeight: 700, padding: '5px 11px', borderRadius: '9px', background: ak.bg, color: ak.farbe }}>{ak.label}</span>
-          <button
-            onClick={() => onWahl({ aktion: null })}
-            style={{ padding: '5px 11px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text)', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}
-          >Ändern</button>
-          <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-            Ausführung (Verschieben/Mail) folgt in den nächsten Stufen.
-          </span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '9px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '12px', fontWeight: 700, padding: '5px 11px', borderRadius: '9px', background: ak.bg, color: ak.farbe }}>{ak.label}</span>
+            {ablageStatus !== 'laeuft' && (
+              <button
+                onClick={() => onWahl({ aktion: null })}
+                style={{ padding: '5px 11px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text)', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}
+              >Ändern</button>
+            )}
+          </div>
+
+          {/* Echte Ablage-Ausführung (Umbenennen + Verschieben) */}
+          {(wahl.aktion === 'senden' || wahl.aktion === 'ablegen') && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+              {ablageStatus === 'laeuft' ? (
+                <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Wird umbenannt &amp; verschoben …</span>
+              ) : (
+                <button
+                  onClick={() => onAblegen(wahl.zielordner, wahl.dateiname)}
+                  disabled={!wahl.zielordner || !wahl.dateiname}
+                  title={(!wahl.zielordner || !wahl.dateiname) ? 'Zielordner und Dateiname erforderlich' : ''}
+                  style={aktBtn('#2563eb', !!(wahl.zielordner && wahl.dateiname))}
+                >📁 Umbenennen &amp; verschieben</button>
+              )}
+              {wahl.aktion === 'senden' && ablageStatus !== 'laeuft' && (
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Mailversand folgt in Stufe 5.</span>
+              )}
+            </div>
+          )}
+
+          {wahl.aktion === 'zurueck' && (
+            <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Zurückgestellt – keine Aktion.</span>
+          )}
+
+          {ablageStatus === 'fehler' && (
+            <div style={{ fontSize: '11.5px', color: '#b91c1c', background: '#ef444414', border: '1px solid #ef444440', borderRadius: '8px', padding: '7px 10px' }}>
+              {ergebnis.ablageFehler}
+            </div>
+          )}
         </div>
       )}
     </div>
