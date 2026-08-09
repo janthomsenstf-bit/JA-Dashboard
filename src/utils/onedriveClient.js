@@ -156,6 +156,25 @@ export function getMandantPath(client) {
 }
 
 /**
+ * Normalisiert einen OneDrive-Ordnerpfad für die Graph-API:
+ *  - Backslashes → Schrägstriche
+ *  - entfernt den lokalen Sync-Prefix (…/OneDrive - <Name>/ bzw. …/OneDrive/),
+ *    sodass aus einem im Explorer kopierten Pfad der Graph-relative Pfad wird
+ *  - entfernt führende/abschließende Schrägstriche
+ *
+ * Beispiel:
+ *   "C:\\Users\\flott\\OneDrive - Jan Thomsen\\1. Spielbuch\\Neue Dokumente"
+ *   → "1. Spielbuch/Neue Dokumente"
+ * Ein bereits relativer Pfad ("1. Spielbuch/Neue Dokumente") bleibt unverändert.
+ */
+export function normalisiereOnedrivePfad(pfad) {
+  let p = String(pfad ?? '').trim().replace(/\\/g, '/')
+  const m = p.match(/OneDrive[^/]*\/(.*)$/i)
+  if (m) p = m[1]
+  return p.replace(/^\/+|\/+$/g, '')
+}
+
+/**
  * Sendet eine E-Mail über das Microsoft-Konto (Graph API).
  * Die Mail landet automatisch in Outlook "Gesendete Elemente".
  *

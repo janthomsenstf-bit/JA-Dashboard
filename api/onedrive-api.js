@@ -297,10 +297,14 @@ export default async function handler(req, res) {
     }
 
     // ── downloadUrl ──────────────────────────────────────────────────────────
+    // Nimmt entweder itemId (robust – bleibt nach Verschieben/Umbenennen gültig)
+    // ODER filePath.
     if (action === 'downloadUrl') {
-      const { filePath } = params
-      const encoded = encodeURIComponent(filePath).replace(/%2F/g, '/')
-      const r = await graphFetch(`${GRAPH}/me/drive/root:/${encoded}`, {}, tokens)
+      const { filePath, itemId } = params
+      const url = itemId
+        ? `${GRAPH}/me/drive/items/${itemId}`
+        : `${GRAPH}/me/drive/root:/${encodeURIComponent(filePath ?? '').replace(/%2F/g, '/')}`
+      const r = await graphFetch(url, {}, tokens)
       const d = await r.json()
       if (!r.ok) return fail(r.status, d.error?.message ?? 'downloadUrl failed')
       return ok({ downloadUrl: d['@microsoft.graph.downloadUrl'], item: d })

@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from 'react'
-import { callApi } from '../../utils/onedriveClient.js'
+import { callApi, sendMailGraph, normalisiereOnedrivePfad } from '../../utils/onedriveClient.js'
 import { pdfTextExtrahieren } from '../../utils/pdfText.js'
 import { extrahiereKennungen, erkenneDokumenttyp, ordneMandantZu, maskiereIban } from '../../utils/dokErkennung.js'
 import { baueVorschlag } from '../../utils/dokVorschlag.js'
 import { baueMailEntwurf } from '../../utils/dokMail.js'
+import { ladeProtokoll, speichereProtokoll, markiere, eintrag, statusText } from '../../utils/dokProtokoll.js'
 
 /**
  * PostServiceEinlesen – Stufe 2b-1 des Dokumente/Post-Service.
@@ -51,18 +52,32 @@ export default function PostServiceEinlesen({ clients = [], tokens, onUpdateToke
   const [ladenListe, setLadenListe] = useState(false)
   const [ladenAlle, setLadenAlle]   = useState(false)
   const [fehler, setFehler] = useState('')
+  const [protokoll, setProtokoll] = useState({}) // itemId → { abgelegt, gesendet, ts, clientId }
 
-  // Konfigurierten Eingangsordner laden
+  // Konfigurierten Eingangsordner + Verarbeitungsprotokoll laden
   useEffect(() => {
     const gespeichert = localStorage.getItem(ORDNER_KEY) ?? ''
     setEingangsordner(gespeichert)
     setEntwurfsordner(gespeichert)
+    setProtokoll(ladeProtokoll())
+  }, [])
+
+  // Protokoll aktualisieren + persistieren
+  const protokolliere = useCallback((itemId, patch) => {
+    setProtokoll(prev => {
+      const neu = markiere(prev, itemId, { ...patch, ts: new Date().toISOString() })
+      speichereProtokoll(neu)
+      return neu
+    })
   }, [])
 
   const speichereOrdner = () => {
-    const wert = entwurfsordner.trim().replace(/^\/+|\/+$/g, '')
+    // Auch aus dem Explorer kopierte lokale Pfade (C:\…\OneDrive - …\) werden
+    // in den Graph-relativen Pfad umgewandelt.
+    const wert = normalisiereOnedrivePfad(entwurfsordner)
     localStorage.setItem(ORDNER_KEY, wert)
     setEingangsordner(wert)
+    setEntwurfsordner(wert)   // dem Nutzer den effektiv gespeicherten Pfad zeigen
     setDateien([])
     setErgebnisse({})
   }
@@ -178,16 +193,54 @@ export default function PostServiceEinlesen({ clients = [], tokens, onUpdateToke
   const setzeAblage = (dateiId, patch) =>
     setErgebnisse(prev => (prev[dateiId] ? { ...prev, [dateiId]: { ...prev[dateiId], ...patch } } : prev))
 
-  const ablegenAusfuehren = useCallback(async (datei, zielordner, dateiname) => {
+  const ablegenAusfuehren = useCallback(async (datei, zielordner, dateiname, clientId) => {
     if (!zielordner || !dateiname) return
     setzeAblage(datei.id, { ablageStatus: 'laeuft', ablageFehler: null })
     try {
       await callApi('moveItem', { itemId: datei.id, zielordner, neuerName: dateiname }, tokens, onUpdateTokens)
       setzeAblage(datei.id, { ablageStatus: 'fertig', ablagePfad: `${zielordner}/${dateiname}` })
+      protokolliere(datei.id, { abgelegt: true, clientId: clientId ?? null })
     } catch (e) {
       setzeAblage(datei.id, { ablageStatus: 'fehler', ablageFehler: e?.message ?? 'Ablage fehlgeschlagen.' })
     }
-  }, [tokens, onUpdateTokens])
+  }, [tokens, onUpdateTokens, protokolliere])
+
+  // E-Mail SENDEN: Dokument als Anhang laden und über Graph verschicken.
+  // Wird ausschließlich nach ausdrücklichem Klick + Bestätigung ausgelöst.
+  const setzeMail = (dateiId, patch) =>
+    setErgebnisse(prev => (prev[dateiId]?.mail
+      ? { ...prev, [dateiId]: { ...prev[dateiId], mail: { ...prev[dateiId].mail, ...patch } } }
+      : prev))
+
+  const sendenAusfuehren = useCallback(async (datei, mail, clientId) => {
+    if (!mail?.empfaenger) return
+    setzeMail(datei.id, { sendeStatus: 'laeuft', sendeFehler: null })
+    try {
+      // Anhang robust per itemId laden (gültig auch nach dem Verschieben)
+      const dl = await callApi('downloadUrl', { itemId: datei.id }, tokens, onUpdateTokens)
+      if (!dl.downloadUrl) throw new Error('Anhang konnte nicht geladen werden.')
+      const resp = await fetch(dl.downloadUrl)
+      if (!resp.ok) throw new Error(`Anhang-Download fehlgeschlagen (HTTP ${resp.status}).`)
+      const bytes = new Uint8Array(await resp.arrayBuffer())
+      let bin = ''
+      const CH = 0x8000
+      for (let i = 0; i < bytes.length; i += CH) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CH))
+      const base64 = btoa(bin)
+
+      await sendMailGraph({
+        to: mail.empfaenger,
+        subject: mail.betreff,
+        body: mail.text,
+        bodyType: 'text',
+        attachments: [{ filename: mail.anhang || datei.name, content: base64, contentType: 'application/pdf' }],
+      }, tokens, onUpdateTokens)
+
+      setzeMail(datei.id, { sendeStatus: 'fertig' })
+      protokolliere(datei.id, { gesendet: true, clientId: clientId ?? null })
+    } catch (e) {
+      setzeMail(datei.id, { sendeStatus: 'fehler', sendeFehler: e?.message ?? 'Versand fehlgeschlagen.' })
+    }
+  }, [tokens, onUpdateTokens, protokolliere])
 
   const fmtGroesse = b => (!b ? '–' : b < 1024*1024 ? `${(b/1024).toFixed(0)} KB` : `${(b/1024/1024).toFixed(1)} MB`)
 
@@ -197,13 +250,13 @@ export default function PostServiceEinlesen({ clients = [], tokens, onUpdateToke
       <div style={{ padding: '13px 16px', marginBottom: '18px', borderRadius: '11px', background: 'var(--surface)', border: `1px dashed ${FARBE}55` }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '9px', marginBottom: '6px' }}>
           <span style={{ fontSize: '17px' }} aria-hidden="true">📥</span>
-          <strong style={{ fontSize: '14px', color: 'var(--text)' }}>Post-Service – Einlesen &amp; Erkennen</strong>
-          <span style={{ fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '10px', background: FARBE + '18', color: FARBE }}>Stufe 2</span>
+          <strong style={{ fontSize: '14px', color: 'var(--text)' }}>Post-Service – Einlesen, Erkennen, Ablegen &amp; Benachrichtigen</strong>
         </div>
         <p style={{ margin: 0, fontSize: '12.5px', lineHeight: 1.65, color: 'var(--text-muted)' }}>
           Liest die PDFs des Eingangsordners, erkennt lokal Dokumenttyp und Mandant über
-          harte Kennungen (IBAN, USt-IdNr., Steuernummer …). <strong style={{ color: 'var(--text)' }}>Reine Vorschau</strong> –
-          es wird nichts verschoben, umbenannt oder versendet.
+          harte Kennungen (IBAN, USt-IdNr., Steuernummer …) und schlägt Ablage + E-Mail vor.
+          <strong style={{ color: 'var(--text)' }}> Verschieben und Versenden geschieht nur nach Deinem ausdrücklichen Klick</strong> –
+          nichts wird automatisch ausgeführt.
         </p>
       </div>
 
@@ -229,6 +282,10 @@ export default function PostServiceEinlesen({ clients = [], tokens, onUpdateToke
             disabled={!eingangsordner || ladenListe}
             style={{ padding: '9px 15px', borderRadius: '9px', border: 'none', background: FARBE, color: '#fff', fontSize: '13px', fontWeight: 700, cursor: (!eingangsordner || ladenListe) ? 'default' : 'pointer', opacity: (!eingangsordner || ladenListe) ? 0.6 : 1 }}
           >{ladenListe ? 'Lese …' : '📂 Ordner einlesen'}</button>
+        </div>
+        <div style={{ marginTop: '6px', fontSize: '11px', color: 'var(--text-muted)' }}>
+          Pfad <strong>relativ zum OneDrive-Stamm</strong>, z. B. <code style={{ fontFamily: 'var(--font-mono)' }}>1. Spielbuch/1. Allgemeines/Neue Dokumente</code>.
+          Ein aus dem Explorer kopierter lokaler Pfad (<code style={{ fontFamily: 'var(--font-mono)' }}>C:\…\OneDrive - …\</code>) wird beim Speichern automatisch umgewandelt.
         </div>
       </div>
 
@@ -261,7 +318,9 @@ export default function PostServiceEinlesen({ clients = [], tokens, onUpdateToke
                 onMandant={clientId => mandantWechseln(d, clientId)}
                 onWahl={patch => wahlAendern(d.id, patch)}
                 onMail={patch => mailAendern(d.id, patch)}
-                onAblegen={(zo, dn) => ablegenAusfuehren(d, zo, dn)}
+                onAblegen={(zo, dn, cid) => ablegenAusfuehren(d, zo, dn, cid)}
+                onSenden={(mail, cid) => sendenAusfuehren(d, mail, cid)}
+                protokollInfo={eintrag(protokoll, d.id)}
                 fmtGroesse={fmtGroesse}
               />
             ))}
@@ -273,9 +332,10 @@ export default function PostServiceEinlesen({ clients = [], tokens, onUpdateToke
 }
 
 // ── Eine Datei-Zeile mit Erkennungs-Ergebnis + Vorschlag/Aktionen ─────────────
-function DateiKarte({ datei, ergebnis, clients = [], onErkennen, onMandant, onWahl, onMail, onAblegen, fmtGroesse }) {
+function DateiKarte({ datei, ergebnis, clients = [], onErkennen, onMandant, onWahl, onMail, onAblegen, onSenden, protokollInfo, fmtGroesse }) {
   const status = ergebnis?.status
   const sk = SICHERHEIT_STIL[ergebnis?.sicherheit] ?? null
+  const protokollHinweis = statusText(protokollInfo)
 
   return (
     <div style={{ borderRadius: '11px', border: '1px solid var(--border)', background: 'var(--surface)', overflow: 'hidden' }}>
@@ -296,6 +356,13 @@ function DateiKarte({ datei, ergebnis, clients = [], onErkennen, onMandant, onWa
           >{status ? 'Neu' : 'Erkennen'}</button>
         )}
       </div>
+
+      {/* Doppelverarbeitungs-Warnung (Protokoll je Datei-ID) */}
+      {protokollHinweis && (
+        <div style={{ margin: '0 15px 10px', fontSize: '11.5px', color: '#b45309', background: '#f59e0b14', border: '1px solid #f59e0b33', borderRadius: '8px', padding: '6px 10px' }}>
+          ⚠ Diese Datei wurde bereits verarbeitet ({protokollHinweis}). Erneute Aktion nur, wenn wirklich gewünscht.
+        </div>
+      )}
 
       {/* Ergebnis */}
       {status === 'laden' && (
@@ -318,6 +385,7 @@ function DateiKarte({ datei, ergebnis, clients = [], onErkennen, onMandant, onWa
           onWahl={onWahl}
           onMail={onMail}
           onAblegen={onAblegen}
+          onSenden={onSenden}
         />
       )}
     </div>
@@ -325,7 +393,7 @@ function DateiKarte({ datei, ergebnis, clients = [], onErkennen, onMandant, onWa
 }
 
 // ── Vorschlag + Aktionen für eine erkannte Datei ──────────────────────────────
-function VorschlagPanel({ ergebnis, clients = [], onMandant, onWahl, onMail, onAblegen }) {
+function VorschlagPanel({ ergebnis, clients = [], onMandant, onWahl, onMail, onAblegen, onSenden }) {
   const wahl = ergebnis.wahl ?? {}
   const kandidaten = ergebnis.kandidaten ?? []
   const kandidat = kandidaten.find(k => k.clientId === wahl.clientId) ?? null
@@ -346,7 +414,7 @@ function VorschlagPanel({ ergebnis, clients = [], onMandant, onWahl, onMail, onA
           )}
         </div>
         {wahl.aktion === 'senden' && ergebnis.mail && (
-          <MailEntwurf mail={ergebnis.mail} onMail={onMail} />
+          <MailEntwurf mail={ergebnis.mail} onMail={onMail} onSenden={m => onSenden(m, wahl.clientId)} />
         )}
       </div>
     )
@@ -475,7 +543,7 @@ function VorschlagPanel({ ergebnis, clients = [], onMandant, onWahl, onMail, onA
                 <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Wird umbenannt &amp; verschoben …</span>
               ) : (
                 <button
-                  onClick={() => onAblegen(wahl.zielordner, wahl.dateiname)}
+                  onClick={() => onAblegen(wahl.zielordner, wahl.dateiname, wahl.clientId)}
                   disabled={!wahl.zielordner || !wahl.dateiname}
                   title={(!wahl.zielordner || !wahl.dateiname) ? 'Zielordner und Dateiname erforderlich' : ''}
                   style={aktBtn('#2563eb', !!(wahl.zielordner && wahl.dateiname))}
@@ -498,7 +566,7 @@ function VorschlagPanel({ ergebnis, clients = [], onMandant, onWahl, onMail, onA
           )}
 
           {wahl.aktion === 'senden' && ergebnis.mail && (
-            <MailEntwurf mail={ergebnis.mail} onMail={onMail} />
+            <MailEntwurf mail={ergebnis.mail} onMail={onMail} onSenden={m => onSenden(m, wahl.clientId)} />
           )}
         </div>
       )}
@@ -506,8 +574,10 @@ function VorschlagPanel({ ergebnis, clients = [], onMandant, onWahl, onMail, onA
   )
 }
 
-// ── Editierbarer Mail-Entwurf (Stufe 5, kein Versand) ─────────────────────────
-function MailEntwurf({ mail, onMail }) {
+// ── Editierbarer Mail-Entwurf + Versand (Stufe 5/6) ───────────────────────────
+function MailEntwurf({ mail, onMail, onSenden }) {
+  const [bestaetigen, setBestaetigen] = useState(false)
+  const sende = mail.sendeStatus
   return (
     <div style={{ marginTop: '4px', border: '1px solid var(--border)', borderRadius: '10px', background: 'var(--surface2)', padding: '11px 12px', display: 'flex', flexDirection: 'column', gap: '9px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -549,12 +619,45 @@ function MailEntwurf({ mail, onMail }) {
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', fontSize: '11px', color: 'var(--text-muted)' }}>
         <span>📎 Anhang: <span style={{ fontFamily: 'var(--font-mono)' }}>{mail.anhang || '—'}</span></span>
-        <span style={{ marginLeft: 'auto' }}>Anrede/Text frei anpassbar · Versand erst in Stufe 6</span>
+        <span style={{ marginLeft: 'auto' }}>Anrede/Text frei anpassbar</span>
       </div>
 
       {!mail.empfaenger && (
         <div style={{ fontSize: '11px', color: '#b45309', background: '#f59e0b14', border: '1px solid #f59e0b33', borderRadius: '7px', padding: '6px 9px' }}>
           ⚠ Keine E-Mail-Adresse beim Mandanten hinterlegt – bitte oben ergänzen.
+        </div>
+      )}
+
+      {/* Versand – nur nach ausdrücklichem Klick + Bestätigung */}
+      {sende === 'fertig' ? (
+        <div style={{ fontSize: '12px', fontWeight: 700, color: '#15803d', background: '#16a34a14', border: '1px solid #16a34a33', borderRadius: '8px', padding: '8px 11px' }}>
+          ✅ E-Mail gesendet an {mail.empfaenger}
+        </div>
+      ) : sende === 'laeuft' ? (
+        <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Sende E-Mail …</div>
+      ) : bestaetigen ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '9px', flexWrap: 'wrap', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '8px', padding: '8px 11px' }}>
+          <span style={{ fontSize: '12px', color: 'var(--text)' }}>Wirklich an <strong>{mail.empfaenger}</strong> senden?</span>
+          <button
+            onClick={() => { setBestaetigen(false); onSenden(mail) }}
+            style={aktBtn('#16a34a', true)}
+          >Ja, jetzt senden</button>
+          <button
+            onClick={() => setBestaetigen(false)}
+            style={{ padding: '8px 12px', borderRadius: '9px', border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text)', fontSize: '12.5px', fontWeight: 600, cursor: 'pointer' }}
+          >Abbrechen</button>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '9px', flexWrap: 'wrap' }}>
+          <button
+            onClick={() => setBestaetigen(true)}
+            disabled={!mail.empfaenger}
+            title={mail.empfaenger ? '' : 'E-Mail-Adresse erforderlich'}
+            style={aktBtn('#dc2626', !!mail.empfaenger)}
+          >✉️ E-Mail senden</button>
+          {sende === 'fehler' && (
+            <span style={{ fontSize: '11.5px', color: '#b91c1c' }}>{mail.sendeFehler}</span>
+          )}
         </div>
       )}
     </div>
