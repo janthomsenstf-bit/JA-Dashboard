@@ -248,6 +248,14 @@ function StammdatenErweitertSection({ client, onUpdate, onedriveTokens, onUpdate
   const gesellschafter = Array.isArray(client.gesellschafter) ? client.gesellschafter : []
   const geschaeftsfuehrer = Array.isArray(client.geschaeftsfuehrer) ? client.geschaeftsfuehrer : []
 
+  // Post-Service / Dokumenten-Erkennungsmerkmale
+  const ibans            = Array.isArray(client.ibans) ? client.ibans : []
+  const anschriften      = Array.isArray(client.anschriften) ? client.anschriften : []
+  const typischeAbsender = Array.isArray(client.typischeAbsender) ? client.typischeAbsender : []
+  const addTo = (key, arr, entry) => onUpdate({ [key]: [...arr, { id: genId(), ...entry }] })
+  const updIn = (key, arr, id, patch) => onUpdate({ [key]: arr.map(x => x.id === id ? { ...x, ...patch } : x) })
+  const delIn = (key, arr, id) => onUpdate({ [key]: arr.filter(x => x.id !== id) })
+
   function genId() { return 's' + Date.now().toString(36) + Math.random().toString(36).slice(2, 4) }
 
   function addGesellschafter() {
@@ -293,6 +301,89 @@ function StammdatenErweitertSection({ client, onUpdate, onedriveTokens, onUpdate
           style={{ ...inputStyle, width: '200px' }}
         />
       </SetupRow>
+
+      {/* USt-ID */}
+      <SetupRow label="USt-IdNr.">
+        <input className="input" value={client.ustId ?? ''} onChange={e => onUpdate({ ustId: e.target.value })}
+          placeholder="z. B. DE123456789" style={{ ...inputStyle, width: '200px', fontFamily: 'var(--font-mono)' }} />
+      </SetupRow>
+
+      {/* Handelsregisternummer */}
+      <SetupRow label="Handelsregister">
+        <input className="input" value={client.handelsregister ?? ''} onChange={e => onUpdate({ handelsregister: e.target.value })}
+          placeholder="z. B. HRB 12345, AG Flensburg" style={{ ...inputStyle, width: '260px' }} />
+      </SetupRow>
+
+      {/* Korrespondenzsprache */}
+      <SetupRow label="Korrespondenzsprache">
+        <select value={client.korrespondenzsprache ?? 'de'} onChange={e => onUpdate({ korrespondenzsprache: e.target.value })}
+          style={{ ...inputStyle, width: '160px' }}>
+          <option value="de">Deutsch</option>
+          <option value="da">Dänisch</option>
+        </select>
+      </SetupRow>
+
+      {/* IBANs / Konten */}
+      <div style={{ padding: '7px 0', borderBottom: '1px solid var(--border)' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', minWidth: '130px', textTransform: 'uppercase', letterSpacing: '0.05em', paddingTop: '4px' }}>IBANs / Konten</span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', flex: 1 }}>
+            {ibans.map(x => (
+              <div key={x.id} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <input className="input" value={x.iban ?? ''} onChange={e => updIn('ibans', ibans, x.id, { iban: e.target.value })} placeholder="IBAN" style={{ ...inputStyle, width: '260px', fontFamily: 'var(--font-mono)' }} />
+                <input className="input" value={x.bez ?? ''} onChange={e => updIn('ibans', ibans, x.id, { bez: e.target.value })} placeholder="Bank / Zweck (optional)" style={{ ...inputStyle, width: '180px' }} />
+                <button onClick={() => delIn('ibans', ibans, x.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: '16px', padding: '0 2px', lineHeight: 1 }}>✕</button>
+              </div>
+            ))}
+            <button className="btn btn-ghost btn-sm" onClick={() => addTo('ibans', ibans, { iban: '', bez: '' })} style={{ fontSize: '11px', alignSelf: 'flex-start', marginTop: ibans.length > 0 ? '2px' : '0' }}>➕ IBAN</button>
+          </div>
+        </div>
+      </div>
+
+      {/* Abweichende Anschriften */}
+      <div style={{ padding: '7px 0', borderBottom: '1px solid var(--border)' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', minWidth: '130px', textTransform: 'uppercase', letterSpacing: '0.05em', paddingTop: '4px' }}>Anschriften</span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', flex: 1 }}>
+            {anschriften.map(x => (
+              <div key={x.id} style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                <select value={x.typ ?? 'post'} onChange={e => updIn('anschriften', anschriften, x.id, { typ: e.target.value })} style={{ ...inputStyle, width: '150px' }}>
+                  <option value="post">Postanschrift</option>
+                  <option value="zustell">Zustellanschrift</option>
+                  <option value="rechnung">Rechnungsanschrift</option>
+                  <option value="sonstige">Sonstige</option>
+                </select>
+                <input className="input" value={x.text ?? ''} onChange={e => updIn('anschriften', anschriften, x.id, { text: e.target.value })} placeholder="Straße, PLZ Ort" style={{ ...inputStyle, width: '320px' }} />
+                <button onClick={() => delIn('anschriften', anschriften, x.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: '16px', padding: '0 2px', lineHeight: 1 }}>✕</button>
+              </div>
+            ))}
+            <button className="btn btn-ghost btn-sm" onClick={() => addTo('anschriften', anschriften, { typ: 'post', text: '' })} style={{ fontSize: '11px', alignSelf: 'flex-start', marginTop: anschriften.length > 0 ? '2px' : '0' }}>➕ Anschrift</button>
+          </div>
+        </div>
+      </div>
+
+      {/* Typische Absender (für Dokument-Zuordnung) */}
+      <div style={{ padding: '7px 0', borderBottom: '1px solid var(--border)' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', minWidth: '130px', textTransform: 'uppercase', letterSpacing: '0.05em', paddingTop: '4px' }}>Typische Absender</span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', flex: 1 }}>
+            {typischeAbsender.map(x => (
+              <div key={x.id} style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                <select value={x.kategorie ?? 'bank'} onChange={e => updIn('typischeAbsender', typischeAbsender, x.id, { kategorie: e.target.value })} style={{ ...inputStyle, width: '140px' }}>
+                  <option value="bank">Bank</option>
+                  <option value="finanzamt">Finanzamt</option>
+                  <option value="versicherung">Versicherung</option>
+                  <option value="lieferant">Lieferant</option>
+                  <option value="sonstige">Sonstige</option>
+                </select>
+                <input className="input" value={x.name ?? ''} onChange={e => updIn('typischeAbsender', typischeAbsender, x.id, { name: e.target.value })} placeholder="Name des Absenders (z. B. Sparkasse Flensburg)" style={{ ...inputStyle, width: '300px' }} />
+                <button onClick={() => delIn('typischeAbsender', typischeAbsender, x.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: '16px', padding: '0 2px', lineHeight: 1 }}>✕</button>
+              </div>
+            ))}
+            <button className="btn btn-ghost btn-sm" onClick={() => addTo('typischeAbsender', typischeAbsender, { kategorie: 'bank', name: '' })} style={{ fontSize: '11px', alignSelf: 'flex-start', marginTop: typischeAbsender.length > 0 ? '2px' : '0' }}>➕ Absender</button>
+          </div>
+        </div>
+      </div>
 
       {/* Unternehmensgegenstand */}
       <SetupRow label="Unternehmensgegenstand">

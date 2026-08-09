@@ -248,6 +248,13 @@ function migrateClient(c) {
     fibuNotizen:                 Array.isArray(c.fibuNotizen) ? c.fibuNotizen : [],
     steuernummer:                c.steuernummer                  ?? '',
     onedrivePfad:                c.onedrivePfad                  ?? '',
+    // Post-Service / Dokumenten-Erkennungsmerkmale (additiv)
+    ustId:                       c.ustId                         ?? '',
+    handelsregister:             c.handelsregister               ?? '',
+    korrespondenzsprache:        c.korrespondenzsprache          ?? 'de',   // 'de' | 'da'
+    ibans:                       Array.isArray(c.ibans)             ? c.ibans             : [],
+    anschriften:                 Array.isArray(c.anschriften)       ? c.anschriften       : [],
+    typischeAbsender:            Array.isArray(c.typischeAbsender)  ? c.typischeAbsender  : [],
     gesellschafter:              Array.isArray(c.gesellschafter)  ? c.gesellschafter : [],
     geschaeftsfuehrer:           Array.isArray(c.geschaeftsfuehrer) ? c.geschaeftsfuehrer : [],
   }
