@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { callApi } from '../../utils/onedriveClient.js'
 import { pdfTextExtrahieren } from '../../utils/pdfText.js'
 import { extrahiereKennungen, erkenneDokumenttyp, ordneMandantZu, maskiereIban } from '../../utils/dokErkennung.js'
+import { baueVorschlag } from '../../utils/dokVorschlag.js'
 
 /**
  * PostServiceEinlesen – Stufe 2b-1 des Dokumente/Post-Service.
@@ -23,6 +24,22 @@ const SICHERHEIT_STIL = {
   mittel:  { label: 'Wahrscheinl.',farbe: '#ca8a04', bg: '#ca8a0418' },
   niedrig: { label: 'Unsicher',    farbe: '#ea580c', bg: '#ea580c18' },
   keiner:  { label: 'Kein Treffer',farbe: '#6b7280', bg: '#6b728018' },
+}
+
+const AKTION_STIL = {
+  senden:  { label: '✅ Bestätigt – zum Senden vorgemerkt', farbe: '#16a34a', bg: '#16a34a14' },
+  ablegen: { label: '📁 Zum Ablegen vorgemerkt',            farbe: '#2563eb', bg: '#2563eb14' },
+  zurueck: { label: '⏳ Zurückgestellt',                    farbe: '#6b7280', bg: '#6b728014' },
+}
+
+const feldStil = {
+  width: '100%', padding: '7px 10px', borderRadius: '8px',
+  border: '1px solid var(--border)', background: 'var(--surface2)',
+  color: 'var(--text)', fontSize: '12px', outline: 'none',
+}
+const labelStil = {
+  display: 'block', fontSize: '10px', fontWeight: 700, letterSpacing: '0.06em',
+  textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '4px',
 }
 
 export default function PostServiceEinlesen({ clients = [], tokens, onUpdateTokens }) {
@@ -86,10 +103,20 @@ export default function PostServiceEinlesen({ clients = [], tokens, onUpdateToke
       const kennungen = extrahiereKennungen(text)
       const typ = erkenneDokumenttyp(text)
       const zuordnung = ordneMandantZu(text, clients, kennungen)
-      setErgebnisse(prev => ({
-        ...prev,
-        [datei.id]: { status: 'fertig', seiten, typ, ...zuordnung },
-      }))
+      const ergebnis = { status: 'fertig', seiten, typ, ...zuordnung }
+      // Vorschlag (Mandant, Zielordner, Dateiname) vorbelegen
+      const vorClient = zuordnung.besterTreffer
+        ? clients.find(c => c.id === zuordnung.besterTreffer.clientId) ?? null
+        : null
+      const v = baueVorschlag(ergebnis, vorClient, datei.name)
+      ergebnis.wahl = {
+        clientId:   vorClient?.id ?? null,
+        dateiname:  v.dateiname,
+        zielordner: v.zielordner,
+        warnungen:  v.warnungen,
+        aktion:     null,   // null | 'senden' | 'ablegen' | 'zurueck'
+      }
+      setErgebnisse(prev => ({ ...prev, [datei.id]: ergebnis }))
     } catch (e) {
       setErgebnisse(prev => ({ ...prev, [datei.id]: { status: 'fehler', fehler: e?.message ?? 'Fehler' } }))
     }
@@ -104,6 +131,27 @@ export default function PostServiceEinlesen({ clients = [], tokens, onUpdateToke
     }
     setLadenAlle(false)
   }, [dateien, dateiErkennen])
+
+  // Mandant manuell (um)wählen → Zielordner + Dateiname neu vorschlagen
+  const mandantWechseln = useCallback((datei, clientId) => {
+    setErgebnisse(prev => {
+      const erg = prev[datei.id]
+      if (!erg) return prev
+      const client = clients.find(c => c.id === clientId) ?? null
+      const v = baueVorschlag(erg, client, datei.name)
+      return { ...prev, [datei.id]: { ...erg, wahl: {
+        ...erg.wahl, clientId: client?.id ?? null,
+        dateiname: v.dateiname, zielordner: v.zielordner, warnungen: v.warnungen,
+      } } }
+    })
+  }, [clients])
+
+  // Einzelnes Feld der Wahl ändern (Dateiname/Zielordner/Aktion)
+  const wahlAendern = useCallback((dateiId, patch) => {
+    setErgebnisse(prev => (prev[dateiId]
+      ? { ...prev, [dateiId]: { ...prev[dateiId], wahl: { ...prev[dateiId].wahl, ...patch } } }
+      : prev))
+  }, [])
 
   const fmtGroesse = b => (!b ? '–' : b < 1024*1024 ? `${(b/1024).toFixed(0)} KB` : `${(b/1024/1024).toFixed(1)} MB`)
 
@@ -172,7 +220,10 @@ export default function PostServiceEinlesen({ clients = [], tokens, onUpdateToke
                 key={d.id}
                 datei={d}
                 ergebnis={ergebnisse[d.id]}
+                clients={clients}
                 onErkennen={() => dateiErkennen(d)}
+                onMandant={clientId => mandantWechseln(d, clientId)}
+                onWahl={patch => wahlAendern(d.id, patch)}
                 fmtGroesse={fmtGroesse}
               />
             ))}
@@ -183,8 +234,8 @@ export default function PostServiceEinlesen({ clients = [], tokens, onUpdateToke
   )
 }
 
-// ── Eine Datei-Zeile mit Erkennungs-Ergebnis ──────────────────────────────────
-function DateiKarte({ datei, ergebnis, onErkennen, fmtGroesse }) {
+// ── Eine Datei-Zeile mit Erkennungs-Ergebnis + Vorschlag/Aktionen ─────────────
+function DateiKarte({ datei, ergebnis, clients = [], onErkennen, onMandant, onWahl, fmtGroesse }) {
   const status = ergebnis?.status
   const sk = SICHERHEIT_STIL[ergebnis?.sicherheit] ?? null
 
@@ -222,39 +273,154 @@ function DateiKarte({ datei, ergebnis, onErkennen, fmtGroesse }) {
         </div>
       )}
       {status === 'fertig' && (
-        <div style={{ padding: '0 15px 14px', display: 'flex', flexDirection: 'column', gap: '9px' }}>
-          {/* Typ + Kennungen */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-            <Chip label={`Typ: ${ergebnis.typ?.typ ?? 'Unbekannt'}`} />
-            {ergebnis.kennungen?.datumse?.[0] && <Chip label={`Datum: ${ergebnis.kennungen.datumse[0]}`} />}
-            {ergebnis.kennungen?.ibans?.map(i => <Chip key={i} label={`IBAN ${maskiereIban(i)}`} mono />)}
-            {ergebnis.kennungen?.ustIds?.map(u => <Chip key={u} label={`USt-IdNr. ${u}`} mono />)}
-            {ergebnis.kennungen?.steuernummern?.map(s => <Chip key={s} label="Steuernummer erkannt" />)}
-          </div>
+        <VorschlagPanel
+          ergebnis={ergebnis}
+          clients={clients}
+          onMandant={onMandant}
+          onWahl={onWahl}
+        />
+      )}
+    </div>
+  )
+}
 
-          {/* Zuordnung */}
-          {ergebnis.besterTreffer ? (
-            <div style={{ fontSize: '12.5px', color: 'var(--text)' }}>
-              → Zuordnung: <strong>{ergebnis.besterTreffer.name}</strong>
-              {ergebnis.besterTreffer.mandantennummer ? ` (${ergebnis.besterTreffer.mandantennummer})` : ''}
-              <span style={{ color: 'var(--text-muted)' }}> · {ergebnis.besterTreffer.gruende.join(', ')}</span>
-            </div>
-          ) : ergebnis.kandidaten?.length > 0 ? (
-            <div style={{ fontSize: '12.5px', color: 'var(--text)' }}>
-              → <strong>Bitte prüfen</strong> – mehrere/unsichere Kandidaten:
-              <ul style={{ margin: '4px 0 0', paddingLeft: '18px', color: 'var(--text-muted)' }}>
-                {ergebnis.kandidaten.slice(0, 3).map(k => (
-                  <li key={k.clientId}>{k.name}{k.mandantennummer ? ` (${k.mandantennummer})` : ''} – {k.gruende.join(', ')}</li>
+// ── Vorschlag + Aktionen für eine erkannte Datei ──────────────────────────────
+function VorschlagPanel({ ergebnis, clients = [], onMandant, onWahl }) {
+  const wahl = ergebnis.wahl ?? {}
+  const kandidaten = ergebnis.kandidaten ?? []
+  const kandidat = kandidaten.find(k => k.clientId === wahl.clientId) ?? null
+  const kannAblegen = !!wahl.clientId
+  const entschieden = !!wahl.aktion
+  const ak = AKTION_STIL[wahl.aktion] ?? null
+
+  const alleMandanten = clients
+    .filter(c => !c.archiviert)
+    .sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''))
+
+  return (
+    <div style={{ padding: '0 15px 14px', display: 'flex', flexDirection: 'column', gap: '11px' }}>
+      {/* Typ + erkannte Kennungen */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+        <Chip label={`Typ: ${ergebnis.typ?.typ ?? 'Unbekannt'}`} />
+        {ergebnis.kennungen?.datumse?.[0] && <Chip label={`Datum: ${ergebnis.kennungen.datumse[0]}`} />}
+        {ergebnis.kennungen?.ibans?.map(i => <Chip key={i} label={`IBAN ${maskiereIban(i)}`} mono />)}
+        {ergebnis.kennungen?.ustIds?.map(u => <Chip key={u} label={`USt-IdNr. ${u}`} mono />)}
+        {ergebnis.kennungen?.steuernummern?.map(s => <Chip key={s} label="Steuernummer erkannt" />)}
+      </div>
+
+      {/* Vorschlag-Formular */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+        {/* Mandant */}
+        <div style={{ gridColumn: '1 / -1' }}>
+          <label style={labelStil}>Mandant</label>
+          <select
+            value={wahl.clientId ?? ''}
+            onChange={e => onMandant(e.target.value)}
+            disabled={entschieden}
+            style={{ ...feldStil, opacity: entschieden ? 0.7 : 1 }}
+          >
+            <option value="">— Mandant wählen —</option>
+            {kandidaten.length > 0 && (
+              <optgroup label="Erkannte Kandidaten">
+                {kandidaten.map(k => (
+                  <option key={`k-${k.clientId}`} value={k.clientId}>
+                    {k.name}{k.mandantennummer ? ` (${k.mandantennummer})` : ''}
+                  </option>
                 ))}
-              </ul>
-            </div>
-          ) : (
-            <div style={{ fontSize: '12.5px', color: 'var(--text-muted)' }}>→ Kein Mandant zugeordnet – bitte manuell auswählen.</div>
-          )}
+              </optgroup>
+            )}
+            <optgroup label="Alle Mandanten">
+              {alleMandanten.map(c => (
+                <option key={c.id} value={c.id}>
+                  {c.name}{c.mandantennummer ? ` (${c.mandantennummer})` : ''}
+                </option>
+              ))}
+            </optgroup>
+          </select>
+          <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
+            {kandidat
+              ? `Erkannt: ${kandidat.gruende.join(', ')}`
+              : wahl.clientId
+                ? 'Manuell gewählt.'
+                : 'Keine sichere Zuordnung – bitte auswählen.'}
+          </div>
+        </div>
+
+        {/* Zielordner */}
+        <div style={{ gridColumn: '1 / -1' }}>
+          <label style={labelStil}>Zielordner (Vorschlag)</label>
+          <input
+            value={wahl.zielordner ?? ''}
+            onChange={e => onWahl({ zielordner: e.target.value })}
+            disabled={entschieden}
+            placeholder="Mandant wählen …"
+            style={{ ...feldStil, fontFamily: 'var(--font-mono)', opacity: entschieden ? 0.7 : 1 }}
+          />
+        </div>
+
+        {/* Dateiname */}
+        <div style={{ gridColumn: '1 / -1' }}>
+          <label style={labelStil}>Neuer Dateiname (Vorschlag)</label>
+          <input
+            value={wahl.dateiname ?? ''}
+            onChange={e => onWahl({ dateiname: e.target.value })}
+            disabled={entschieden}
+            style={{ ...feldStil, fontFamily: 'var(--font-mono)', opacity: entschieden ? 0.7 : 1 }}
+          />
+        </div>
+      </div>
+
+      {/* Warnungen */}
+      {wahl.warnungen?.length > 0 && !entschieden && (
+        <div style={{ fontSize: '11.5px', color: '#b45309', background: '#f59e0b14', border: '1px solid #f59e0b33', borderRadius: '8px', padding: '7px 10px' }}>
+          ⚠ {wahl.warnungen.join(' ')}
+        </div>
+      )}
+
+      {/* Aktionen bzw. getroffene Entscheidung */}
+      {!entschieden ? (
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+          <button
+            onClick={() => onWahl({ aktion: 'senden' })}
+            disabled={!kannAblegen}
+            title={kannAblegen ? '' : 'Bitte zuerst einen Mandanten wählen'}
+            style={aktBtn('#16a34a', kannAblegen)}
+          >✅ Bestätigen &amp; senden</button>
+          <button
+            onClick={() => onWahl({ aktion: 'ablegen' })}
+            disabled={!kannAblegen}
+            title={kannAblegen ? '' : 'Bitte zuerst einen Mandanten wählen'}
+            style={aktBtn('#2563eb', kannAblegen)}
+          >📁 Nur ablegen</button>
+          <button
+            onClick={() => onWahl({ aktion: 'zurueck' })}
+            style={aktBtn('#6b7280', true, true)}
+          >⏳ Zurückstellen</button>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '12px', fontWeight: 700, padding: '5px 11px', borderRadius: '9px', background: ak.bg, color: ak.farbe }}>{ak.label}</span>
+          <button
+            onClick={() => onWahl({ aktion: null })}
+            style={{ padding: '5px 11px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text)', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}
+          >Ändern</button>
+          <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+            Ausführung (Verschieben/Mail) folgt in den nächsten Stufen.
+          </span>
         </div>
       )}
     </div>
   )
+}
+
+function aktBtn(farbe, aktiv, ghost = false) {
+  return {
+    padding: '8px 14px', borderRadius: '9px', fontSize: '12.5px', fontWeight: 700,
+    cursor: aktiv ? 'pointer' : 'default', opacity: aktiv ? 1 : 0.45,
+    border: ghost ? `1px solid ${farbe}55` : 'none',
+    background: ghost ? 'transparent' : farbe,
+    color: ghost ? 'var(--text)' : '#fff',
+  }
 }
 
 function Chip({ label, mono }) {

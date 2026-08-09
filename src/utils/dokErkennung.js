@@ -205,6 +205,7 @@ export function ordneMandantZu(text, clients = [], vorabKennungen = null) {
   for (const c of clients ?? []) {
     if (!c || c.archiviert) continue
     const gruende = []
+    const absenderTreffer = []
     let score = 0
     let harterTreffer = false
 
@@ -244,6 +245,7 @@ export function ordneMandantZu(text, clients = [], vorabKennungen = null) {
       if (name && name.length >= 3 && tNorm.includes(name)) {
         score += GEWICHT.absender
         gruende.push(`Absender „${a.name}" hinterlegt`)
+        absenderTreffer.push(a.name)
       }
     }
 
@@ -271,6 +273,7 @@ export function ordneMandantZu(text, clients = [], vorabKennungen = null) {
         score,
         harterTreffer,
         gruende,
+        absenderTreffer,
       })
     }
   }
