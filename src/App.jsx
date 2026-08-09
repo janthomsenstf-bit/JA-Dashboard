@@ -994,7 +994,7 @@ export default function App() {
       return {
         ...c,
         rueckfragen: [...c.rueckfragen, {
-          id: 'rq' + Date.now(),
+          id: 'rq' + Date.now() + Math.random().toString(36).slice(2, 6),
           text: text.trim(),
           buchungskonto: '',
           antwort: '',

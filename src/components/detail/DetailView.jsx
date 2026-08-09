@@ -284,6 +284,12 @@ export default function DetailView({
               emailSignaturen={emailSignaturen}
               onedriveTokens={onedriveTokens}
               onUpdateOnedriveTokens={onUpdateOnedriveTokens}
+              onAddRueckfrage={onAddRueckfrage}
+              onToggleRueckfrage={onToggleRueckfrage}
+              onDeleteRueckfrage={onDeleteRueckfrage}
+              onUpdateRueckfrageAntwort={onUpdateRueckfrageAntwort}
+              onUpdateRueckfrageBuchungskonto={onUpdateRueckfrageBuchungskonto}
+              onAddRueckfrageFromCheckliste={onAddRueckfrageFromCheckliste}
             />
           )}
 
@@ -301,6 +307,12 @@ export default function DetailView({
               emailSignaturen={emailSignaturen}
               onedriveTokens={onedriveTokens}
               onUpdateOnedriveTokens={onUpdateOnedriveTokens}
+              onAddRueckfrage={onAddRueckfrage}
+              onToggleRueckfrage={onToggleRueckfrage}
+              onDeleteRueckfrage={onDeleteRueckfrage}
+              onUpdateRueckfrageAntwort={onUpdateRueckfrageAntwort}
+              onUpdateRueckfrageBuchungskonto={onUpdateRueckfrageBuchungskonto}
+              onAddRueckfrageFromCheckliste={onAddRueckfrageFromCheckliste}
             />
           )}
 

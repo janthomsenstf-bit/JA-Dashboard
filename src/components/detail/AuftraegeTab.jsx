@@ -352,8 +352,8 @@ function NotizDiktatWidget({ value, onChange, placeholder = 'Interne Anmerkungen
 // ── Telefon-/Rückfragen-Vorbereitung (JA-Auftrag · Kommunikation & Rückfragen) ─
 // Zwei getrennte Listen am Auftrag: Abfragen an den Mandanten + interne Prüfpunkte.
 // Diktat (Web-Speech de-DE) → Claude formt daraus einzelne Listenpunkte.
-function TelefonVorbereitungSection({ au, onUpdate }) {
-  const [ziel,        setZiel]        = useState('abfragen') // 'abfragen' | 'pruefpunkte'
+function TelefonVorbereitungSection({ au, onUpdate, client, onAddRueckfrage, onToggleRueckfrage, onDeleteRueckfrage }) {
+  const [ziel,        setZiel]        = useState('abfragen') // 'abfragen' → Mandanten-Rückfragen | 'pruefpunkte' → intern/lokal
   const [isRecording, setIsRecording] = useState(false)
   const [interimText, setInterimText] = useState('')
   const [kiLoading,   setKiLoading]   = useState(false)
@@ -363,28 +363,32 @@ function TelefonVorbereitungSection({ au, onUpdate }) {
   const transcriptRef = useRef('')
   const SpeechRec = typeof window !== 'undefined' && (window.SpeechRecognition || window.webkitSpeechRecognition)
 
-  const LISTEN = {
-    abfragen:    { key: 'telefonAbfragen',    titel: 'Abfragen an den Mandanten', color: '#2563eb', icon: '❓', ph: 'Frage an den Mandanten … (Enter)' },
-    pruefpunkte: { key: 'telefonPruefpunkte', titel: 'Prüfpunkte (intern)',        color: '#7c3aed', icon: '☐', ph: 'Interner Prüfpunkt fürs Gespräch … (Enter)' },
+  // Abfragen an den Mandanten = die EINE kanonische Mandanten-Rückfragenliste (client.rueckfragen).
+  // Prüfpunkte (intern) bleiben lokal am Auftrag. telefonAbfragen = Altbestand vor der Umstellung (wird per Klick übernommen).
+  const abfragen    = client?.rueckfragen || []
+  const pruefpunkte = au.telefonPruefpunkte || []
+  const altAbfragen = au.telefonAbfragen || []
+
+  const CFG = {
+    abfragen:    { color: '#2563eb', icon: '❓', titel: 'Abfragen an den Mandanten', ph: 'Frage an den Mandanten … (Enter)' },
+    pruefpunkte: { color: '#7c3aed', icon: '☐', titel: 'Prüfpunkte (intern)',        ph: 'Interner Prüfpunkt fürs Gespräch … (Enter)' },
   }
-  const cfg = LISTEN[ziel]
+  const cfg = CFG[ziel]
 
   useEffect(() => () => recRef.current?.stop(), [])
 
-  function mkItems(arr) {
-    const base = Date.now().toString(36)
-    return arr.map((t, i) => ({ id: base + i.toString(36) + Math.random().toString(36).slice(2, 4), text: t, ok: false }))
-  }
-  function addItems(key, texte) {
-    const clean = (texte || []).map(t => (t || '').trim()).filter(Boolean)
-    if (!clean.length) return
-    onUpdate({ [key]: [...(au[key] || []), ...mkItems(clean)] })
-  }
-  const toggle  = (key, id)       => onUpdate({ [key]: (au[key] || []).map(x => x.id === id ? { ...x, ok: !x.ok } : x) })
-  const del     = (key, id)       => onUpdate({ [key]: (au[key] || []).filter(x => x.id !== id) })
-  const setText = (key, id, text) => onUpdate({ [key]: (au[key] || []).map(x => x.id === id ? { ...x, text } : x) })
+  // Prüfpunkte intern (lokal am Auftrag)
+  function mkLocal(arr) { const base = Date.now().toString(36); return arr.map((t, i) => ({ id: base + i.toString(36) + Math.random().toString(36).slice(2, 4), text: t, ok: false })) }
+  function addPruef(texte) { const clean = (texte || []).map(t => (t || '').trim()).filter(Boolean); if (!clean.length) return; onUpdate({ telefonPruefpunkte: [...pruefpunkte, ...mkLocal(clean)] }) }
+  const togglePruef  = id      => onUpdate({ telefonPruefpunkte: pruefpunkte.map(x => x.id === id ? { ...x, ok: !x.ok } : x) })
+  const delPruef     = id      => onUpdate({ telefonPruefpunkte: pruefpunkte.filter(x => x.id !== id) })
+  const setPruefText = (id, t) => onUpdate({ telefonPruefpunkte: pruefpunkte.map(x => x.id === id ? { ...x, text: t } : x) })
 
-  function addManual() { addItems(cfg.key, manual.split('\n')); setManual('') }
+  // Abfragen an Mandant → kanonische Liste
+  function addAbfragen(texte) { (texte || []).map(t => (t || '').trim()).filter(Boolean).forEach(t => onAddRueckfrage?.(t)) }
+  function addCurrent(texte) { if (ziel === 'abfragen') addAbfragen(texte); else addPruef(texte) }
+  function addManual() { addCurrent(manual.split('\n')); setManual('') }
+  function migrateAlt() { altAbfragen.forEach(x => { if (x && x.text) onAddRueckfrage?.(x.text) }); onUpdate({ telefonAbfragen: [] }) }
 
   async function verarbeite(text) {
     if (!text.trim()) return
@@ -397,7 +401,7 @@ function TelefonVorbereitungSection({ au, onUpdate }) {
     try {
       const result = await callClaudeNotiz(apiKey, sys, text.trim())
       const items = Array.isArray(result.items) ? result.items : (typeof result.text === 'string' ? result.text.split('\n') : [])
-      addItems(cfg.key, items)
+      addCurrent(items)
     } catch (err) { setError('KI-Fehler: ' + err.message) }
     finally { setKiLoading(false) }
   }
@@ -425,30 +429,19 @@ function TelefonVorbereitungSection({ au, onUpdate }) {
     rec.start(); recRef.current = rec; setIsRecording(true)
   }
 
-  function Liste({ lkey, titel, color, icon }) {
-    const items = au[lkey] || []
-    const offen = items.filter(x => !x.ok).length
-    return (
-      <div style={{ flex: 1, minWidth: '240px' }}>
-        <div style={{ fontSize: '11px', fontWeight: 700, color, marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <span>{icon} {titel}</span>
-          <span style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-muted)' }}>{items.length ? `${offen} offen / ${items.length}` : '—'}</span>
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-          {items.length === 0
-            ? <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontStyle: 'italic' }}>Noch keine Einträge – diktieren oder tippen.</div>
-            : items.map(it => (
-              <div key={it.id} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '3px 6px', borderRadius: '6px', background: 'var(--surface)', border: '1px solid var(--border)' }}>
-                <input type="checkbox" checked={!!it.ok} onChange={() => toggle(lkey, it.id)} style={{ flexShrink: 0, cursor: 'pointer', accentColor: color }} />
-                <input value={it.text} onChange={e => setText(lkey, it.id, e.target.value)}
-                  style={{ flex: 1, minWidth: 0, border: 'none', background: 'none', outline: 'none', fontSize: '12px', color: it.ok ? 'var(--text-muted)' : 'var(--text)', textDecoration: it.ok ? 'line-through' : 'none' }} />
-                <button onClick={() => del(lkey, it.id)} title="Entfernen" style={{ flexShrink: 0, background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '12px', lineHeight: 1 }}>✕</button>
-              </div>
-            ))}
-        </div>
-      </div>
-    )
-  }
+  const row = (id, text, done, onToggle, onDel, color, onEdit) => (
+    <div key={id} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '3px 6px', borderRadius: '6px', background: 'var(--surface)', border: '1px solid var(--border)' }}>
+      <input type="checkbox" checked={!!done} onChange={onToggle} style={{ flexShrink: 0, cursor: 'pointer', accentColor: color }} />
+      {onEdit
+        ? <input value={text} onChange={e => onEdit(e.target.value)}
+            style={{ flex: 1, minWidth: 0, border: 'none', background: 'none', outline: 'none', fontSize: '12px', color: done ? 'var(--text-muted)' : 'var(--text)', textDecoration: done ? 'line-through' : 'none' }} />
+        : <span style={{ flex: 1, minWidth: 0, fontSize: '12px', color: done ? 'var(--text-muted)' : 'var(--text)', textDecoration: done ? 'line-through' : 'none' }}>{text}</span>}
+      <button onClick={onDel} title="Entfernen" style={{ flexShrink: 0, background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '12px', lineHeight: 1 }}>✕</button>
+    </div>
+  )
+
+  const offenA = abfragen.filter(r => !r.beantwortet).length
+  const offenP = pruefpunkte.filter(x => !x.ok).length
 
   return (
     <div style={{ marginBottom: '16px', padding: '12px 14px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--surface2)' }}>
@@ -456,12 +449,12 @@ function TelefonVorbereitungSection({ au, onUpdate }) {
         📞 Telefon-/Rückfragen-Vorbereitung
       </div>
       <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '10px' }}>
-        Für das nächste Mandantengespräch: sprich rein – die KI macht daraus einzelne Punkte. Ziel wählen, dann diktieren oder tippen.
+        Sprich rein – die KI macht daraus einzelne Punkte. <b>Abfragen</b> landen direkt in der Mandanten-Rückfragenliste (fürs Mandantenschreiben); <b>Prüfpunkte</b> bleiben intern.
       </div>
 
       {/* Ziel-Umschalter */}
       <div style={{ display: 'flex', gap: '6px', marginBottom: '8px', flexWrap: 'wrap' }}>
-        {Object.entries(LISTEN).map(([k, l]) => (
+        {Object.entries(CFG).map(([k, l]) => (
           <button key={k} onClick={() => setZiel(k)} style={{
             padding: '4px 12px', borderRadius: '20px', fontSize: '11px', fontWeight: ziel === k ? 700 : 500, cursor: 'pointer',
             border: `1px solid ${ziel === k ? l.color : 'var(--border)'}`,
@@ -494,10 +487,44 @@ function TelefonVorbereitungSection({ au, onUpdate }) {
       {kiLoading && <div style={{ fontSize: '11px', color: '#7c3aed', marginBottom: '8px' }}>KI erstellt Punkte …</div>}
       {error && <div style={{ fontSize: '11px', color: '#ef4444', marginBottom: '8px' }}>⚠ {error}</div>}
 
+      {/* Altbestand aus der früheren, separaten Telefonliste – additiv in die Mandantenliste übernehmen */}
+      {altAbfragen.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', padding: '7px 10px', borderRadius: '6px', background: 'rgba(37,99,235,0.06)', border: '1px solid rgba(37,99,235,0.25)', marginBottom: '10px' }}>
+          <span style={{ fontSize: '11px', color: 'var(--text)', flex: 1, minWidth: '160px' }}>
+            {altAbfragen.length} frühere Abfrage(n) aus der Telefonliste sind noch nicht in der Mandanten-Rückfragenliste.
+          </span>
+          <button onClick={migrateAlt} style={{ padding: '5px 12px', borderRadius: '6px', border: 'none', background: '#2563eb', color: '#fff', fontSize: '11px', fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}>→ übernehmen</button>
+        </div>
+      )}
+
       {/* Die zwei Listen */}
       <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', marginTop: '4px' }}>
-        <Liste key="a" lkey={LISTEN.abfragen.key} {...LISTEN.abfragen} />
-        <Liste key="p" lkey={LISTEN.pruefpunkte.key} {...LISTEN.pruefpunkte} />
+        {/* Abfragen an Mandant = client.rueckfragen (kanonisch) */}
+        <div style={{ flex: 1, minWidth: '240px' }}>
+          <div style={{ fontSize: '11px', fontWeight: 700, color: '#2563eb', marginBottom: '2px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span>❓ Abfragen an den Mandanten</span>
+            <span style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-muted)' }}>{abfragen.length ? `${offenA} offen / ${abfragen.length}` : '—'}</span>
+          </div>
+          <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginBottom: '6px' }}>= Mandanten-Rückfragenliste (fürs Schreiben)</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+            {abfragen.length === 0
+              ? <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontStyle: 'italic' }}>Noch keine Rückfragen – diktieren oder tippen.</div>
+              : abfragen.map(r => row(r.id, r.text, r.beantwortet, () => onToggleRueckfrage?.(r.id, !r.beantwortet), () => onDeleteRueckfrage?.(r.id), '#2563eb', null))}
+          </div>
+        </div>
+        {/* Prüfpunkte intern = au.telefonPruefpunkte (lokal) */}
+        <div style={{ flex: 1, minWidth: '240px' }}>
+          <div style={{ fontSize: '11px', fontWeight: 700, color: '#7c3aed', marginBottom: '2px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span>☐ Prüfpunkte (intern)</span>
+            <span style={{ fontSize: '10px', fontWeight: 600, color: 'var(--text-muted)' }}>{pruefpunkte.length ? `${offenP} offen / ${pruefpunkte.length}` : '—'}</span>
+          </div>
+          <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginBottom: '6px' }}>nur intern, nicht im Mandantenschreiben</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+            {pruefpunkte.length === 0
+              ? <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontStyle: 'italic' }}>Noch keine Einträge – diktieren oder tippen.</div>
+              : pruefpunkte.map(x => row(x.id, x.text, x.ok, () => togglePruef(x.id), () => delPruef(x.id), '#7c3aed', t => setPruefText(x.id, t)))}
+          </div>
+        </div>
       </div>
 
       <style>{`@keyframes pulseDiktat{0%,100%{box-shadow:0 0 0 5px rgba(239,68,68,0.2)}50%{box-shadow:0 0 0 10px rgba(239,68,68,0.04)}}`}</style>
@@ -3676,7 +3703,7 @@ function GruendungSection({ au, client, onUpdate, emailVorlagen = [], emailSigna
   )
 }
 
-function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete, client, onOpenEmail, onUpdateClient, emailVorlagen, emailSignaturen, onedriveTokens, onUpdateOnedriveTokens }) {
+function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete, client, onOpenEmail, onUpdateClient, emailVorlagen, emailSignaturen, onedriveTokens, onUpdateOnedriveTokens, onAddRueckfrage, onToggleRueckfrage, onDeleteRueckfrage, onUpdateRueckfrageAntwort, onUpdateRueckfrageBuchungskonto, onAddRueckfrageFromCheckliste }) {
   const typCfg    = AUFTRAGS_TYP_CFG[au.typ]      ?? AUFTRAGS_TYP_CFG.freitext
   const statusCfg = AUFTRAGS_STATUS_CFG[au.status] ?? AUFTRAGS_STATUS_CFG.offen
   const frist     = fmtFrist(au.frist)
@@ -3812,7 +3839,8 @@ function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete, client, onOpe
           )}
           {isJA && jaSubView === 'kommunikation' && (<>
             <JAStatusSection au={au} onUpdate={onUpdate} />
-            <TelefonVorbereitungSection au={au} onUpdate={onUpdate} />
+            <TelefonVorbereitungSection au={au} onUpdate={onUpdate} client={client}
+              onAddRueckfrage={onAddRueckfrage} onToggleRueckfrage={onToggleRueckfrage} onDeleteRueckfrage={onDeleteRueckfrage} />
           </>)}
 
           {/* ── Workflow-Typen: Prozess-Stepper oben ── */}
@@ -4499,7 +4527,7 @@ function SerieErstellenPanel({ onCreate, onClose }) {
 }
 
 // ── Hauptkomponente ───────────────────────────────────────────────────────────
-export default function AuftraegeTab({ client, onUpdate, initialFilterTyp = 'alle', bereich = 'allgemein', onOpenEmail, emailVorlagen = [], emailSignaturen = [], onedriveTokens = null, onUpdateOnedriveTokens }) {
+export default function AuftraegeTab({ client, onUpdate, initialFilterTyp = 'alle', bereich = 'allgemein', onOpenEmail, emailVorlagen = [], emailSignaturen = [], onedriveTokens = null, onUpdateOnedriveTokens, onAddRueckfrage, onToggleRueckfrage, onDeleteRueckfrage, onUpdateRueckfrageAntwort, onUpdateRueckfrageBuchungskonto, onAddRueckfrageFromCheckliste }) {
   const bereichCfg = BEREICH_CFG[bereich] ?? BEREICH_CFG.allgemein
 
   // WICHTIG (Datensicherheit): allAuftraege = die VOLLSTÄNDIGE Liste. Sie ist die
@@ -4737,6 +4765,12 @@ export default function AuftraegeTab({ client, onUpdate, initialFilterTyp = 'all
               emailSignaturen={emailSignaturen}
               onedriveTokens={onedriveTokens}
               onUpdateOnedriveTokens={onUpdateOnedriveTokens}
+              onAddRueckfrage={onAddRueckfrage}
+              onToggleRueckfrage={onToggleRueckfrage}
+              onDeleteRueckfrage={onDeleteRueckfrage}
+              onUpdateRueckfrageAntwort={onUpdateRueckfrageAntwort}
+              onUpdateRueckfrageBuchungskonto={onUpdateRueckfrageBuchungskonto}
+              onAddRueckfrageFromCheckliste={onAddRueckfrageFromCheckliste}
             />
           ))}
         </div>
