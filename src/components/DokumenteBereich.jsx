@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
 import { OneDriveSection } from './detail/DokumenteTab.jsx'
 import OneDriveOrdnerbaum from './OneDriveOrdnerbaum.jsx'
+import PostServiceEinlesen from './dokumente/PostServiceEinlesen.jsx'
 
 /**
  * Bereich „Dokumente" – zentrale Dokumentenverwaltung.
@@ -235,14 +236,21 @@ export default function DokumenteBereich({
       {/* ── KI-Werkzeuge (vorbereitet) ── */}
       {quelle === 'ki' && (
         <div style={{ flex: 1, overflowY: 'auto', minHeight: 0, padding: '24px 26px 56px' }}>
-          <div style={{ maxWidth: '900px' }}>
+          {/* Aktives Werkzeug: Post-Service Einlesen & Erkennen (Stufe 2) */}
+          <PostServiceEinlesen
+            clients={clients}
+            tokens={onedriveTokens}
+            onUpdateTokens={onUpdateOnedriveTokens}
+          />
+
+          <div style={{ maxWidth: '900px', marginTop: '34px' }}>
             <div style={{
               padding: '16px 18px', marginBottom: '22px', borderRadius: '11px',
               background: 'var(--surface)', border: `1px dashed ${FARBE}55`,
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '9px', marginBottom: '7px' }}>
                 <span style={{ fontSize: '17px' }} aria-hidden="true">🤖</span>
-                <strong style={{ fontSize: '14px', color: 'var(--text)' }}>Geplante KI-Unterstützung</strong>
+                <strong style={{ fontSize: '14px', color: 'var(--text)' }}>Weitere geplante KI-Unterstützung</strong>
                 <span style={{ fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '10px', background: FARBE + '18', color: FARBE }}>
                   vorbereitet
                 </span>
