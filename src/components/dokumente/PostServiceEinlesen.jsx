@@ -3,6 +3,7 @@ import { callApi } from '../../utils/onedriveClient.js'
 import { pdfTextExtrahieren } from '../../utils/pdfText.js'
 import { extrahiereKennungen, erkenneDokumenttyp, ordneMandantZu, maskiereIban } from '../../utils/dokErkennung.js'
 import { baueVorschlag } from '../../utils/dokVorschlag.js'
+import { baueMailEntwurf } from '../../utils/dokMail.js'
 
 /**
  * PostServiceEinlesen – Stufe 2b-1 des Dokumente/Post-Service.
@@ -139,17 +140,35 @@ export default function PostServiceEinlesen({ clients = [], tokens, onUpdateToke
       if (!erg) return prev
       const client = clients.find(c => c.id === clientId) ?? null
       const v = baueVorschlag(erg, client, datei.name)
-      return { ...prev, [datei.id]: { ...erg, wahl: {
+      // Mail-Entwurf ggf. neu aufsetzen (Empfänger/Sprache hängen am Mandanten)
+      const mail = erg.mail ? baueMailEntwurf(erg, client, v.dateiname) : erg.mail
+      return { ...prev, [datei.id]: { ...erg, mail, wahl: {
         ...erg.wahl, clientId: client?.id ?? null,
         dateiname: v.dateiname, zielordner: v.zielordner, warnungen: v.warnungen,
       } } }
     })
   }, [clients])
 
-  // Einzelnes Feld der Wahl ändern (Dateiname/Zielordner/Aktion)
+  // Einzelnes Feld der Wahl ändern (Dateiname/Zielordner/Aktion).
+  // Bei „Bestätigen & senden" wird zusätzlich der Mail-Entwurf vorbereitet.
   const wahlAendern = useCallback((dateiId, patch) => {
-    setErgebnisse(prev => (prev[dateiId]
-      ? { ...prev, [dateiId]: { ...prev[dateiId], wahl: { ...prev[dateiId].wahl, ...patch } } }
+    setErgebnisse(prev => {
+      const erg = prev[dateiId]
+      if (!erg) return prev
+      const neueWahl = { ...erg.wahl, ...patch }
+      let mail = erg.mail
+      if (patch.aktion === 'senden' && !mail) {
+        const client = clients.find(c => c.id === neueWahl.clientId) ?? null
+        mail = baueMailEntwurf(erg, client, neueWahl.dateiname)
+      }
+      return { ...prev, [dateiId]: { ...erg, wahl: neueWahl, mail } }
+    })
+  }, [clients])
+
+  // Feld des Mail-Entwurfs ändern (Empfänger/Betreff/Text)
+  const mailAendern = useCallback((dateiId, patch) => {
+    setErgebnisse(prev => (prev[dateiId]?.mail
+      ? { ...prev, [dateiId]: { ...prev[dateiId], mail: { ...prev[dateiId].mail, ...patch } } }
       : prev))
   }, [])
 
@@ -241,6 +260,7 @@ export default function PostServiceEinlesen({ clients = [], tokens, onUpdateToke
                 onErkennen={() => dateiErkennen(d)}
                 onMandant={clientId => mandantWechseln(d, clientId)}
                 onWahl={patch => wahlAendern(d.id, patch)}
+                onMail={patch => mailAendern(d.id, patch)}
                 onAblegen={(zo, dn) => ablegenAusfuehren(d, zo, dn)}
                 fmtGroesse={fmtGroesse}
               />
@@ -253,7 +273,7 @@ export default function PostServiceEinlesen({ clients = [], tokens, onUpdateToke
 }
 
 // ── Eine Datei-Zeile mit Erkennungs-Ergebnis + Vorschlag/Aktionen ─────────────
-function DateiKarte({ datei, ergebnis, clients = [], onErkennen, onMandant, onWahl, onAblegen, fmtGroesse }) {
+function DateiKarte({ datei, ergebnis, clients = [], onErkennen, onMandant, onWahl, onMail, onAblegen, fmtGroesse }) {
   const status = ergebnis?.status
   const sk = SICHERHEIT_STIL[ergebnis?.sicherheit] ?? null
 
@@ -296,6 +316,7 @@ function DateiKarte({ datei, ergebnis, clients = [], onErkennen, onMandant, onWa
           clients={clients}
           onMandant={onMandant}
           onWahl={onWahl}
+          onMail={onMail}
           onAblegen={onAblegen}
         />
       )}
@@ -304,7 +325,7 @@ function DateiKarte({ datei, ergebnis, clients = [], onErkennen, onMandant, onWa
 }
 
 // ── Vorschlag + Aktionen für eine erkannte Datei ──────────────────────────────
-function VorschlagPanel({ ergebnis, clients = [], onMandant, onWahl, onAblegen }) {
+function VorschlagPanel({ ergebnis, clients = [], onMandant, onWahl, onMail, onAblegen }) {
   const wahl = ergebnis.wahl ?? {}
   const kandidaten = ergebnis.kandidaten ?? []
   const kandidat = kandidaten.find(k => k.clientId === wahl.clientId) ?? null
@@ -321,9 +342,12 @@ function VorschlagPanel({ ergebnis, clients = [], onMandant, onWahl, onAblegen }
           <strong>✅ Abgelegt</strong> unter{' '}
           <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, wordBreak: 'break-all' }}>{ergebnis.ablagePfad}</span>
           {wahl.aktion === 'senden' && (
-            <div style={{ marginTop: '5px', color: 'var(--text-muted)' }}>→ E-Mail an den Mandanten folgt in Stufe 5.</div>
+            <div style={{ marginTop: '5px', color: 'var(--text-muted)' }}>→ E-Mail-Entwurf unten – Versand folgt in Stufe 6.</div>
           )}
         </div>
+        {wahl.aktion === 'senden' && ergebnis.mail && (
+          <MailEntwurf mail={ergebnis.mail} onMail={onMail} />
+        )}
       </div>
     )
   }
@@ -472,6 +496,65 @@ function VorschlagPanel({ ergebnis, clients = [], onMandant, onWahl, onAblegen }
               {ergebnis.ablageFehler}
             </div>
           )}
+
+          {wahl.aktion === 'senden' && ergebnis.mail && (
+            <MailEntwurf mail={ergebnis.mail} onMail={onMail} />
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Editierbarer Mail-Entwurf (Stufe 5, kein Versand) ─────────────────────────
+function MailEntwurf({ mail, onMail }) {
+  return (
+    <div style={{ marginTop: '4px', border: '1px solid var(--border)', borderRadius: '10px', background: 'var(--surface2)', padding: '11px 12px', display: 'flex', flexDirection: 'column', gap: '9px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <span style={{ fontSize: '13px' }} aria-hidden="true">✉️</span>
+        <strong style={{ fontSize: '12.5px', color: 'var(--text)' }}>E-Mail-Entwurf an den Mandanten</strong>
+        {mail.sprache === 'da' && (
+          <span style={{ fontSize: '10px', fontWeight: 700, padding: '2px 7px', borderRadius: '9px', background: '#0ea5e918', color: '#0369a1' }}>DE + DA</span>
+        )}
+      </div>
+
+      <div>
+        <label style={labelStil}>An</label>
+        <input
+          value={mail.empfaenger ?? ''}
+          onChange={e => onMail({ empfaenger: e.target.value })}
+          placeholder="E-Mail-Adresse des Ansprechpartners"
+          style={{ ...feldStil, background: 'var(--surface)' }}
+        />
+      </div>
+
+      <div>
+        <label style={labelStil}>Betreff</label>
+        <input
+          value={mail.betreff ?? ''}
+          onChange={e => onMail({ betreff: e.target.value })}
+          style={{ ...feldStil, background: 'var(--surface)' }}
+        />
+      </div>
+
+      <div>
+        <label style={labelStil}>Nachricht</label>
+        <textarea
+          value={mail.text ?? ''}
+          onChange={e => onMail({ text: e.target.value })}
+          rows={mail.sprache === 'da' ? 12 : 7}
+          style={{ ...feldStil, background: 'var(--surface)', resize: 'vertical', lineHeight: 1.5, fontFamily: 'inherit' }}
+        />
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', fontSize: '11px', color: 'var(--text-muted)' }}>
+        <span>📎 Anhang: <span style={{ fontFamily: 'var(--font-mono)' }}>{mail.anhang || '—'}</span></span>
+        <span style={{ marginLeft: 'auto' }}>Anrede/Text frei anpassbar · Versand erst in Stufe 6</span>
+      </div>
+
+      {!mail.empfaenger && (
+        <div style={{ fontSize: '11px', color: '#b45309', background: '#f59e0b14', border: '1px solid #f59e0b33', borderRadius: '7px', padding: '6px 9px' }}>
+          ⚠ Keine E-Mail-Adresse beim Mandanten hinterlegt – bitte oben ergänzen.
         </div>
       )}
     </div>
