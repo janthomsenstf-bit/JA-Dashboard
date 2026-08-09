@@ -3,6 +3,7 @@ import EmailVorlagenModal   from '../EmailVorlagenModal.jsx'
 import EmailSignaturenModal from '../EmailSignaturenModal.jsx'
 import { sendMailGraph, openAuthPopup, callApi, getMandantPath } from '../../utils/onedriveClient.js'
 import OneDriveFolderPickerModal from '../shared/OneDriveFolderPickerModal.jsx'
+import { callAI, hasAiKey } from '../../utils/aiClient.js'
 
 // ── Signatur-Helfer ───────────────────────────────────────────────────────────
 const SIG_SEP = '\n\n--\n'
@@ -415,6 +416,12 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
   const [contentError,   setContentError]   = useState({})
   const [attachmentData, setAttachmentData] = useState({})  // Anhang-Binärdaten (nicht persistiert)
 
+  // KI-Mailsuche (Ansatz A: Inhalte on-demand laden + Claude durchsuchen lassen)
+  const [mailSuche,     setMailSuche]     = useState('')
+  const [sucheLoading,  setSucheLoading]  = useState(false)
+  const [sucheError,    setSucheError]    = useState('')
+  const [sucheErgebnis, setSucheErgebnis] = useState(null)  // { antwort, treffer:[{id,zitat,warum}] }
+
   // Posteingang State
   const [posteingangOpen,   setPosteingangOpen]   = useState(false)
   const [posteingangEmails, setPosteingangEmails] = useState([])
@@ -773,6 +780,56 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
     } finally {
       setContentLoading(prev => ({ ...prev, [entry.id]: false }))
     }
+  }
+
+  // ── KI-Mailsuche ─────────────────────────────────────────────────────────────
+  // Body einer Mail besorgen (aus Event oder on-demand per IMAP), ohne State-Spam.
+  async function ladeBody(entry) {
+    if (entry.text) return entry.text
+    if (!entry.sourceUid || !entry.sourceAccount) return ''
+    try {
+      const res = await fetch(`/api/get-email-content?uid=${encodeURIComponent(entry.sourceUid)}&account=${encodeURIComponent(entry.sourceAccount)}`)
+      const d = await res.json()
+      if (!res.ok || d.error) return ''
+      return d.text || ''
+    } catch { return '' }
+  }
+  // Begrenzte Parallelität, damit wir nicht zig IMAP-Requests gleichzeitig feuern.
+  async function mapPool(items, fn, size = 4) {
+    const out = new Array(items.length); let i = 0
+    const worker = async () => { while (i < items.length) { const idx = i++; out[idx] = await fn(items[idx], idx) } }
+    await Promise.all(Array.from({ length: Math.min(size, items.length) }, worker))
+    return out
+  }
+  async function handleMailSuche() {
+    const q = mailSuche.trim(); if (!q) return
+    if (!hasAiKey()) { setSucheError('Kein KI-API-Schlüssel hinterlegt (Stammdaten → ⚙️ → API-Schlüssel).'); return }
+    setSucheLoading(true); setSucheError(''); setSucheErgebnis(null)
+    try {
+      const kandidaten = events.filter(e => e && (e.betreff || e.text || e.sourceUid)).slice(0, 50)
+      if (!kandidaten.length) { setSucheErgebnis({ antwort: 'Für diesen Mandanten sind noch keine Mails erfasst.', treffer: [] }); return }
+      const texte = await mapPool(kandidaten, ladeBody, 4)
+      // neu geladene Inhalte einmalig in die Events übernehmen (spart künftiges Nachladen)
+      const geladen = {}; kandidaten.forEach((e, idx) => { if (!e.text && texte[idx]) geladen[e.id] = texte[idx] })
+      if (Object.keys(geladen).length) saveKomm({ events: events.map(e => geladen[e.id] ? { ...e, text: geladen[e.id], contentLoaded: true } : e) })
+      const corpus = kandidaten.map((e, idx) => {
+        const body = (e.text || texte[idx] || '').replace(/\s+/g, ' ').slice(0, 1500)
+        return `[${e.id}] Datum: ${fmtDatum(e.gesendetAm ?? e.erstelltAm)} | Von: ${e.absender || ''} | Betreff: ${e.betreff || ''}\n${body || '(kein Textinhalt verfügbar)'}`
+      }).join('\n\n---\n\n')
+      const sys = 'Du durchsuchst die E-Mails eines Steuerberater-Mandanten. Finde NUR E-Mails, die zur Suchanfrage passen (Hinweise/Informationen dazu). Antworte AUSSCHLIESSLICH als JSON: {"antwort":"kurze deutsche Zusammenfassung der Fundstellen","treffer":[{"id":"die [ID] der Mail","zitat":"kurzes wörtliches Zitat aus der Mail","warum":"warum relevant"}]}. Wenn nichts passt: "treffer":[] und in "antwort" kurz erklären. Erfinde keine Inhalte; zitiere nur, was wirklich in der Mail steht.'
+      const user = `Suchanfrage: ${q}\n\nE-Mails:\n${corpus}`
+      const r = await callAI(sys, user)
+      setSucheErgebnis({ antwort: r.antwort || r.text || '', treffer: Array.isArray(r.treffer) ? r.treffer : [] })
+    } catch (e) {
+      setSucheError(e.message || String(e))
+    } finally {
+      setSucheLoading(false)
+    }
+  }
+  function oeffneTreffer(id) {
+    const ev = events.find(e => e.id === id); if (!ev) return
+    setDetailEntry(ev); setActionForm(null)
+    if (ev.typ === 'eingehend' && !ev.contentLoaded && ev.sourceUid) fetchEmailContent(ev)
   }
 
   function downloadAttachment(att) {
@@ -1962,6 +2019,50 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
               </button>
             ))}
           </div>
+        </div>
+
+        {/* KI-Mailsuche */}
+        <div style={{ margin: '0 0 12px', border: '1px solid var(--border)', borderRadius: '8px', padding: '10px 12px', background: 'var(--surface)' }}>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '12px', fontWeight: 700, color: '#7c3aed', whiteSpace: 'nowrap' }}>🔎 KI-Mailsuche</span>
+            <input
+              value={mailSuche}
+              onChange={e => setMailSuche(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') handleMailSuche() }}
+              placeholder="z. B. Spenden 2025 · Kontoauszug · Vertrag Miete …"
+              style={{ flex: 1, minWidth: '180px', padding: '7px 10px', border: '1px solid var(--border)', borderRadius: '7px', background: 'var(--surface)', color: 'var(--text)', font: 'inherit', fontSize: '13px' }} />
+            <button className="btn btn-sm btn-primary" onClick={handleMailSuche} disabled={sucheLoading}>
+              {sucheLoading ? '⏳ Suche…' : 'Suchen'}
+            </button>
+            {(sucheErgebnis || sucheError) && (
+              <button className="btn btn-ghost btn-sm" onClick={() => { setSucheErgebnis(null); setSucheError(''); setMailSuche('') }} title="Suche zurücksetzen">×</button>
+            )}
+          </div>
+          <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', marginTop: '4px' }}>
+            Durchsucht die Mails dieses Mandanten – Inhalte werden bei Bedarf geladen. Aktuell INBOX + Gesendete (Ordner-Mails folgen).
+          </div>
+          {sucheError && <div style={{ color: '#dc2626', fontSize: '12px', marginTop: '6px' }}>⚠️ {sucheError}</div>}
+          {sucheErgebnis && (
+            <div style={{ marginTop: '8px' }}>
+              {sucheErgebnis.antwort && <div style={{ fontSize: '13px', color: 'var(--text)', marginBottom: '8px', whiteSpace: 'pre-wrap' }}>{sucheErgebnis.antwort}</div>}
+              {sucheErgebnis.treffer.length === 0 ? (
+                <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Keine passenden Mails gefunden.</div>
+              ) : sucheErgebnis.treffer.map((t, i) => {
+                const ev = events.find(e => e.id === t.id)
+                return (
+                  <div key={i} onClick={() => oeffneTreffer(t.id)}
+                    style={{ border: '1px solid var(--border)', borderRadius: '7px', padding: '8px 10px', marginBottom: '6px', cursor: 'pointer', background: 'var(--surface)' }}>
+                    <div style={{ fontSize: '12.5px', fontWeight: 700, color: 'var(--text)' }}>
+                      {ev?.betreff || '(ohne Betreff)'}
+                      <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}> · {ev ? fmtDatum(ev.gesendetAm ?? ev.erstelltAm) : ''}{ev?.absender ? ' · ' + ev.absender : ''}</span>
+                    </div>
+                    {t.zitat && <div style={{ fontSize: '12px', color: 'var(--text)', fontStyle: 'italic', marginTop: '2px' }}>„{t.zitat}"</div>}
+                    {t.warum && <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>{t.warum}</div>}
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </div>
 
         {filteredEvents.length === 0 ? (
