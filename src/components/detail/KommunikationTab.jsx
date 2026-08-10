@@ -1518,20 +1518,41 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
             <div>
               <label style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', display: 'block', marginBottom: '5px' }}>An (Empfänger)</label>
-              {(client.kontakte ?? []).length > 0 ? (
-                <select className="input" value={empfaenger} onChange={e => setEmpfaenger(e.target.value)} style={{ width: '100%', fontSize: '13px' }}>
-                  <option value="">– Kontaktperson wählen –</option>
-                  {(client.kontakte ?? []).map(k => (
-                    <option key={k.id} value={k.email}>{k.name}{k.rolle ? ` (${k.rolle})` : ''}{k.email ? ` – ${k.email}` : ''}</option>
-                  ))}
-                  <option value="__frei__">Andere E-Mail-Adresse eingeben...</option>
-                </select>
-              ) : null}
-              {((client.kontakte ?? []).length === 0 || empfaenger === '__frei__') && (
-                <input className="input" value={empfaenger === '__frei__' ? '' : empfaenger}
-                  onChange={e => setEmpfaenger(e.target.value)}
-                  placeholder="mandant@firma.de" style={{ width: '100%', fontSize: '13px', marginTop: (client.kontakte ?? []).length > 0 ? '4px' : '0' }} />
-              )}
+              {(() => {
+                const _kontakte = client.kontakte ?? []
+                const _gewaehlt = empfaenger && empfaenger !== '__frei__' ? _kontakte.find(k => k.email === empfaenger) : null
+                if (_gewaehlt) {
+                  const _ini = String(_gewaehlt.name || _gewaehlt.email).trim().split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase()
+                  return (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', background: 'rgba(15,118,110,0.12)', color: 'var(--accent)', borderRadius: '20px', padding: '4px 10px 4px 5px', fontSize: '12px', fontWeight: 600 }}>
+                        <span style={{ width: '22px', height: '22px', borderRadius: '50%', background: 'var(--accent)', color: '#fff', fontSize: '10px', fontWeight: 700, display: 'grid', placeItems: 'center' }}>{_ini}</span>
+                        {_gewaehlt.name}{_gewaehlt.rolle ? ` · ${_gewaehlt.rolle}` : ''}
+                        <button onClick={() => setEmpfaenger('')} title="Empfänger ändern" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent)', opacity: 0.6, fontWeight: 700, fontSize: '13px', padding: '0 2px', lineHeight: 1 }}>×</button>
+                      </span>
+                      <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{_gewaehlt.email}</span>
+                    </div>
+                  )
+                }
+                return (
+                  <>
+                    {_kontakte.length > 0 ? (
+                      <select className="input" value={empfaenger} onChange={e => setEmpfaenger(e.target.value)} style={{ width: '100%', fontSize: '13px' }}>
+                        <option value="">– Kontaktperson wählen –</option>
+                        {_kontakte.map(k => (
+                          <option key={k.id} value={k.email}>{k.name}{k.rolle ? ` (${k.rolle})` : ''}{k.email ? ` – ${k.email}` : ''}</option>
+                        ))}
+                        <option value="__frei__">Andere E-Mail-Adresse eingeben...</option>
+                      </select>
+                    ) : null}
+                    {(_kontakte.length === 0 || empfaenger === '__frei__') && (
+                      <input className="input" value={empfaenger === '__frei__' ? '' : empfaenger}
+                        onChange={e => setEmpfaenger(e.target.value)}
+                        placeholder="mandant@firma.de" style={{ width: '100%', fontSize: '13px', marginTop: _kontakte.length > 0 ? '4px' : '0' }} />
+                    )}
+                  </>
+                )
+              })()}
             </div>
             <div>
               <label style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', display: 'block', marginBottom: '5px' }}>
@@ -2184,6 +2205,12 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
               const isNeu  = entry.typ === 'eingehend' && !entry.erledigtAm
               const tag     = tagLabel(entry.gesendetAm ?? entry.erstelltAm)
               const prevTag = i > 0 ? tagLabel(filteredEvents[i - 1].gesendetAm ?? filteredEvents[i - 1].erstelltAm) : null
+              // Richtung (empfangen / gesendet / Entwurf) für das Icon links
+              const richtung   = entry.typ === 'eingehend' ? 'in' : (entry.status === 'entwurf' ? 'dr' : 'out')
+              const richtIcon  = richtung === 'in' ? '↙' : richtung === 'dr' ? '✎' : '↗'
+              const richtLabel = richtung === 'in' ? 'Empfangen' : richtung === 'dr' ? 'Entwurf' : 'Gesendet'
+              const richtColor = richtung === 'in' ? '#3a6fb0' : richtung === 'dr' ? '#b7791f' : 'var(--accent)'
+              const richtBg    = richtung === 'in' ? 'rgba(58,111,176,0.12)' : richtung === 'dr' ? 'rgba(183,121,31,0.14)' : 'rgba(15,118,110,0.12)'
 
               return (
                 <Fragment key={entry.id}>
@@ -2214,10 +2241,13 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
                 >
                   <div style={{
                     display: 'grid',
-                    gridTemplateColumns: '130px 90px 1fr 130px 80px 36px',
-                    alignItems: 'center', gap: '12px',
+                    gridTemplateColumns: '24px 122px 88px 1fr 128px 78px 34px',
+                    alignItems: 'center', gap: '10px',
                     padding: '10px 14px',
                   }}>
+                    <span title={richtLabel} style={{ width: '22px', height: '22px', borderRadius: '6px', display: 'grid', placeItems: 'center', fontSize: '12px', background: richtBg, color: richtColor, flexShrink: 0 }}>
+                      {richtIcon}
+                    </span>
                     <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
                       {fmtDatum(entry.gesendetAm ?? entry.erstelltAm)}
                     </span>
