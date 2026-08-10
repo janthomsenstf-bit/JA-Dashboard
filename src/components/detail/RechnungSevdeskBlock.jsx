@@ -10,11 +10,12 @@
  * `client.rechnung`. Bestehende Mandantenfelder werden nie berührt/überschrieben.
  * Der sevDesk-Token liegt server-seitig – hier wird er nie angefasst.
  */
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import {
   pingSevdesk, findSevdeskContacts, getSevdeskContactDetails, createSevdeskContact,
   createSevdeskInvoice, getSevdeskInvoicePdf, sendSevdeskInvoiceEmail, enshrineSevdeskInvoice,
 } from '../../utils/sevdeskClient.js'
+import { callAI, hasAiKey } from '../../utils/aiClient.js'
 
 const ACCENT = '#4f46e5'
 
@@ -85,6 +86,111 @@ function buildAddress(client) {
     r.land && r.land !== 'Deutschland' ? r.land : null,
   ].map(s => String(s ?? '').trim()).filter(Boolean)
   return lines.join('\n')
+}
+
+// ── Diktat → Rechnungspositionen ───────────────────────────────────────────
+const RE_BETRAG = /(\d+(?:[.,]\d+)?)\s*(?:€|eur\b|euro\b)/i
+
+// Lokaler Fallback ohne KI: einfacher Betrag + Bezeichnung.
+function parseRechnungLokal(text) {
+  const t = String(text || '').trim()
+  const m = t.match(RE_BETRAG)
+  const price = m ? parseFloat(m[1].replace(',', '.')) : 0
+  const brutto = /\bbrutto\b/i.test(t)
+  let bez = t
+    .replace(RE_BETRAG, ' ')
+    .replace(/\b(stell|stelle|erstelle|schreib|schreibe|rechne?|in rechnung|berechne|abrechnen|brutto|netto)\b/gi, ' ')
+    .replace(/\s{2,}/g, ' ').trim()
+  bez = bez.replace(/^f[üu]r\s+(die\s+|das\s+|den\s+|der\s+|eine?\s+)?/i, '').trim()
+  const ustSatz = 19
+  const netto = brutto && price ? Math.round((price / (1 + ustSatz / 100)) * 100) / 100 : price
+  return { positionen: [{ bezeichnung: bez || 'Leistung', menge: 1, einzelpreisNetto: netto, ustSatz }], einleitungstext: '' }
+}
+
+async function parseRechnungDiktat(text) {
+  if (hasAiKey()) {
+    try {
+      const sys = `Du wandelst die (gesprochene) Notiz eines deutschen Steuerberaters über eine zu erstellende Rechnung in strukturierte Positionen um. Antworte AUSSCHLIESSLICH mit JSON:
+{"positionen":[{"bezeichnung":"<knappe Leistungsbezeichnung>","menge":<Zahl, Standard 1>,"einzelpreisNetto":<Zahl>,"ustSatz":<19, 7 oder 0; Standard 19>}],"einleitungstext":"<optional, z.B. Leistungszeitraum, sonst leerer String>"}
+Regeln: Beträge sind NETTO, außer es wird ausdrücklich "brutto" gesagt – dann rechne netto = brutto / (1 + ustSatz/100) und runde auf 2 Nachkommastellen. Erkenne mehrere Positionen, wenn mehrere genannt werden. Keine erklärenden Texte, nur JSON.
+Beispiele:
+"stell 75 Euro für eine Umsatzsteuervoranmeldung in Rechnung" -> {"positionen":[{"bezeichnung":"Umsatzsteuervoranmeldung","menge":1,"einzelpreisNetto":75,"ustSatz":19}],"einleitungstext":""}
+"150 Euro Finanzbuchführung Juli und 50 Euro Lohnabrechnung" -> {"positionen":[{"bezeichnung":"Finanzbuchführung","menge":1,"einzelpreisNetto":150,"ustSatz":19},{"bezeichnung":"Lohnabrechnung","menge":1,"einzelpreisNetto":50,"ustSatz":19}],"einleitungstext":"Leistungszeitraum Juli"}`
+      const r = await callAI(sys, text)
+      const posRaw = Array.isArray(r?.positionen) ? r.positionen : []
+      const positionen = posRaw
+        .map(p => ({
+          bezeichnung:      String(p?.bezeichnung ?? '').trim(),
+          menge:            Number(p?.menge) > 0 ? Number(p.menge) : 1,
+          einzelpreisNetto: Math.max(0, Number(p?.einzelpreisNetto) || 0),
+          ustSatz:          [19, 7, 0].includes(Number(p?.ustSatz)) ? Number(p.ustSatz) : 19,
+        }))
+        .filter(p => p.bezeichnung || p.einzelpreisNetto > 0)
+      if (positionen.length) return { positionen, einleitungstext: String(r?.einleitungstext ?? '').trim() }
+    } catch { /* fällt auf lokalen Parser zurück */ }
+  }
+  return parseRechnungLokal(text)
+}
+
+function RechnungVoiceBlock({ onParsed }) {
+  const [transcript, setTranscript] = useState('')
+  const [isRecording, setIsRecording] = useState(false)
+  const [interim, setInterim] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const recRef = useRef(null)
+  const textRef = useRef('')
+  const SR = typeof window !== 'undefined' && (window.SpeechRecognition || window.webkitSpeechRecognition)
+
+  function set(val) { const v = typeof val === 'function' ? val(textRef.current) : val; textRef.current = v; setTranscript(v) }
+  function toggle() {
+    if (isRecording) { recRef.current?.stop(); setIsRecording(false); setInterim(''); return }
+    if (!SR) return
+    const r = new SR(); r.lang = 'de-DE'; r.continuous = true; r.interimResults = true
+    r.onresult = e => {
+      let fin = '', int = ''
+      for (let i = e.resultIndex; i < e.results.length; i++) e.results[i].isFinal ? fin += e.results[i][0].transcript : int += e.results[i][0].transcript
+      if (fin) set(t => t.trimEnd() ? t.trimEnd() + ' ' + fin : fin)
+      setInterim(int)
+    }
+    r.onend = () => { setIsRecording(false); setInterim('') }
+    r.onerror = () => { setIsRecording(false); setInterim(''); setError('Mikrofon-Fehler – Berechtigung prüfen.') }
+    r.start(); recRef.current = r; setIsRecording(true); setError('')
+  }
+  async function process() {
+    const text = transcript.trim(); if (!text) return
+    setBusy(true); setError('')
+    try { const parsed = await parseRechnungDiktat(text); onParsed(parsed); set('') }
+    catch (e) { setError(e.message || 'Fehler bei der Aufbereitung.') }
+    finally { setBusy(false) }
+  }
+  return (
+    <div style={{ border: `1px dashed ${ACCENT}55`, borderRadius: '8px', padding: '10px 12px', background: `${ACCENT}08` }}>
+      <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: ACCENT, marginBottom: '8px' }}>
+        🎤 Rechnung diktieren{!hasAiKey() && ' · ohne KI-Schlüssel: einfache Erkennung'}
+      </div>
+      <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+        <button onClick={toggle} disabled={!SR} title={!SR ? 'Browser unterstützt keine Spracheingabe' : (isRecording ? 'Aufnahme stoppen' : 'Aufnahme starten')}
+          style={{ width: '34px', height: '34px', borderRadius: '50%', border: 'none', flexShrink: 0, cursor: SR ? 'pointer' : 'not-allowed', background: isRecording ? '#ef4444' : ACCENT, color: '#fff', fontSize: '15px' }}>
+          {isRecording ? '⏹' : '🎙'}
+        </button>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <textarea value={transcript} onChange={e => set(e.target.value)} rows={2}
+            placeholder={isRecording ? '🎤 Aufnahme läuft…' : 'z. B. „Stell 75 Euro für eine Umsatzsteuervoranmeldung in Rechnung"'}
+            style={{ ...inputBase, resize: 'none', lineHeight: 1.5 }} />
+          {interim && <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontStyle: 'italic', marginTop: '2px' }}>{interim}</div>}
+          {error && <div style={{ fontSize: '11px', color: '#ef4444', marginTop: '4px' }}>⚠ {error}</div>}
+          <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end', marginTop: '6px' }}>
+            {transcript && <button onClick={() => set('')} style={{ padding: '5px 12px', borderRadius: '6px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-secondary)', fontSize: '11px', cursor: 'pointer' }}>✕ Löschen</button>}
+            <button onClick={process} disabled={!transcript.trim() || busy}
+              style={{ padding: '5px 14px', borderRadius: '6px', border: 'none', background: ACCENT, color: '#fff', fontSize: '11px', fontWeight: 700, cursor: (!transcript.trim() || busy) ? 'not-allowed' : 'pointer', opacity: (!transcript.trim() || busy) ? 0.5 : 1 }}>
+              {busy ? '⏳ …' : '✨ Aufbereiten'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function InvoiceEntwurf({ client, onUpdate }) {
@@ -278,10 +384,27 @@ function InvoiceEntwurf({ client, onUpdate }) {
     )
   }
 
+  // Diktat/KI → Positionen vorbefüllen
+  function onDiktatParsed(parsed) {
+    const pos = (parsed?.positionen ?? []).map(p => ({
+      id:       'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+      name:     String(p?.bezeichnung ?? '').trim(),
+      quantity: Number(p?.menge) > 0 ? Number(p.menge) : 1,
+      price:    p?.einzelpreisNetto != null ? String(p.einzelpreisNetto) : '',
+      taxRate:  [19, 7, 0].includes(Number(p?.ustSatz)) ? Number(p.ustSatz) : 19,
+      text:     '',
+    }))
+    if (pos.length) { setPositions(pos); setInvError('') }
+    if (parsed?.einleitungstext) setHeadText(parsed.einleitungstext)
+  }
+
   // ── Editor-Ansicht ──
   return (
     <div style={{ border: '1px solid var(--border)', borderRadius: '10px', padding: '12px 14px', background: 'var(--surface)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
       <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)' }}>Neue Rechnung (Entwurf)</div>
+
+      {/* Diktat / Freitext → Positionen */}
+      <RechnungVoiceBlock onParsed={onDiktatParsed} />
 
       {/* Kopfzeile: Datum + Zahlungsziel */}
       <div style={{ display: 'grid', gridTemplateColumns: '160px 140px', gap: '10px' }}>
