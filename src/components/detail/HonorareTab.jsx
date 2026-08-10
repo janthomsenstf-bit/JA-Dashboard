@@ -5,6 +5,7 @@
 import { useState, useRef } from 'react'
 import { callAI, hasAiKey } from '../../utils/aiClient.js'
 import { buildLeistungsnachweis, downloadPdf, leistungsnachweisFilename, buildZeitUebersicht, zeitUebersichtFilename } from '../../utils/leistungsnachweisPdf.js'
+import RechnungSevdeskBlock from './RechnungSevdeskBlock.jsx'
 
 // ── Jahresliste ───────────────────────────────────────────────────────────────────
 const CURRENT_YEAR = new Date().getFullYear()
@@ -808,6 +809,9 @@ export default function HonorareTab({ client, onUpdate }) {
           )}
         </div>
       </div>
+
+      {/* ── Rechnung erstellen (sevDesk) ── */}
+      <RechnungSevdeskBlock client={client} onUpdate={onUpdate} />
 
       <div style={{ fontSize: '11px', color: 'var(--text-muted)', lineHeight: 1.6, padding: '0 2px' }}>
         💡 Diese Preisvereinbarungen sind rein intern zur Planung und ersetzen keine Buchhaltung.
