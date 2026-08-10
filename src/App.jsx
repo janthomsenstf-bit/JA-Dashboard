@@ -1217,6 +1217,7 @@ export default function App() {
       clients={clients}
       onSelectClient={(id) => { setDetailInitialTab(4); setSelectedId(id) }}
       onUpdateClient={updateClient}
+      emailSignaturen={emailSignaturen}
     />
   )
 
