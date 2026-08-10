@@ -421,6 +421,10 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
   const [sucheLoading,  setSucheLoading]  = useState(false)
   const [sucheError,    setSucheError]    = useState('')
   const [sucheErgebnis, setSucheErgebnis] = useState(null)  // { antwort, treffer:[{id,zitat,warum}] }
+  const [mailModus,     setMailModus]     = useState('suchen') // 'suchen' | 'briefing'
+  const [briefErgebnis, setBriefErgebnis] = useState(null)  // { ueberblick, verlauf[], zusammenfassung, handlungsempfehlungen[], offenePunkte[] }
+  const [istDiktat,     setIstDiktat]     = useState(false)
+  const diktatRef = useRef(null)
 
   // Posteingang State
   const [posteingangOpen,   setPosteingangOpen]   = useState(false)
@@ -830,6 +834,65 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
     const ev = events.find(e => e.id === id); if (!ev) return
     setDetailEntry(ev); setActionForm(null)
     if (ev.typ === 'eingehend' && !ev.contentLoaded && ev.sourceUid) fetchEmailContent(ev)
+  }
+
+  // Zeitraum aus der Anfrage deterministisch erkennen (nicht von der KI raten lassen)
+  function parseZeitraum(q) {
+    const s = (q || '').toLowerCase(); const now = new Date()
+    const sod = d => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x }
+    let m
+    if ((m = s.match(/(?:letzt\w*\s+)?(\d{1,3})\s*tag/))) { const n = +m[1]; const seit = sod(now); seit.setDate(seit.getDate() - n); return { seit, label: `letzte ${n} Tage` } }
+    if (/diese\s+woche/.test(s)) { const seit = sod(now); seit.setDate(seit.getDate() - ((seit.getDay() + 6) % 7)); return { seit, label: 'diese Woche' } }
+    if (/letzte\s+woche/.test(s)) { const seit = sod(now); seit.setDate(seit.getDate() - ((seit.getDay() + 6) % 7) - 7); const bis = new Date(seit); bis.setDate(bis.getDate() + 7); return { seit, bis, label: 'letzte Woche' } }
+    if ((m = s.match(/letzt\w*\s+(\d{1,2})\s*monat/))) { const n = +m[1]; const seit = sod(now); seit.setMonth(seit.getMonth() - n); return { seit, label: `letzte ${n} Monate` } }
+    if (/diese[nm]?\s+monat/.test(s)) { return { seit: new Date(now.getFullYear(), now.getMonth(), 1), label: 'dieser Monat' } }
+    if ((m = s.match(/seit\s+(\d{1,2})\.(\d{1,2})\.(\d{2,4})?/))) { const d = +m[1], mo = +m[2] - 1; let y = m[3] ? +m[3] : now.getFullYear(); if (y < 100) y += 2000; return { seit: new Date(y, mo, d), label: `seit ${m[1]}.${m[2]}.${y}` } }
+    return null
+  }
+
+  async function handleBriefing() {
+    const q = mailSuche.trim()
+    if (!hasAiKey()) { setSucheError('Kein KI-API-Schlüssel hinterlegt (Stammdaten → ⚙️ → API-Schlüssel).'); return }
+    setSucheLoading(true); setSucheError(''); setBriefErgebnis(null); setSucheErgebnis(null)
+    try {
+      const zr = parseZeitraum(q)
+      const dOf = e => { const d = new Date(e.gesendetAm ?? e.erstelltAm); return isNaN(d) ? null : d }
+      let list = events.filter(e => e && (e.betreff || e.text || e.sourceUid))
+      if (zr) list = list.filter(e => { const d = dOf(e); return d && d >= zr.seit && (!zr.bis || d < zr.bis) })
+      else { const seit = new Date(); seit.setDate(seit.getDate() - 14); list = list.filter(e => { const d = dOf(e); return d && d >= seit }) }
+      list = list.sort((a, b) => (dOf(a) || 0) - (dOf(b) || 0)).slice(-60)
+      if (!list.length) { setBriefErgebnis({ ueberblick: `Keine Nachrichten im Zeitraum${zr ? ` (${zr.label})` : ' (letzte 14 Tage)'}.`, verlauf: [], zusammenfassung: '', handlungsempfehlungen: [], offenePunkte: [] }); return }
+      const texte = await mapPool(list, ladeBody, 4)
+      const geladen = {}; list.forEach((e, i) => { if (!e.text && texte[i]) geladen[e.id] = texte[i] })
+      if (Object.keys(geladen).length) saveKomm({ events: events.map(e => geladen[e.id] ? { ...e, text: geladen[e.id], contentLoaded: true } : e) })
+      const corpus = list.map((e, i) => {
+        const richtung = e.typ === 'ausgehend' ? 'AUSGEHEND (von uns)' : 'EINGEHEND (extern)'
+        const body = (e.text || texte[i] || '').replace(/\s+/g, ' ').slice(0, 1500)
+        return `Datum: ${fmtDatum(e.gesendetAm ?? e.erstelltAm)} | ${richtung} | Von: ${e.absender || ''} | Betreff: ${e.betreff || ''}\n${body || '(kein Textinhalt)'}`
+      }).join('\n\n---\n\n')
+      const sys = 'Du bist die Assistenz eines Steuerberaters und fasst E-Mail-Korrespondenz mit einem Mandanten zusammen. Antworte AUSSCHLIESSLICH als JSON: {"ueberblick":"1 Satz: Zeitraum, Anzahl Nachrichten, Beteiligte/Thema","verlauf":["chronologische Stichpunkte, je: Datum – Richtung – was passierte"],"zusammenfassung":"kurzer Fließtext: worum es geht und wo es aktuell steht","handlungsempfehlungen":["konkrete nächste Schritte für den Steuerberater"],"offenePunkte":["unbeantwortete Fragen / worauf gewartet wird"]}. Nutze nur, was in den Mails steht; nichts erfinden. Deutsch.'
+      const user = `Aufgabe: ${q || 'Fasse die Korrespondenz zusammen'}\nZeitraum: ${zr ? zr.label : 'letzte 14 Tage'}\n\nKorrespondenz (chronologisch):\n${corpus}`
+      const r = await callAI(sys, user)
+      setBriefErgebnis({
+        ueberblick: r.ueberblick || r.text || '',
+        verlauf: Array.isArray(r.verlauf) ? r.verlauf : [],
+        zusammenfassung: r.zusammenfassung || '',
+        handlungsempfehlungen: Array.isArray(r.handlungsempfehlungen) ? r.handlungsempfehlungen : [],
+        offenePunkte: Array.isArray(r.offenePunkte) ? r.offenePunkte : [],
+      })
+    } catch (e) { setSucheError(e.message || String(e)) }
+    finally { setSucheLoading(false) }
+  }
+
+  function toggleDiktat() {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition
+    if (!SR) { setSucheError('Diktat wird in diesem Browser/Kontext nicht unterstützt – bitte tippen.'); return }
+    if (diktatRef.current) { try { diktatRef.current.stop() } catch {} diktatRef.current = null; setIstDiktat(false); return }
+    const r = new SR(); r.lang = 'de-DE'; r.continuous = true; r.interimResults = true; let base = mailSuche
+    r.onresult = e => { let fin = ''; for (let i = e.resultIndex; i < e.results.length; i++) { if (e.results[i].isFinal) fin += e.results[i][0].transcript } if (fin) { base = (base + ' ' + fin).trim(); setMailSuche(base) } }
+    r.onerror = () => { setIstDiktat(false) }
+    r.onend = () => { setIstDiktat(false); diktatRef.current = null }
+    try { r.start(); diktatRef.current = r; setIstDiktat(true) } catch {}
   }
 
   function downloadAttachment(att) {
@@ -2024,25 +2087,36 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
         {/* KI-Mailsuche */}
         <div style={{ margin: '0 0 12px', border: '1px solid var(--border)', borderRadius: '8px', padding: '10px 12px', background: 'var(--surface)' }}>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: '12px', fontWeight: 700, color: '#7c3aed', whiteSpace: 'nowrap' }}>🔎 KI-Mailsuche</span>
+            <span style={{ fontSize: '12px', fontWeight: 700, color: '#7c3aed', whiteSpace: 'nowrap' }}>🤖 KI-Nachrichten</span>
+            <div style={{ display: 'flex', gap: '2px', border: '1px solid var(--border)', borderRadius: '7px', padding: '2px' }}>
+              {[['suchen', '🔎 Suchen'], ['briefing', '🧾 Briefing']].map(([k, l]) => (
+                <button key={k} onClick={() => setMailModus(k)} className="btn btn-ghost btn-sm"
+                  style={{ fontSize: '11px', padding: '4px 9px', ...(mailModus === k ? { background: 'var(--accent-dim)', color: 'var(--accent)' } : {}) }}>{l}</button>
+              ))}
+            </div>
             <input
               value={mailSuche}
               onChange={e => setMailSuche(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') handleMailSuche() }}
-              placeholder="z. B. Spenden 2025 · Kontoauszug · Vertrag Miete …"
+              onKeyDown={e => { if (e.key === 'Enter') (mailModus === 'briefing' ? handleBriefing : handleMailSuche)() }}
+              placeholder={mailModus === 'briefing' ? 'z. B. Zusammenstellung der letzten 7 Tage · Stand zusammenfassen' : 'z. B. Spenden 2025 · Kontoauszug · Vertrag Miete …'}
               style={{ flex: 1, minWidth: '180px', padding: '7px 10px', border: '1px solid var(--border)', borderRadius: '7px', background: 'var(--surface)', color: 'var(--text)', font: 'inherit', fontSize: '13px' }} />
-            <button className="btn btn-sm btn-primary" onClick={handleMailSuche} disabled={sucheLoading}>
-              {sucheLoading ? '⏳ Suche…' : 'Suchen'}
+            <button className="btn btn-ghost btn-sm" onClick={toggleDiktat} title="Diktat (sprechen)"
+              style={{ fontSize: '13px', ...(istDiktat ? { background: '#fee2e2', color: '#dc2626' } : {}) }}>{istDiktat ? '⏹' : '🎤'}</button>
+            <button className="btn btn-sm btn-primary" onClick={mailModus === 'briefing' ? handleBriefing : handleMailSuche} disabled={sucheLoading}>
+              {sucheLoading ? '⏳ …' : (mailModus === 'briefing' ? 'Briefing' : 'Suchen')}
             </button>
-            {(sucheErgebnis || sucheError) && (
-              <button className="btn btn-ghost btn-sm" onClick={() => { setSucheErgebnis(null); setSucheError(''); setMailSuche('') }} title="Suche zurücksetzen">×</button>
+            {(sucheErgebnis || briefErgebnis || sucheError) && (
+              <button className="btn btn-ghost btn-sm" onClick={() => { setSucheErgebnis(null); setBriefErgebnis(null); setSucheError(''); setMailSuche('') }} title="Zurücksetzen">×</button>
             )}
           </div>
           <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', marginTop: '4px' }}>
-            Durchsucht die Mails dieses Mandanten – Inhalte werden bei Bedarf geladen. Aktuell INBOX + Gesendete (Ordner-Mails folgen).
+            {mailModus === 'briefing'
+              ? 'Fasst die Korrespondenz zusammen (Zeitraum aus der Anfrage, z. B. „letzte 7 Tage") – Überblick, Verlauf, Handlungsempfehlungen.'
+              : 'Durchsucht die Mails dieses Mandanten – Inhalte werden bei Bedarf geladen.'} Aktuell INBOX + Gesendete (Ordner-Mails folgen).
           </div>
           {sucheError && <div style={{ color: '#dc2626', fontSize: '12px', marginTop: '6px' }}>⚠️ {sucheError}</div>}
-          {sucheErgebnis && (
+
+          {mailModus === 'suchen' && sucheErgebnis && (
             <div style={{ marginTop: '8px' }}>
               {sucheErgebnis.antwort && <div style={{ fontSize: '13px', color: 'var(--text)', marginBottom: '8px', whiteSpace: 'pre-wrap' }}>{sucheErgebnis.antwort}</div>}
               {sucheErgebnis.treffer.length === 0 ? (
@@ -2063,6 +2137,20 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
               })}
             </div>
           )}
+
+          {mailModus === 'briefing' && briefErgebnis && (() => {
+            const sectTitle = { fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '2px' }
+            const liste = (arr) => <ul style={{ margin: '2px 0 0', paddingLeft: '18px' }}>{arr.map((x, i) => <li key={i} style={{ marginBottom: '2px' }}>{x}</li>)}</ul>
+            return (
+              <div style={{ marginTop: '8px', fontSize: '13px', color: 'var(--text)' }}>
+                {briefErgebnis.ueberblick && <div style={{ fontWeight: 700, marginBottom: '8px' }}>{briefErgebnis.ueberblick}</div>}
+                {briefErgebnis.verlauf.length > 0 && <div style={{ marginBottom: '10px' }}><div style={sectTitle}>Verlauf</div>{liste(briefErgebnis.verlauf)}</div>}
+                {briefErgebnis.zusammenfassung && <div style={{ marginBottom: '10px' }}><div style={sectTitle}>Zusammenfassung</div><div style={{ whiteSpace: 'pre-wrap' }}>{briefErgebnis.zusammenfassung}</div></div>}
+                {briefErgebnis.handlungsempfehlungen.length > 0 && <div style={{ marginBottom: '10px' }}><div style={{ ...sectTitle, color: '#7c3aed' }}>Handlungsempfehlungen</div>{liste(briefErgebnis.handlungsempfehlungen)}</div>}
+                {briefErgebnis.offenePunkte.length > 0 && <div><div style={{ ...sectTitle, color: '#c2410c' }}>Offene Punkte</div>{liste(briefErgebnis.offenePunkte)}</div>}
+              </div>
+            )
+          })()}
         </div>
 
         {filteredEvents.length === 0 ? (
