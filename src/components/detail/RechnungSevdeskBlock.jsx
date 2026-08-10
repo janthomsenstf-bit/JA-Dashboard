@@ -11,7 +11,7 @@
  * Der sevDesk-Token liegt server-seitig – hier wird er nie angefasst.
  */
 import { useState } from 'react'
-import { pingSevdesk } from '../../utils/sevdeskClient.js'
+import { pingSevdesk, findSevdeskContacts, getSevdeskContactDetails, createSevdeskContact } from '../../utils/sevdeskClient.js'
 
 const ACCENT = '#4f46e5'
 
@@ -59,6 +59,82 @@ export default function RechnungSevdeskBlock({ client, onUpdate }) {
     } catch (e) {
       setConn({ status: 'error', message: e.message || 'Verbindung fehlgeschlagen', user: null })
     }
+  }
+
+  // ── Kontakt-Mapping (Mandant ↔ sevDesk-Kontakt) ──────────────────────────
+  const [query, setQuery]     = useState(client.name ?? '')
+  const [results, setResults] = useState(null)   // null = noch nicht gesucht
+  const [mapBusy, setMapBusy] = useState(false)
+  const [mapMsg, setMapMsg]   = useState('')
+
+  async function suchen() {
+    setMapBusy(true); setMapMsg('')
+    try {
+      const res = await findSevdeskContacts(query.trim())
+      setResults(res.contacts ?? [])
+    } catch (e) {
+      setMapMsg(e.message || 'Suche fehlgeschlagen'); setResults(null)
+    } finally { setMapBusy(false) }
+  }
+
+  // Verknüpfen: sevdeskContactId setzen + Anschrift/E-Mail ADDITIV übernehmen
+  // (füllt nur leere Felder in client.rechnung – überschreibt nie Vorhandenes).
+  async function verknuepfen(c) {
+    setMapBusy(true); setMapMsg('')
+    try {
+      const patch = { sevdeskContactId: c.id, sevdeskContactName: c.name }
+      try {
+        const res = await getSevdeskContactDetails(c.id)
+        const a   = res.contact?.address ?? {}
+        const cur = client.rechnung ?? {}
+        const merged = { ...cur }
+        const fill = (k, v) => { if (v && !String(cur[k] ?? '').trim()) merged[k] = v }
+        fill('strasse', a.strasse); fill('plz', a.plz); fill('ort', a.ort); fill('land', a.land)
+        fill('email', res.contact?.email)
+        if (!String(cur.kundennummer ?? '').trim() && res.contact?.customerNumber) merged.kundennummer = String(res.contact.customerNumber)
+        patch.rechnung = merged
+      } catch { /* Details optional – Verknüpfung trotzdem speichern */ }
+      onUpdate(patch)
+      setResults(null)
+    } finally { setMapBusy(false) }
+  }
+
+  function loesen() {
+    onUpdate({ sevdeskContactId: null, sevdeskContactName: null })  // Stammdaten bleiben erhalten
+    setResults(null); setQuery(client.name ?? '')
+  }
+
+  async function neuAnlegen() {
+    setMapBusy(true); setMapMsg('')
+    try {
+      const res = await createSevdeskContact(client.name)
+      if (res.contact?.id) await verknuepfen(res.contact)
+      else setMapMsg('Kontakt wurde angelegt, aber ohne ID zurückgegeben.')
+    } catch (e) {
+      setMapMsg(e.message || 'Anlegen fehlgeschlagen')
+    } finally { setMapBusy(false) }
+  }
+
+  // Explizit Anschrift/E-Mail aus sevDesk überschreiben (mit Rückfrage)
+  async function ausSevdeskAktualisieren() {
+    if (!client.sevdeskContactId) return
+    if (!window.confirm('Anschrift und E-Mail aus dem sevDesk-Kontakt übernehmen? Vorhandene Werte werden dabei überschrieben.')) return
+    setMapBusy(true); setMapMsg('')
+    try {
+      const res = await getSevdeskContactDetails(client.sevdeskContactId)
+      const a   = res.contact?.address ?? {}
+      const merged = { ...(client.rechnung ?? {}) }
+      if (a.strasse) merged.strasse = a.strasse
+      if (a.plz)     merged.plz     = a.plz
+      if (a.ort)     merged.ort     = a.ort
+      if (a.land)    merged.land    = a.land
+      if (res.contact?.email) merged.email = res.contact.email
+      if (res.contact?.customerNumber) merged.kundennummer = String(res.contact.customerNumber)
+      onUpdate({ rechnung: merged })
+      setMapMsg('✓ Aus sevDesk aktualisiert.')
+    } catch (e) {
+      setMapMsg(e.message || 'Aktualisieren fehlgeschlagen')
+    } finally { setMapBusy(false) }
   }
 
   // ── Stammdaten bearbeiten ────────────────────────────────────────────────
@@ -114,6 +190,85 @@ export default function RechnungSevdeskBlock({ client, onUpdate }) {
             ⚠ {conn.message}
           </div>
         )}
+
+        {/* Kontakt-Mapping (Mandant ↔ sevDesk-Kontakt) */}
+        <div style={{ border: '1px solid var(--border)', borderRadius: '10px', padding: '12px 14px', background: 'var(--surface)' }}>
+          <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '10px' }}>
+            sevDesk-Kontakt
+          </div>
+
+          {client.sevdeskContactId ? (
+            /* verknüpft */
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '16px' }}>🔗</span>
+              <div style={{ flex: 1, minWidth: '160px' }}>
+                <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)' }}>
+                  {client.sevdeskContactName || 'Verknüpfter Kontakt'}
+                </div>
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                  sevDesk-Kontakt-ID {client.sevdeskContactId}
+                </div>
+              </div>
+              <button onClick={ausSevdeskAktualisieren} disabled={mapBusy}
+                style={{ padding: '5px 12px', borderRadius: '6px', border: `1px solid ${ACCENT}`, background: 'transparent', color: ACCENT, fontSize: '11px', fontWeight: 700, cursor: mapBusy ? 'wait' : 'pointer', whiteSpace: 'nowrap' }}>
+                ⟳ Aus sevDesk aktualisieren
+              </button>
+              <button onClick={loesen} disabled={mapBusy}
+                style={{ padding: '5px 12px', borderRadius: '6px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-muted)', fontSize: '11px', cursor: mapBusy ? 'wait' : 'pointer', whiteSpace: 'nowrap' }}>
+                Verknüpfung lösen
+              </button>
+            </div>
+          ) : (
+            /* nicht verknüpft → suchen / anlegen */
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <input
+                  value={query}
+                  onChange={e => setQuery(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') suchen() }}
+                  placeholder="Kontakt in sevDesk suchen (Name oder Kundennr.)"
+                  style={{ ...inputBase, flex: 1, minWidth: '180px' }}
+                />
+                <button onClick={suchen} disabled={mapBusy}
+                  style={{ padding: '7px 14px', borderRadius: '6px', border: 'none', background: ACCENT, color: '#fff', fontSize: '12px', fontWeight: 700, cursor: mapBusy ? 'wait' : 'pointer', whiteSpace: 'nowrap' }}>
+                  {mapBusy ? '⏳ …' : '🔍 Suchen'}
+                </button>
+              </div>
+
+              {results !== null && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                  {results.length === 0 && (
+                    <div style={{ fontSize: '12px', color: 'var(--text-muted)', padding: '4px 2px' }}>
+                      Kein passender Kontakt gefunden.
+                    </div>
+                  )}
+                  {results.map(c => (
+                    <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '7px 10px', border: '1px solid var(--border)', borderRadius: '7px', background: 'var(--surface2)' }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text)' }}>{c.name || '(ohne Name)'}</div>
+                        {c.customerNumber && <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Kundennr. {c.customerNumber}</div>}
+                      </div>
+                      <button onClick={() => verknuepfen(c)} disabled={mapBusy}
+                        style={{ padding: '4px 12px', borderRadius: '6px', border: `1px solid ${ACCENT}`, background: `${ACCENT}12`, color: ACCENT, fontSize: '11px', fontWeight: 700, cursor: mapBusy ? 'wait' : 'pointer', whiteSpace: 'nowrap' }}>
+                        Verknüpfen
+                      </button>
+                    </div>
+                  ))}
+                  <button onClick={neuAnlegen} disabled={mapBusy}
+                    style={{ alignSelf: 'flex-start', marginTop: '2px', padding: '5px 12px', borderRadius: '6px', border: '1px dashed var(--border)', background: 'transparent', color: 'var(--text-secondary)', fontSize: '11px', cursor: mapBusy ? 'wait' : 'pointer' }}>
+                    ＋ „{client.name || 'Mandant'}" neu in sevDesk anlegen
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {mapMsg && (
+            <div style={{ fontSize: '11px', color: mapMsg.startsWith('✓') ? '#16a34a' : '#ef4444', marginTop: '8px' }}>
+              {mapMsg.startsWith('✓') ? mapMsg : `⚠ ${mapMsg}`}
+            </div>
+          )}
+        </div>
 
         {/* Stammdaten-Abgleich */}
         {!editing ? (

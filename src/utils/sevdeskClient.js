@@ -60,3 +60,31 @@ export async function callSevdesk(action, params = {}) {
 export async function pingSevdesk() {
   return callSevdesk('ping')
 }
+
+/**
+ * Kontaktsuche (Substring über Name/Kundennr.).
+ * @param {string} query
+ * @returns {Promise<{contacts: Array, total: number}>}
+ */
+export async function findSevdeskContacts(query) {
+  return callSevdesk('findContacts', { query })
+}
+
+/**
+ * Kontaktdetails inkl. Anschrift + E-Mail laden.
+ * @param {string|number} contactId
+ * @returns {Promise<{contact: object}>}
+ */
+export async function getSevdeskContactDetails(contactId) {
+  return callSevdesk('getContactDetails', { contactId })
+}
+
+/**
+ * Neuen Kontakt (Organisation) in sevDesk anlegen.
+ * @param {string} name
+ * @param {string} [customerNumber]
+ * @returns {Promise<{contact: object}>}
+ */
+export async function createSevdeskContact(name, customerNumber) {
+  return callSevdesk('createContact', { name, customerNumber })
+}

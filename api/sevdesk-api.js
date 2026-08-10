@@ -12,10 +12,13 @@
  * Body: { action, ...params }
  *
  * Actions:
- *   ping → GET /SevUser  (Verbindungstest: prüft, ob Token gültig ist)
+ *   ping              → GET /SevUser  (Verbindungstest: prüft, ob Token gültig ist)
+ *   findContacts      → Kontaktsuche (Substring über Name/Kundennr.)
+ *   getContactDetails → Kontakt inkl. Anschrift + E-Mail laden
+ *   createContact     → neuen Kontakt (Organisation) anlegen
  *
- * (Weitere Actions – findOrCreateContact, createInvoice, getPdf, sendViaEmail,
- *  enshrine – folgen in den nächsten Stufen.)
+ * (Weitere Actions – createInvoice, getPdf, sendViaEmail, enshrine – folgen
+ *  in den nächsten Stufen.)
  */
 
 // Konsistent mit api/onedrive-api.js: raw body selbst lesen (unabhängig von Vercel-bodyParser)
@@ -105,6 +108,101 @@ export default async function handler(req, res) {
           email:    user.email ?? null,
         } : null,
       })
+    }
+
+    // ── findContacts (Kontaktsuche) ───────────────────────────────────────────
+    // sevDesk bietet keine robuste Volltext-Namenssuche per Query-Param, daher
+    // laden wir eine begrenzte Kontaktliste und filtern hier nach Substring
+    // (Name bei Organisationen bzw. Vor-/Nachname bei Personen, oder Kundennr.).
+    if (action === 'findContacts') {
+      const { query = '', limit = 500 } = params
+      const cap = Math.min(Number(limit) || 500, 1000)
+      const r = await sevdeskFetch(`/Contact?depth=1&limit=${cap}`, { method: 'GET' }, token)
+      let d = {}; try { d = await r.json() } catch {}
+      if (!r.ok) return fail(r.status, sevError(r, d, 'Kontaktsuche fehlgeschlagen'))
+
+      const list = (Array.isArray(d.objects) ? d.objects : []).map(c => ({
+        id:             c.id,
+        name:           (c.name && c.name.trim()) ? c.name.trim() : [c.surename, c.familyname].filter(Boolean).join(' ').trim(),
+        customerNumber: c.customerNumber ?? null,
+      })).filter(c => c.name || c.customerNumber)
+
+      const q = String(query).trim().toLowerCase()
+      const filtered = q
+        ? list.filter(c => (c.name || '').toLowerCase().includes(q) || String(c.customerNumber || '').toLowerCase().includes(q))
+        : list
+
+      return ok({ contacts: filtered.slice(0, 50), total: filtered.length })
+    }
+
+    // ── getContactDetails (Kontakt inkl. Anschrift + E-Mail) ──────────────────
+    if (action === 'getContactDetails') {
+      const { contactId } = params
+      if (!contactId) return fail(400, 'contactId fehlt')
+      const id = encodeURIComponent(contactId)
+
+      const [rc, ra, rw] = await Promise.all([
+        sevdeskFetch(`/Contact/${id}?depth=1`, { method: 'GET' }, token),
+        sevdeskFetch(`/Contact/${id}/getContactAddresses`, { method: 'GET' }, token),
+        sevdeskFetch(`/Contact/${id}/getCommunicationWays`, { method: 'GET' }, token),
+      ])
+      const [dc, da, dw] = await Promise.all([
+        rc.json().catch(() => ({})), ra.json().catch(() => ({})), rw.json().catch(() => ({})),
+      ])
+      if (!rc.ok) return fail(rc.status, sevError(rc, dc, 'Kontakt konnte nicht geladen werden'))
+
+      const c    = Array.isArray(dc.objects) ? dc.objects[0] : dc.objects
+      const addr = (Array.isArray(da.objects) ? da.objects[0] : null) || {}
+      const ways = Array.isArray(dw.objects) ? dw.objects : []
+      const email = ways.find(w => String(w.type).toUpperCase() === 'EMAIL')?.value ?? ''
+      const land  = addr.country?.code || addr.country?.name || ''
+
+      return ok({
+        contact: {
+          id:             c?.id ?? contactId,
+          name:           (c?.name && c.name.trim()) ? c.name.trim() : [c?.surename, c?.familyname].filter(Boolean).join(' ').trim(),
+          customerNumber: c?.customerNumber ?? null,
+          address: {
+            strasse: addr.street ?? '',
+            plz:     addr.zip    ?? '',
+            ort:     addr.city   ?? '',
+            land:    land || 'Deutschland',
+          },
+          email,
+        },
+      })
+    }
+
+    // ── createContact (neue Organisation anlegen) ─────────────────────────────
+    // Beim Anlegen ist eine Kontakt-Kategorie Pflicht; diese ist kontospezifisch,
+    // daher ermitteln wir sie zur Laufzeit (bevorzugt „Kunde", sonst die erste).
+    if (action === 'createContact') {
+      const { name, customerNumber } = params
+      const nm = String(name ?? '').trim()
+      if (!nm) return fail(400, 'name fehlt')
+
+      const rcat = await sevdeskFetch(`/Category?objectType=Contact&limit=100`, { method: 'GET' }, token)
+      const dcat = await rcat.json().catch(() => ({}))
+      if (!rcat.ok) return fail(rcat.status, sevError(rcat, dcat, 'Kontakt-Kategorien konnten nicht geladen werden'))
+      const cats = Array.isArray(dcat.objects) ? dcat.objects : []
+      const cat  = cats.find(x => /kunde|customer/i.test(x.name || x.translationCode || '')) || cats[0]
+      if (!cat) return fail(400, 'Keine Kontakt-Kategorie im sevDesk-Konto gefunden.')
+
+      const bodyObj = {
+        name: nm,
+        category: { id: cat.id, objectName: 'Category' },
+        ...(customerNumber ? { customerNumber: String(customerNumber) } : {}),
+      }
+      const r = await sevdeskFetch('/Contact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(bodyObj),
+      }, token)
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok) return fail(r.status, sevError(r, d, 'Kontakt konnte nicht angelegt werden'))
+
+      const created = Array.isArray(d.objects) ? d.objects[0] : d.objects
+      return ok({ contact: { id: created?.id, name: created?.name ?? nm, customerNumber: created?.customerNumber ?? null } })
     }
 
     return fail(400, `Unbekannte action: ${action}`)
