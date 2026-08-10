@@ -261,7 +261,14 @@ export default async function handler(req, res) {
       const r = await sevdeskFetch('/Invoice/Factory/saveInvoice', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ invoice, invoicePosArray, takeDefaultAddress: address ? false : true }),
+        // sevDesk-Factory erwartet die Positionen unter 'invoicePosSave' (NICHT invoicePosArray),
+        // sonst: „The given document must have at least one position".
+        body:    JSON.stringify({
+          invoice,
+          invoicePosSave:   invoicePosArray,
+          invoicePosDelete: null,
+          takeDefaultAddress: address ? false : true,
+        }),
       }, token)
       const d = await r.json().catch(() => ({}))
       if (!r.ok) return fail(r.status, sevError(r, d, 'Rechnungsentwurf konnte nicht angelegt werden'))
