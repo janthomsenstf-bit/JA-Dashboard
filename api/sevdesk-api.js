@@ -326,7 +326,7 @@ export default async function handler(req, res) {
       if (!toEmail)   return fail(400, 'Empfänger-E-Mail fehlt')
 
       const r = await sevdeskFetch(`/Invoice/${encodeURIComponent(invoiceId)}/sendViaEmail`, {
-        method:  'PUT',
+        method:  'POST',   // sevDesk erwartet POST (nicht PUT) für sendViaEmail
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ toEmail, subject: subject || 'Ihre Rechnung', text: text || '', copy: !!copy }),
       }, token)
