@@ -199,12 +199,12 @@ const MAIL_VORLAGEN = [
   {
     key: 'de', label: '🇩🇪 Deutsch',
     subject: 'Ihre Rechnung',
-    text: 'Sehr geehrte Damen und Herren,\n\nanbei erhalten Sie Ihre Rechnung als PDF.\n\nMit freundlichen Grüßen',
+    text: 'Sehr geehrte Damen und Herren,\n\nvielen Dank für Ihr Vertrauen und die angenehme Zusammenarbeit. Anbei erhalten Sie Ihre Rechnung für die erbrachten Leistungen als PDF.\n\nIch hoffe, Sie sind mit meiner Arbeit zufrieden. Bei Fragen zur Rechnung stehe ich Ihnen selbstverständlich jederzeit gerne zur Verfügung.\n\nMit freundlichen Grüßen',
   },
   {
     key: 'da', label: '🇩🇰 Dänisch',
     subject: 'Din faktura',
-    text: 'Kære kunde,\n\nVedhæftet finder du din faktura som PDF-fil.\n\nMed venlig hilsen',
+    text: 'Kære kunde,\n\nMange tak for din tillid og det gode samarbejde. Vedhæftet finder du din faktura for de leverede ydelser som PDF-fil.\n\nJeg håber, du er tilfreds med mit arbejde. Har du spørgsmål til fakturaen, er du altid meget velkommen til at kontakte mig.\n\nMed venlig hilsen',
   },
 ]
 
