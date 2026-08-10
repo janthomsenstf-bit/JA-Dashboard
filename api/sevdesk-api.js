@@ -20,6 +20,7 @@
  *   getPdf            → (Vorschau-)PDF einer Rechnung als Base64
  *   sendViaEmail      → Rechnung per E-Mail an Mandant senden (finalisiert + Nummer)
  *   enshrine          → Rechnung festschreiben (GoBD, unveränderlich)
+ *   getInvoiceStatuses→ Zahlungsstatus mehrerer Rechnungen abgleichen (offen/bezahlt)
  */
 
 const DEFAULT_BASE = 'https://my.sevdesk.de/api/v1'
@@ -38,7 +39,7 @@ async function sevdeskFetch(path, options, token) {
   })
 }
 
-// ── Rechnung neu lesen (finale Nummer/Status/Summen) ─────────────────────────
+// ── Rechnung neu lesen (finale Nummer/Status/Summen/Zahlung) ─────────────────
 async function readInvoiceSummary(invoiceId, token) {
   const r = await sevdeskFetch(`/Invoice/${encodeURIComponent(invoiceId)}`, { method: 'GET' }, token)
   const d = await r.json().catch(() => ({}))
@@ -47,9 +48,13 @@ async function readInvoiceSummary(invoiceId, token) {
   return {
     id:            inv.id,
     invoiceNumber: inv.invoiceNumber || null,
-    status:        inv.status ?? null,
+    status:        inv.status != null ? Number(inv.status) : null,  // 100 Entwurf, 200 offen, 750 teilbezahlt, 1000 bezahlt
     sumNet:        Number(inv.sumNet)   || null,
     sumGross:      Number(inv.sumGross) || null,
+    paidAmount:    Number(inv.paidAmount) || 0,
+    payDate:       inv.payDate || null,
+    invoiceDate:   inv.invoiceDate || null,
+    timeToPay:     Number(inv.timeToPay) || 0,
   }
 }
 
@@ -349,6 +354,23 @@ export default async function handler(req, res) {
       }
       const invoice = await readInvoiceSummary(invoiceId, token)
       return ok({ enshrined: true, invoice })
+    }
+
+    // ── getInvoiceStatuses (Zahlungsstatus abgleichen) ────────────────────────
+    // Liest für mehrere Rechnungen den aktuellen sevDesk-Status (offen/bezahlt).
+    if (action === 'getInvoiceStatuses') {
+      const { ids } = params
+      if (!Array.isArray(ids) || ids.length === 0) return ok({ statuses: [] })
+      const capped = ids.slice(0, 200)
+      const statuses = await Promise.all(capped.map(async id => {
+        try {
+          const s = await readInvoiceSummary(id, token)
+          return s ? s : { id, error: 'not_found' }
+        } catch (e) {
+          return { id, error: String(e) }
+        }
+      }))
+      return ok({ statuses })
     }
 
     return fail(400, `Unbekannte action: ${action}`)

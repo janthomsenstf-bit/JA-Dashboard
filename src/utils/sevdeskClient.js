@@ -124,3 +124,12 @@ export async function sendSevdeskInvoiceEmail(data) {
 export async function enshrineSevdeskInvoice(invoiceId) {
   return callSevdesk('enshrine', { invoiceId })
 }
+
+/**
+ * Zahlungsstatus mehrerer Rechnungen aus sevDesk abgleichen.
+ * @param {Array<string|number>} ids - sevDesk-Rechnungs-IDs
+ * @returns {Promise<{statuses: Array}>} - je Rechnung { id, status, paidAmount, payDate, invoiceDate, timeToPay, sumGross, invoiceNumber }
+ */
+export async function getSevdeskInvoiceStatuses(ids) {
+  return callSevdesk('getInvoiceStatuses', { ids })
+}

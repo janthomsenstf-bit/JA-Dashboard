@@ -14,6 +14,7 @@ import { useState, useRef } from 'react'
 import {
   pingSevdesk, findSevdeskContacts, getSevdeskContactDetails, createSevdeskContact,
   createSevdeskInvoice, getSevdeskInvoicePdf, sendSevdeskInvoiceEmail, enshrineSevdeskInvoice,
+  getSevdeskInvoiceStatuses,
 } from '../../utils/sevdeskClient.js'
 import { callAI, hasAiKey } from '../../utils/aiClient.js'
 import { buildMailHtml } from '../../utils/mailFormat.js'
@@ -586,6 +587,34 @@ function InvoiceEntwurf({ client, onUpdate, signaturen = [] }) {
   )
 }
 
+// ── Zahlungsstatus (Offene-Posten-Liste) ───────────────────────────────────
+function berechneFaelligkeit(invoiceDate, timeToPay) {
+  if (!invoiceDate) return null
+  const d = new Date(invoiceDate)
+  if (isNaN(d.getTime())) return null
+  d.setDate(d.getDate() + (Number(timeToPay) || 0))
+  return d.toISOString().slice(0, 10)
+}
+
+const ZAHL_STATUS = {
+  bezahlt:      { label: 'Bezahlt',     color: '#16a34a', bg: 'rgba(22,163,74,0.12)' },
+  teilbezahlt:  { label: 'Teilbezahlt', color: '#f59e0b', bg: 'rgba(245,158,11,0.14)' },
+  ueberfaellig: { label: 'Überfällig',  color: '#ef4444', bg: 'rgba(239,68,68,0.12)' },
+  offen:        { label: 'Offen',       color: '#2563eb', bg: 'rgba(37,99,235,0.12)' },
+  entwurf:      { label: 'Entwurf',     color: '#64748b', bg: 'rgba(100,116,139,0.14)' },
+}
+
+// Leitet den Zahlungsstatus aus dem zuletzt abgeglichenen sevDesk-Status ab.
+function zahlStatusKey(r) {
+  const code = r.statusCode
+  if (code === 1000) return 'bezahlt'
+  if (code === 750)  return 'teilbezahlt'
+  if (code === 100)  return 'entwurf'
+  // 200 = offen/versendet (oder noch nicht abgeglichen) → Fälligkeit prüfen
+  if (r.faelligkeit && r.faelligkeit < todayISO()) return 'ueberfaellig'
+  return 'offen'
+}
+
 export default function RechnungSevdeskBlock({ client, onUpdate, signaturen = [] }) {
   const rechnung = { ...leerRechnung(), ...(client.rechnung ?? {}) }
 
@@ -724,6 +753,39 @@ export default function RechnungSevdeskBlock({ client, onUpdate, signaturen = []
   const istVollstaendig = fehlendGesamt === 0
   const empfaenger = rechnungsEmpfaenger(client)
   const kontakte = client.kontakte ?? []
+
+  // ── Zahlungsstatus abgleichen (Offene Posten) ────────────────────────────
+  const [opBusy, setOpBusy] = useState(false)
+  const [opMsg, setOpMsg]   = useState('')
+
+  async function statusAbgleichen() {
+    const eintraege = client.rechnungen ?? []
+    const ids = eintraege.map(r => r.sevdeskId).filter(Boolean)
+    if (!ids.length) return
+    setOpBusy(true); setOpMsg('')
+    try {
+      const res = await getSevdeskInvoiceStatuses(ids)
+      const byId = new Map((res.statuses ?? []).filter(s => !s.error && s.id != null).map(s => [String(s.id), s]))
+      const updated = eintraege.map(r => {
+        const s = byId.get(String(r.sevdeskId))
+        if (!s) return r
+        return {
+          ...r,
+          statusCode:     s.status,
+          paidAmount:     s.paidAmount ?? 0,
+          payDate:        s.payDate ?? null,
+          faelligkeit:    berechneFaelligkeit(s.invoiceDate, s.timeToPay),
+          betragBrutto:   s.sumGross ?? r.betragBrutto,
+          nummer:         s.invoiceNumber ?? r.nummer,
+          zuletztGeprueft: new Date().toISOString(),
+        }
+      })
+      onUpdate({ rechnungen: updated })
+      setOpMsg('✓ Zahlungsstatus abgeglichen.')
+    } catch (e) {
+      setOpMsg(e.message || 'Abgleich fehlgeschlagen')
+    } finally { setOpBusy(false) }
+  }
 
   return (
     <div style={{ border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden' }}>
@@ -952,28 +1014,60 @@ export default function RechnungSevdeskBlock({ client, onUpdate, signaturen = []
           </div>
         )}
 
-        {/* Rechnungshistorie (Spiegel am Mandanten) */}
-        {Array.isArray(client.rechnungen) && client.rechnungen.length > 0 && (
-          <div style={{ border: '1px solid var(--border)', borderRadius: '10px', padding: '12px 14px', background: 'var(--surface)' }}>
-            <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '8px' }}>
-              Erstellte Rechnungen ({client.rechnungen.length})
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-              {[...client.rechnungen].reverse().map(r => (
-                <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '7px 10px', border: '1px solid var(--border)', borderRadius: '7px', background: 'var(--surface2)', fontSize: '12px' }}>
-                  <span style={{ fontWeight: 700, color: 'var(--text)', minWidth: '90px' }}>{r.nummer || 'ohne Nr.'}</span>
-                  <span style={{ color: 'var(--text-muted)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {r.datum || '—'} · {r.email || '—'}
-                  </span>
-                  <span style={{ fontWeight: 700, color: 'var(--text)', whiteSpace: 'nowrap' }}>{fmtEuro(r.betragBrutto)}</span>
-                  <span style={{ fontSize: '10px', background: 'rgba(22,163,74,0.12)', color: '#16a34a', padding: '2px 8px', borderRadius: '10px', fontWeight: 700, whiteSpace: 'nowrap' }}>
-                    {r.status || 'versendet'}
-                  </span>
+        {/* Rechnungshistorie + Offene Posten (Spiegel am Mandanten) */}
+        {Array.isArray(client.rechnungen) && client.rechnungen.length > 0 && (() => {
+          const eintraege = client.rechnungen
+          let offenSumme = 0, bezahltSumme = 0
+          eintraege.forEach(r => {
+            const k = zahlStatusKey(r)
+            const brutto = Number(r.betragBrutto) || 0
+            const paid = Number(r.paidAmount) || 0
+            if (k === 'bezahlt') bezahltSumme += brutto
+            else if (k === 'teilbezahlt') { bezahltSumme += paid; offenSumme += Math.max(0, brutto - paid) }
+            else if (k !== 'entwurf') offenSumme += brutto
+          })
+          return (
+            <div style={{ border: '1px solid var(--border)', borderRadius: '10px', padding: '12px 14px', background: 'var(--surface)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)', flex: 1 }}>
+                  Rechnungen & offene Posten ({eintraege.length})
+                </span>
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                  Offen: <strong style={{ color: '#2563eb' }}>{fmtEuro(offenSumme)}</strong> · Bezahlt: <strong style={{ color: '#16a34a' }}>{fmtEuro(bezahltSumme)}</strong>
+                </span>
+                <button onClick={statusAbgleichen} disabled={opBusy}
+                  style={{ padding: '4px 12px', borderRadius: '6px', border: `1px solid ${ACCENT}`, background: 'transparent', color: ACCENT, fontSize: '11px', fontWeight: 700, cursor: opBusy ? 'wait' : 'pointer', whiteSpace: 'nowrap' }}>
+                  {opBusy ? '⏳ …' : '🔄 Status abgleichen'}
+                </button>
+              </div>
+              {opMsg && (
+                <div style={{ fontSize: '11px', color: opMsg.startsWith('✓') ? '#16a34a' : '#ef4444', marginBottom: '8px' }}>
+                  {opMsg.startsWith('✓') ? opMsg : `⚠ ${opMsg}`}
                 </div>
-              ))}
+              )}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                {[...eintraege].reverse().map(r => {
+                  const st = ZAHL_STATUS[zahlStatusKey(r)] ?? ZAHL_STATUS.offen
+                  return (
+                    <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '7px 10px', border: '1px solid var(--border)', borderRadius: '7px', background: 'var(--surface2)', fontSize: '12px' }}>
+                      <span style={{ fontWeight: 700, color: 'var(--text)', minWidth: '90px' }}>{r.nummer || 'ohne Nr.'}</span>
+                      <span style={{ color: 'var(--text-muted)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {r.datum || '—'}{r.faelligkeit ? ` · fällig ${r.faelligkeit}` : ''} · {r.email || '—'}
+                      </span>
+                      <span style={{ fontWeight: 700, color: 'var(--text)', whiteSpace: 'nowrap' }}>{fmtEuro(r.betragBrutto)}</span>
+                      <span style={{ fontSize: '10px', background: st.bg, color: st.color, padding: '2px 8px', borderRadius: '10px', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                        {st.label}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+              <div style={{ fontSize: '11px', color: 'var(--text-muted)', lineHeight: 1.6, marginTop: '8px' }}>
+                💡 „🔄 Status abgleichen" holt den aktuellen Zahlstatus aus sevDesk (dort buchst du die Zahlungseingänge).
+              </div>
             </div>
-          </div>
-        )}
+          )
+        })()}
 
       </div>
     </div>
