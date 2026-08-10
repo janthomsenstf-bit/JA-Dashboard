@@ -157,6 +157,8 @@ export default async function handler(req, res) {
             land:    land || 'Deutschland',
           },
           email,
+          ustId:        c?.vatNumber ?? '',   // USt-IdNr.
+          steuernummer: c?.taxNumber ?? '',   // Steuernummer
         },
       })
     }

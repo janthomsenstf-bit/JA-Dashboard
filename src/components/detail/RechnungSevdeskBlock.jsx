@@ -41,11 +41,12 @@ const RECHNUNG_FELDER = [
   { key: 'land',    label: 'Land',            pflicht: false, placeholder: 'Deutschland' },
   { key: 'email',   label: 'Rechnungs-E-Mail', pflicht: true, placeholder: 'z. B. buchhaltung@mandant.de' },
   { key: 'ustId',   label: 'USt-IdNr. (B2B)', pflicht: false, b2b: true, placeholder: 'z. B. DE123456789' },
+  { key: 'steuernummer', label: 'Steuernr.', pflicht: false, placeholder: 'z. B. 12/345/67890' },
   { key: 'kundennummer', label: 'Kundennr. (optional)', pflicht: false, placeholder: 'intern' },
 ]
 
 function leerRechnung() {
-  return { strasse: '', plz: '', ort: '', land: 'Deutschland', email: '', ustId: '', kundennummer: '' }
+  return { strasse: '', plz: '', ort: '', land: 'Deutschland', email: '', ustId: '', steuernummer: '', kundennummer: '' }
 }
 
 // ── Rechnungs-Editor (Entwurf + Vorschau) ──────────────────────────────────
@@ -308,21 +309,35 @@ export default function RechnungSevdeskBlock({ client, onUpdate }) {
     } finally { setMapBusy(false) }
   }
 
-  // Verknüpfen: sevdeskContactId setzen + Anschrift/E-Mail ADDITIV übernehmen
+  // Lädt die rechnungsrelevanten Felder eines sevDesk-Kontakts als flache Map.
+  async function ladeSevdeskFelder(contactId) {
+    const res = await getSevdeskContactDetails(contactId)
+    const a = res.contact?.address ?? {}
+    return {
+      strasse:      a.strasse ?? '',
+      plz:          a.plz ?? '',
+      ort:          a.ort ?? '',
+      land:         a.land ?? '',
+      email:        res.contact?.email ?? '',
+      ustId:        res.contact?.ustId ?? '',
+      steuernummer: res.contact?.steuernummer ?? '',
+      kundennummer: res.contact?.customerNumber != null ? String(res.contact.customerNumber) : '',
+    }
+  }
+
+  // Verknüpfen: sevdeskContactId setzen + Stammdaten ADDITIV übernehmen
   // (füllt nur leere Felder in client.rechnung – überschreibt nie Vorhandenes).
   async function verknuepfen(c) {
     setMapBusy(true); setMapMsg('')
     try {
       const patch = { sevdeskContactId: c.id, sevdeskContactName: c.name }
       try {
-        const res = await getSevdeskContactDetails(c.id)
-        const a   = res.contact?.address ?? {}
+        const felder = await ladeSevdeskFelder(c.id)
         const cur = client.rechnung ?? {}
         const merged = { ...cur }
-        const fill = (k, v) => { if (v && !String(cur[k] ?? '').trim()) merged[k] = v }
-        fill('strasse', a.strasse); fill('plz', a.plz); fill('ort', a.ort); fill('land', a.land)
-        fill('email', res.contact?.email)
-        if (!String(cur.kundennummer ?? '').trim() && res.contact?.customerNumber) merged.kundennummer = String(res.contact.customerNumber)
+        for (const [k, v] of Object.entries(felder)) {
+          if (v && !String(cur[k] ?? '').trim()) merged[k] = v
+        }
         patch.rechnung = merged
       } catch { /* Details optional – Verknüpfung trotzdem speichern */ }
       onUpdate(patch)
@@ -346,21 +361,34 @@ export default function RechnungSevdeskBlock({ client, onUpdate }) {
     } finally { setMapBusy(false) }
   }
 
-  // Explizit Anschrift/E-Mail aus sevDesk überschreiben (mit Rückfrage)
-  async function ausSevdeskAktualisieren() {
+  // Nicht-destruktiv: füllt NUR leere Felder aus sevDesk (überschreibt nichts).
+  async function uebernehmenLeere() {
     if (!client.sevdeskContactId) return
-    if (!window.confirm('Anschrift und E-Mail aus dem sevDesk-Kontakt übernehmen? Vorhandene Werte werden dabei überschrieben.')) return
     setMapBusy(true); setMapMsg('')
     try {
-      const res = await getSevdeskContactDetails(client.sevdeskContactId)
-      const a   = res.contact?.address ?? {}
+      const felder = await ladeSevdeskFelder(client.sevdeskContactId)
+      const cur = client.rechnung ?? {}
+      const merged = { ...cur }
+      let count = 0
+      for (const [k, v] of Object.entries(felder)) {
+        if (v && !String(cur[k] ?? '').trim()) { merged[k] = v; count++ }
+      }
+      if (count) { onUpdate({ rechnung: merged }); setMapMsg(`✓ ${count} Feld${count !== 1 ? 'er' : ''} aus sevDesk übernommen.`) }
+      else setMapMsg('Alle Felder sind bereits gefüllt – nichts zu übernehmen.')
+    } catch (e) {
+      setMapMsg(e.message || 'Übernahme fehlgeschlagen')
+    } finally { setMapBusy(false) }
+  }
+
+  // Explizit ALLE Stammdaten aus sevDesk überschreiben (mit Rückfrage)
+  async function ausSevdeskAktualisieren() {
+    if (!client.sevdeskContactId) return
+    if (!window.confirm('Alle Stammdaten (Anschrift, E-Mail, USt-IdNr., Steuernr.) aus dem sevDesk-Kontakt übernehmen? Vorhandene Werte werden dabei überschrieben.')) return
+    setMapBusy(true); setMapMsg('')
+    try {
+      const felder = await ladeSevdeskFelder(client.sevdeskContactId)
       const merged = { ...(client.rechnung ?? {}) }
-      if (a.strasse) merged.strasse = a.strasse
-      if (a.plz)     merged.plz     = a.plz
-      if (a.ort)     merged.ort     = a.ort
-      if (a.land)    merged.land    = a.land
-      if (res.contact?.email) merged.email = res.contact.email
-      if (res.contact?.customerNumber) merged.kundennummer = String(res.contact.customerNumber)
+      for (const [k, v] of Object.entries(felder)) { if (v) merged[k] = v }
       onUpdate({ rechnung: merged })
       setMapMsg('✓ Aus sevDesk aktualisiert.')
     } catch (e) {
@@ -440,13 +468,17 @@ export default function RechnungSevdeskBlock({ client, onUpdate }) {
                   sevDesk-Kontakt-ID {client.sevdeskContactId}
                 </div>
               </div>
-              <button onClick={ausSevdeskAktualisieren} disabled={mapBusy}
+              <button onClick={uebernehmenLeere} disabled={mapBusy} title="Fehlende Stammdaten aus sevDesk holen (überschreibt nichts)"
+                style={{ padding: '5px 12px', borderRadius: '6px', border: 'none', background: ACCENT, color: '#fff', fontSize: '11px', fontWeight: 700, cursor: mapBusy ? 'wait' : 'pointer', whiteSpace: 'nowrap' }}>
+                ⬇ Aus sevDesk übernehmen
+              </button>
+              <button onClick={ausSevdeskAktualisieren} disabled={mapBusy} title="Alle Stammdaten aus sevDesk überschreiben (mit Rückfrage)"
                 style={{ padding: '5px 12px', borderRadius: '6px', border: `1px solid ${ACCENT}`, background: 'transparent', color: ACCENT, fontSize: '11px', fontWeight: 700, cursor: mapBusy ? 'wait' : 'pointer', whiteSpace: 'nowrap' }}>
-                ⟳ Aus sevDesk aktualisieren
+                ⟳ Überschreiben
               </button>
               <button onClick={loesen} disabled={mapBusy}
                 style={{ padding: '5px 12px', borderRadius: '6px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-muted)', fontSize: '11px', cursor: mapBusy ? 'wait' : 'pointer', whiteSpace: 'nowrap' }}>
-                Verknüpfung lösen
+                Lösen
               </button>
             </div>
           ) : (
