@@ -3373,7 +3373,7 @@ function EmailDetailPanel({
                     📎 {entry.anlagen.length} Anhang{entry.anlagen.length !== 1 ? 'änge' : ''}
                   </div>
                   {selectedAnlagen.size > 0 && (
-                    <span style={{ fontSize: '10px', color: '#0891b2', fontWeight: 600 }}>{selectedAnlagen.size} ausgewählt</span>
+                    <span style={{ fontSize: '10px', color: 'var(--accent)', fontWeight: 600 }}>{selectedAnlagen.size} ausgewählt</span>
                   )}
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -3384,8 +3384,8 @@ function EmailDetailPanel({
                     return (
                       <div key={i} style={{
                         display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px',
-                        borderRadius: '10px', background: isSelected ? 'rgba(8,145,178,0.06)' : 'var(--surface)',
-                        border: `1px solid ${isSelected ? 'rgba(8,145,178,0.3)' : 'var(--border)'}`, fontSize: '12px',
+                        borderRadius: '10px', background: isSelected ? 'rgba(15,118,110,0.06)' : 'var(--surface)',
+                        border: `1px solid ${isSelected ? 'rgba(15,118,110,0.3)' : 'var(--border)'}`, fontSize: '12px',
                         transition: 'all 0.15s',
                       }}>
                         <input type="checkbox" checked={isSelected}
@@ -3394,7 +3394,7 @@ function EmailDetailPanel({
                             if (next.has(i)) next.delete(i); else next.add(i)
                             return next
                           })}
-                          style={{ cursor: 'pointer', flexShrink: 0, accentColor: '#0891b2' }} />
+                          style={{ cursor: 'pointer', flexShrink: 0, accentColor: 'var(--accent)' }} />
                         <span style={{ fontSize: '16px', flexShrink: 0 }}>{fileIcon(a.contentType)}</span>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</div>
@@ -3447,8 +3447,8 @@ function EmailDetailPanel({
                                 onClick={() => setSaveTargetPath(qt.path)}
                                 style={{
                                   fontSize: '10px', padding: '3px 8px', borderRadius: '6px',
-                                  background: saveTargetPath === qt.path ? 'rgba(8,145,178,0.12)' : undefined,
-                                  border: saveTargetPath === qt.path ? '1px solid rgba(8,145,178,0.3)' : undefined,
+                                  background: saveTargetPath === qt.path ? 'rgba(15,118,110,0.12)' : undefined,
+                                  border: saveTargetPath === qt.path ? '1px solid rgba(15,118,110,0.3)' : undefined,
                                 }}>
                                 {qt.label}
                               </button>
