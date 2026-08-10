@@ -88,3 +88,21 @@ export async function getSevdeskContactDetails(contactId) {
 export async function createSevdeskContact(name, customerNumber) {
   return callSevdesk('createContact', { name, customerNumber })
 }
+
+/**
+ * Rechnung als ENTWURF in sevDesk anlegen (kein Versand, keine Nummer).
+ * @param {object} data - { contactId, invoiceDate, positions:[{name,quantity,price,taxRate,text?}], address?, headText?, footText?, timeToPay? }
+ * @returns {Promise<{invoice: object}>}
+ */
+export async function createSevdeskInvoice(data) {
+  return callSevdesk('createInvoice', data)
+}
+
+/**
+ * (Vorschau-)PDF einer Rechnung als Base64 laden.
+ * @param {string|number} invoiceId
+ * @returns {Promise<{filename: string, mimetype: string, base64: string}>}
+ */
+export async function getSevdeskInvoicePdf(invoiceId) {
+  return callSevdesk('getPdf', { invoiceId })
+}

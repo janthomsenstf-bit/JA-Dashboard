@@ -11,7 +11,10 @@
  * Der sevDesk-Token liegt server-seitig – hier wird er nie angefasst.
  */
 import { useState } from 'react'
-import { pingSevdesk, findSevdeskContacts, getSevdeskContactDetails, createSevdeskContact } from '../../utils/sevdeskClient.js'
+import {
+  pingSevdesk, findSevdeskContacts, getSevdeskContactDetails, createSevdeskContact,
+  createSevdeskInvoice, getSevdeskInvoicePdf,
+} from '../../utils/sevdeskClient.js'
 
 const ACCENT = '#4f46e5'
 
@@ -43,6 +46,234 @@ const RECHNUNG_FELDER = [
 
 function leerRechnung() {
   return { strasse: '', plz: '', ort: '', land: 'Deutschland', email: '', ustId: '', kundennummer: '' }
+}
+
+// ── Rechnungs-Editor (Entwurf + Vorschau) ──────────────────────────────────
+function todayISO() { return new Date().toISOString().slice(0, 10) }
+function fmtEuro(v) { return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(Number(v) || 0) }
+
+const UST_SAETZE = [19, 7, 0]
+
+// Kleiner Leistungskatalog für wiederkehrende Positionen (Beträge frei änderbar).
+const LEISTUNG_PRESETS = [
+  { name: 'USt-Voranmeldung',              price: 75,  taxRate: 19 },
+  { name: 'Finanzbuchführung (monatlich)', price: 150, taxRate: 19 },
+  { name: 'Lohn- und Gehaltsabrechnung',   price: 15,  taxRate: 19 },
+  { name: 'Jahresabschluss',               price: 0,   taxRate: 19 },
+  { name: 'Beratung',                      price: 0,   taxRate: 19 },
+]
+
+function mkPos(preset) {
+  return {
+    id:       'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+    name:     preset?.name ?? '',
+    quantity: 1,
+    price:    preset?.price != null ? String(preset.price) : '',
+    taxRate:  preset?.taxRate ?? 19,
+    text:     '',
+  }
+}
+
+// Empfängeranschrift für die Rechnung aus den Stammdaten (mehrzeilig).
+function buildAddress(client) {
+  const r = client.rechnung ?? {}
+  const lines = [
+    client.name,
+    r.strasse,
+    [r.plz, r.ort].filter(Boolean).join(' ').trim(),
+    r.land && r.land !== 'Deutschland' ? r.land : null,
+  ].map(s => String(s ?? '').trim()).filter(Boolean)
+  return lines.join('\n')
+}
+
+function InvoiceEntwurf({ client }) {
+  const [positions, setPositions]   = useState([mkPos(LEISTUNG_PRESETS[0])])
+  const [headText, setHeadText]     = useState('')
+  const [invoiceDate, setInvoiceDate] = useState(todayISO())
+  const [timeToPay, setTimeToPay]   = useState('14')
+  const [creating, setCreating]     = useState(false)
+  const [invError, setInvError]     = useState('')
+  const [result, setResult]         = useState(null)   // { invoice, pdf }
+
+  const setPos = (id, k, v) => setPositions(ps => ps.map(p => p.id === id ? { ...p, [k]: v } : p))
+  const addPos = (preset)   => setPositions(ps => [...ps, mkPos(preset)])
+  const delPos = (id)       => setPositions(ps => ps.length > 1 ? ps.filter(p => p.id !== id) : ps)
+
+  const sums = positions.reduce((acc, p) => {
+    const net = (Number(p.quantity) || 0) * (Number(String(p.price).replace(',', '.')) || 0)
+    acc.net += net
+    acc.tax += net * ((Number(p.taxRate) || 0) / 100)
+    return acc
+  }, { net: 0, tax: 0 })
+  const gross = sums.net + sums.tax
+
+  async function createDraft() {
+    const valid = positions
+      .map(p => ({ ...p, price: Number(String(p.price).replace(',', '.')) || 0, quantity: Number(p.quantity) || 1, taxRate: Number(p.taxRate) || 0 }))
+      .filter(p => String(p.name).trim() && p.price > 0)
+    if (!valid.length) { setInvError('Bitte mindestens eine Position mit Bezeichnung und Betrag (> 0) angeben.'); return }
+
+    setCreating(true); setInvError('')
+    try {
+      const res = await createSevdeskInvoice({
+        contactId:   client.sevdeskContactId,
+        invoiceDate,
+        timeToPay:   Number(timeToPay) || 0,
+        headText,
+        address:     buildAddress(client) || undefined,
+        positions:   valid.map(p => ({ name: p.name.trim(), quantity: p.quantity, price: p.price, taxRate: p.taxRate, text: p.text })),
+      })
+      let pdf = null
+      try { pdf = await getSevdeskInvoicePdf(res.invoice.id) } catch { /* PDF-Vorschau optional */ }
+      setResult({ invoice: res.invoice, pdf })
+    } catch (e) {
+      setInvError(e.message || 'Rechnungsentwurf konnte nicht erstellt werden.')
+    } finally { setCreating(false) }
+  }
+
+  function neueRechnung() {
+    setResult(null); setInvError('')
+    setPositions([mkPos(LEISTUNG_PRESETS[0])]); setHeadText(''); setInvoiceDate(todayISO()); setTimeToPay('14')
+  }
+
+  // ── Ergebnis-Ansicht (Entwurf angelegt + Vorschau) ──
+  if (result) {
+    const inv = result.invoice
+    const pdfUrl = result.pdf?.base64 ? `data:${result.pdf.mimetype || 'application/pdf'};base64,${result.pdf.base64}` : null
+    return (
+      <div style={{ border: `1px solid ${ACCENT}44`, borderRadius: '10px', overflow: 'hidden' }}>
+        <div style={{ background: ACCENT, color: '#fff', padding: '8px 14px', fontSize: '12px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span>✓ Entwurf in sevDesk angelegt</span>
+          <span style={{ flex: 1 }} />
+          <button onClick={neueRechnung}
+            style={{ padding: '3px 10px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.4)', background: 'rgba(255,255,255,0.15)', color: '#fff', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}>
+            + Neue Rechnung
+          </button>
+        </div>
+        <div style={{ padding: '12px 14px', background: 'var(--surface)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <div style={{ display: 'flex', gap: '18px', flexWrap: 'wrap', fontSize: '12px' }}>
+            <span style={{ color: 'var(--text-muted)' }}>Entwurf-ID: <strong style={{ color: 'var(--text)' }}>{inv.id}</strong></span>
+            {inv.sumNet   != null && <span style={{ color: 'var(--text-muted)' }}>Netto: <strong style={{ color: 'var(--text)' }}>{fmtEuro(inv.sumNet)}</strong></span>}
+            {inv.sumGross != null && <span style={{ color: 'var(--text-muted)' }}>Brutto: <strong style={{ color: 'var(--text)' }}>{fmtEuro(inv.sumGross)}</strong></span>}
+          </div>
+          {pdfUrl ? (
+            <>
+              <iframe title="Rechnungsvorschau" src={pdfUrl} style={{ width: '100%', height: '460px', border: '1px solid var(--border)', borderRadius: '8px', background: '#fff' }} />
+              <a href={pdfUrl} download={result.pdf.filename || 'rechnung.pdf'}
+                style={{ alignSelf: 'flex-start', fontSize: '12px', color: ACCENT, textDecoration: 'none', fontWeight: 700 }}>
+                ⬇ PDF herunterladen
+              </a>
+            </>
+          ) : (
+            <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+              PDF-Vorschau nicht verfügbar – der Entwurf liegt aber in sevDesk (ID {inv.id}).
+            </div>
+          )}
+          <div style={{ fontSize: '11px', color: 'var(--text-muted)', lineHeight: 1.6 }}>
+            💡 Dies ist ein <strong>Entwurf</strong> (noch keine Rechnungsnummer, kein Versand). Prüfe die Vorschau –
+            der Versand an die Mandanten-E-Mail folgt in einem eigenen Schritt auf deinen Klick.
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // ── Editor-Ansicht ──
+  return (
+    <div style={{ border: '1px solid var(--border)', borderRadius: '10px', padding: '12px 14px', background: 'var(--surface)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+      <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)' }}>Neue Rechnung (Entwurf)</div>
+
+      {/* Kopfzeile: Datum + Zahlungsziel */}
+      <div style={{ display: 'grid', gridTemplateColumns: '160px 140px', gap: '10px' }}>
+        <div>
+          <FieldLabel>Rechnungsdatum</FieldLabel>
+          <input type="date" value={invoiceDate} onChange={e => setInvoiceDate(e.target.value)} style={inputBase} />
+        </div>
+        <div>
+          <FieldLabel>Zahlungsziel (Tage)</FieldLabel>
+          <input type="number" min="0" value={timeToPay} onChange={e => setTimeToPay(e.target.value)} style={inputBase} />
+        </div>
+      </div>
+
+      {/* Positionen */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        {positions.map((p, idx) => (
+          <div key={p.id} style={{ border: '1px solid var(--border)', borderRadius: '8px', padding: '10px', background: 'var(--surface2)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 70px 110px 90px auto', gap: '8px', alignItems: 'end' }}>
+              <div>
+                {idx === 0 && <FieldLabel>Bezeichnung</FieldLabel>}
+                <input value={p.name} onChange={e => setPos(p.id, 'name', e.target.value)} placeholder="z. B. USt-Voranmeldung" style={inputBase} />
+              </div>
+              <div>
+                {idx === 0 && <FieldLabel>Menge</FieldLabel>}
+                <input type="number" min="0" step="0.01" value={p.quantity} onChange={e => setPos(p.id, 'quantity', e.target.value)} style={inputBase} />
+              </div>
+              <div>
+                {idx === 0 && <FieldLabel>Einzelpreis netto</FieldLabel>}
+                <input inputMode="decimal" value={p.price} onChange={e => setPos(p.id, 'price', e.target.value)} placeholder="0,00" style={inputBase} />
+              </div>
+              <div>
+                {idx === 0 && <FieldLabel>USt %</FieldLabel>}
+                <select value={p.taxRate} onChange={e => setPos(p.id, 'taxRate', Number(e.target.value))} style={inputBase}>
+                  {UST_SAETZE.map(s => <option key={s} value={s}>{s}%</option>)}
+                </select>
+              </div>
+              <button onClick={() => delPos(p.id)} disabled={positions.length === 1} title="Position entfernen"
+                style={{ background: 'none', border: 'none', cursor: positions.length === 1 ? 'not-allowed' : 'pointer', color: 'var(--text-muted)', fontSize: '15px', padding: '6px 4px', opacity: positions.length === 1 ? 0.4 : 1 }}>
+                🗑
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Leistungskatalog + Position hinzufügen */}
+      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+        <span style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)' }}>Katalog:</span>
+        {LEISTUNG_PRESETS.map(pr => (
+          <button key={pr.name} onClick={() => addPos(pr)}
+            style={{ padding: '3px 10px', borderRadius: '12px', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-secondary)', fontSize: '11px', cursor: 'pointer' }}>
+            + {pr.name}
+          </button>
+        ))}
+        <button onClick={() => addPos()}
+          style={{ padding: '3px 10px', borderRadius: '12px', border: '1px dashed var(--border)', background: 'transparent', color: 'var(--text-muted)', fontSize: '11px', cursor: 'pointer' }}>
+          + leere Position
+        </button>
+      </div>
+
+      {/* Kopftext */}
+      <div>
+        <FieldLabel>Einleitungstext (optional)</FieldLabel>
+        <input value={headText} onChange={e => setHeadText(e.target.value)} placeholder="z. B. Leistungszeitraum Juli 2026" style={inputBase} />
+      </div>
+
+      {/* Summen */}
+      <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', justifyContent: 'flex-end', fontSize: '12px', borderTop: '1px solid var(--border)', paddingTop: '10px' }}>
+        <span style={{ color: 'var(--text-muted)' }}>Netto: <strong style={{ color: 'var(--text)' }}>{fmtEuro(sums.net)}</strong></span>
+        <span style={{ color: 'var(--text-muted)' }}>USt: <strong style={{ color: 'var(--text)' }}>{fmtEuro(sums.tax)}</strong></span>
+        <span style={{ color: 'var(--text-muted)' }}>Brutto: <strong style={{ color: ACCENT, fontSize: '14px' }}>{fmtEuro(gross)}</strong></span>
+      </div>
+
+      {invError && (
+        <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', padding: '8px 12px', fontSize: '12px', color: '#ef4444' }}>
+          ⚠ {invError}
+        </div>
+      )}
+
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <button onClick={createDraft} disabled={creating}
+          style={{ padding: '8px 20px', borderRadius: '8px', border: 'none', background: ACCENT, color: '#fff', fontSize: '13px', fontWeight: 700, cursor: creating ? 'wait' : 'pointer', opacity: creating ? 0.7 : 1 }}>
+          {creating ? '⏳ Entwurf wird erstellt …' : '📝 Entwurf erstellen & Vorschau'}
+        </button>
+      </div>
+
+      <div style={{ fontSize: '11px', color: 'var(--text-muted)', lineHeight: 1.6 }}>
+        Es wird ein <strong>Entwurf</strong> in sevDesk angelegt (Regelbesteuerung; USt-Satz je Position wählbar).
+        Fachliche Korrektheit (Bezeichnung, Beträge, Steuerfall) liegt bei dir. Kein Versand in diesem Schritt.
+      </div>
+    </div>
+  )
 }
 
 export default function RechnungSevdeskBlock({ client, onUpdate }) {
@@ -331,6 +562,15 @@ export default function RechnungSevdeskBlock({ client, onUpdate }) {
                 </button>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Rechnung erstellen (Entwurf + Vorschau) – nur bei verknüpftem Kontakt */}
+        {client.sevdeskContactId ? (
+          <InvoiceEntwurf client={client} />
+        ) : (
+          <div style={{ fontSize: '12px', color: 'var(--text-muted)', border: '1px dashed var(--border)', borderRadius: '10px', padding: '12px 14px', textAlign: 'center' }}>
+            🔗 Zum Erstellen einer Rechnung zuerst oben einen <strong>sevDesk-Kontakt verknüpfen</strong>.
           </div>
         )}
 

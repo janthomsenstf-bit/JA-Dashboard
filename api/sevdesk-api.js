@@ -16,9 +16,10 @@
  *   findContacts      → Kontaktsuche (Substring über Name/Kundennr.)
  *   getContactDetails → Kontakt inkl. Anschrift + E-Mail laden
  *   createContact     → neuen Kontakt (Organisation) anlegen
+ *   createInvoice     → Rechnung als ENTWURF anlegen (POST /Invoice/Factory/saveInvoice)
+ *   getPdf            → (Vorschau-)PDF einer Rechnung als Base64
  *
- * (Weitere Actions – createInvoice, getPdf, sendViaEmail, enshrine – folgen
- *  in den nächsten Stufen.)
+ * (Weitere Actions – sendViaEmail, enshrine – folgen in den nächsten Stufen.)
  */
 
 // Konsistent mit api/onedrive-api.js: raw body selbst lesen (unabhängig von Vercel-bodyParser)
@@ -203,6 +204,106 @@ export default async function handler(req, res) {
 
       const created = Array.isArray(d.objects) ? d.objects[0] : d.objects
       return ok({ contact: { id: created?.id, name: created?.name ?? nm, customerNumber: created?.customerNumber ?? null } })
+    }
+
+    // ── createInvoice (Rechnung als ENTWURF) ──────────────────────────────────
+    // Legt eine Rechnung mit Positionen in EINEM Call an (Factory saveInvoice),
+    // Status 100 = Entwurf → KEIN Versand, KEINE Nummer/Festschreibung.
+    // Steuer-Default: Regelbesteuerung (taxRule 1); USt-Satz je Position wählbar.
+    // Fachliche Korrektheit (Bezeichnung/Beträge/Steuerfall) bleibt beim Nutzer.
+    if (action === 'createInvoice') {
+      const {
+        contactId,
+        invoiceDate,                 // 'YYYY-MM-DD'
+        positions = [],
+        address,                     // mehrzeilige Empfängeranschrift (optional)
+        headText = '',
+        footText = '',
+        timeToPay = 14,
+      } = params
+
+      if (!contactId)          return fail(400, 'contactId fehlt (bitte zuerst einen sevDesk-Kontakt verknüpfen).')
+      if (!positions.length)   return fail(400, 'Mindestens eine Rechnungsposition ist nötig.')
+
+      // Rechnungsersteller (contactPerson) ist Pflicht → aktuellen SevUser holen
+      const ru = await sevdeskFetch('/SevUser', { method: 'GET' }, token)
+      const du = await ru.json().catch(() => ({}))
+      if (!ru.ok) return fail(ru.status, sevError(ru, du, 'SevUser konnte nicht geladen werden'))
+      const sevUser = Array.isArray(du.objects) ? du.objects[0] : du.objects
+      if (!sevUser?.id) return fail(400, 'Kein SevUser (Rechnungsersteller) im Konto gefunden.')
+
+      const datum = /^\d{4}-\d{2}-\d{2}$/.test(String(invoiceDate || '')) ? invoiceDate : new Date().toISOString().slice(0, 10)
+      const ersterSatz = Number(positions[0]?.taxRate) || 0
+
+      const invoice = {
+        objectName:    'Invoice',
+        mapAll:        true,
+        invoiceType:   'RE',
+        contact:       { id: contactId, objectName: 'Contact' },
+        contactPerson: { id: sevUser.id, objectName: 'SevUser' },
+        invoiceDate:   datum,
+        deliveryDate:  datum,
+        status:        100,               // Entwurf
+        header:        'Rechnung',
+        headText:      headText || '',
+        footText:      footText || '',
+        timeToPay:     Number(timeToPay) || 0,
+        discount:      0,
+        currency:      'EUR',
+        taxRate:       ersterSatz,        // veraltet, teils erwartet
+        taxRule:       { id: 1, objectName: 'TaxRule' },  // Regelbesteuerung
+        taxText:       ersterSatz ? `Umsatzsteuer ${ersterSatz}%` : 'Steuerfrei',
+        taxType:       'default',
+        ...(address ? { address: String(address) } : {}),
+        addressCountry: { id: 1, objectName: 'StaticCountry' },  // 1 = Deutschland
+      }
+
+      const invoicePosArray = positions.map(p => ({
+        objectName: 'InvoicePos',
+        mapAll:     true,
+        quantity:   Number(p.quantity) || 1,
+        price:      Number(p.price)    || 0,          // Nettopreis je Einheit
+        name:       String(p.name ?? '').trim() || 'Leistung',
+        text:       String(p.text ?? ''),
+        unity:      { id: 1, objectName: 'Unity' },   // 1 = Stück
+        taxRate:    Number(p.taxRate) || 0,
+      }))
+
+      const r = await sevdeskFetch('/Invoice/Factory/saveInvoice', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ invoice, invoicePosArray, takeDefaultAddress: address ? false : true }),
+      }, token)
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok) return fail(r.status, sevError(r, d, 'Rechnungsentwurf konnte nicht angelegt werden'))
+
+      const obj = d.objects ?? {}
+      const inv = obj.invoice ?? (obj.id ? obj : null)
+      if (!inv?.id) return fail(500, 'sevDesk hat keine Rechnungs-ID zurückgegeben.', { raw: d })
+
+      return ok({
+        invoice: {
+          id:            inv.id,
+          invoiceNumber: inv.invoiceNumber || null,
+          status:        inv.status ?? 100,
+          sumNet:        Number(inv.sumNet)   || null,
+          sumTax:        Number(inv.sumTax)   || null,
+          sumGross:      Number(inv.sumGross) || null,
+        },
+      })
+    }
+
+    // ── getPdf (Vorschau-PDF als Base64) ──────────────────────────────────────
+    if (action === 'getPdf') {
+      const { invoiceId } = params
+      if (!invoiceId) return fail(400, 'invoiceId fehlt')
+      const r = await sevdeskFetch(`/Invoice/${encodeURIComponent(invoiceId)}/getPdf?download=false&preventSendBy=true`, { method: 'GET' }, token)
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok) return fail(r.status, sevError(r, d, 'PDF konnte nicht erzeugt werden'))
+      const o = d.objects ?? {}
+      const base64 = o.base64 ?? o.content ?? null
+      if (!base64) return fail(500, 'sevDesk hat kein PDF zurückgegeben.', { raw: d })
+      return ok({ filename: o.filename ?? 'rechnung.pdf', mimetype: o.mimetype ?? 'application/pdf', base64 })
     }
 
     return fail(400, `Unbekannte action: ${action}`)
