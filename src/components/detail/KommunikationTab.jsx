@@ -319,7 +319,7 @@ function AbsenderModal({ onClose }) {
               {a.name && <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{a.email}</div>}
             </div>
             {a.isDefault
-              ? <span style={{ fontSize: '10px', color: '#2563eb', fontWeight: 700 }}>Standard</span>
+              ? <span style={{ fontSize: '10px', color: 'var(--accent)', fontWeight: 700 }}>Standard</span>
               : <button className="btn btn-ghost btn-sm" style={{ fontSize: '10px' }} onClick={() => setDefault(i)}>Als Standard</button>
             }
             <button className="btn btn-ghost btn-sm" style={{ fontSize: '11px', color: 'var(--red)' }} onClick={() => remove(i)}>✕</button>
@@ -1384,9 +1384,9 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
           style={{
             position: 'relative',
             background: 'var(--surface)',
-            border: `1px solid ${isDragOver ? '#3b82f6' : 'var(--border)'}`,
+            border: `1px solid ${isDragOver ? 'var(--accent)' : 'var(--border)'}`,
             borderRadius: '12px', padding: '20px', marginBottom: '20px',
-            boxShadow: isDragOver ? '0 0 0 3px rgba(59,130,246,0.18)' : 'none',
+            boxShadow: isDragOver ? '0 0 0 3px rgba(15,118,110,0.18)' : 'none',
             transition: 'border-color 0.12s, box-shadow 0.12s',
           }}
           onDragOver={handleDragOver}
@@ -1424,12 +1424,12 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
           {isDragOver && (
             <div style={{
               position: 'absolute', inset: 0, borderRadius: '12px', zIndex: 50,
-              background: 'rgba(59,130,246,0.07)',
-              border: '2px dashed #3b82f6',
+              background: 'rgba(15,118,110,0.07)',
+              border: '2px dashed var(--accent)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               pointerEvents: 'none',
             }}>
-              <div style={{ textAlign: 'center', color: '#60a5fa' }}>
+              <div style={{ textAlign: 'center', color: 'var(--accent)' }}>
                 <div style={{ fontSize: '28px', marginBottom: '6px' }}>📎</div>
                 <div style={{ fontSize: '14px', fontWeight: 700 }}>Dateien hier ablegen</div>
                 <div style={{ fontSize: '11px', opacity: 0.7, marginTop: '2px' }}>Max. ~4 MB gesamt</div>
@@ -1626,7 +1626,7 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
                         }}
                       >
                         <span style={{ fontWeight: 600 }}>{s.name}</span>
-                        {s.isDefault && <span style={{ marginLeft: '6px', fontSize: '10px', color: '#60a5fa' }}>Standard</span>}
+                        {s.isDefault && <span style={{ marginLeft: '6px', fontSize: '10px', color: 'var(--accent)' }}>Standard</span>}
                       </button>
                     ))}
                     <div style={{ borderTop: '1px solid var(--border)', marginTop: '4px', paddingTop: '4px' }}>
@@ -1895,8 +1895,8 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
 
         {posteingangOpen && posteingangEmails.length > 0 && (
           <div style={{ marginTop: '12px', border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden' }}>
-            <div style={{ padding: '8px 12px', background: 'rgba(8,145,178,0.06)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '11px', fontWeight: 700, color: '#0891b2' }}>📥 Posteingang — {posteingangEmails.length} E-Mails</span>
+            <div style={{ padding: '8px 12px', background: 'rgba(15,118,110,0.06)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--accent)' }}>📥 Posteingang — {posteingangEmails.length} E-Mails</span>
               <button className="btn btn-ghost btn-sm" onClick={() => setPosteingangOpen(false)} style={{ fontSize: '10px' }}>✕</button>
             </div>
             {posteingangEmails.map((email, i) => (
@@ -1905,7 +1905,7 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
                   <div style={{ fontSize: '12px', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{email.betreff}</div>
                   <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
                     Von: {email.vonName ? `${email.vonName} <${email.von}>` : email.von} · {fmtDatum(email.datum)}
-                    <span style={{ marginLeft: '8px', fontSize: '10px', color: '#0891b2' }}>{email.account}</span>
+                    <span style={{ marginLeft: '8px', fontSize: '10px', color: 'var(--accent)' }}>{email.account}</span>
                   </div>
                 </div>
                 <button
