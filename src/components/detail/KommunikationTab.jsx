@@ -1346,7 +1346,7 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
                   style={{
                     display: 'flex', alignItems: 'center', gap: '6px',
                     padding: '7px 14px', borderRadius: '8px', cursor: 'pointer',
-                    background: 'rgba(167,139,250,0.08)', color: '#a78bfa',
+                    background: 'rgba(167,139,250,0.08)', color: 'var(--accent)',
                     border: '1px solid rgba(167,139,250,0.25)',
                     fontSize: '12px', fontWeight: 600,
                   }}
@@ -1440,7 +1440,7 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
                 <button
                   className="btn btn-ghost btn-sm"
                   onClick={() => setShowVorlagenSelect(p => !p)}
-                  style={{ fontSize: '11px', color: '#a78bfa' }}
+                  style={{ fontSize: '11px', color: 'var(--accent)' }}
                 >
                   📝 Vorlage {emailVorlagen.length > 0 ? `(${emailVorlagen.length})` : ''}
                 </button>
@@ -1551,7 +1551,7 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
                 <button
                   className="btn btn-ghost btn-sm"
                   onClick={() => setShowSignaturSelect(p => !p)}
-                  style={{ fontSize: '10px', color: '#6ee7b7' }}
+                  style={{ fontSize: '10px', color: 'var(--accent)' }}
                 >
                   ✍️ {activeSignaturId
                     ? (emailSignaturen.find(s => s.id === activeSignaturId)?.name ?? 'Signatur')
@@ -1644,9 +1644,9 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
           )}
 
           {/* KI-Buttons */}
-          <div style={{ border: '1px solid var(--border)', borderRadius: '8px', padding: '10px 12px', marginBottom: '12px', background: 'rgba(124,58,237,0.03)' }}>
+          <div style={{ border: '1px solid var(--border)', borderRadius: '8px', padding: '10px 12px', marginBottom: '12px', background: 'var(--surface2)' }}>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px' }}>
-              <span style={{ fontSize: '11px', color: '#7c3aed', fontWeight: 700, alignSelf: 'center', marginRight: '2px' }}>🧠 KI:</span>
+              <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 700, alignSelf: 'center', marginRight: '2px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>✦ KI</span>
               <button className="btn btn-ghost btn-sm" onClick={handleKIEntwurf} disabled={aiLoading} style={{ fontSize: '11px' }}>
                 {aiLoading ? '⏳' : '✨'} Entwurf
               </button>
@@ -1713,7 +1713,7 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
               <button
                 className="btn btn-ghost btn-sm"
                 onClick={() => fileInputRef.current?.click()}
-                style={{ fontSize: '11px', color: '#f59e0b' }}
+                style={{ fontSize: '11px', color: 'var(--accent)' }}
               >
                 📎 Anhang hinzufügen
               </button>
@@ -1737,12 +1737,12 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
                   <div key={a.id} style={{
                     display: 'flex', alignItems: 'center', gap: '6px',
                     padding: '4px 10px', borderRadius: '20px', fontSize: '11px',
-                    background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', color: '#f59e0b',
+                    background: 'rgba(15,118,110,0.08)', border: '1px solid rgba(15,118,110,0.25)', color: 'var(--accent)',
                   }}>
                     <span>📄 {a.name}</span>
                     <span style={{ opacity: 0.7 }}>({fmtFileSize(a.size)})</span>
                     <button onClick={() => removeAttachment(a.id)}
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#f59e0b', fontSize: '12px', padding: '0', lineHeight: 1 }}>
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent)', fontSize: '12px', padding: '0', lineHeight: 1 }}>
                       ✕
                     </button>
                   </div>
@@ -1793,10 +1793,10 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
           <button className="btn btn-ghost btn-sm" onClick={openNewEditor} style={{ fontSize: '12px' }}>
             ✏️ Neue E-Mail verfassen
           </button>
-          <button className="btn btn-ghost btn-sm" onClick={() => setShowVorlagenModal(true)} style={{ fontSize: '12px', color: '#a78bfa' }}>
+          <button className="btn btn-ghost btn-sm" onClick={() => setShowVorlagenModal(true)} style={{ fontSize: '12px', color: 'var(--accent)' }}>
             📝 Vorlagen ({emailVorlagen.length})
           </button>
-          <button className="btn btn-ghost btn-sm" onClick={() => setShowSignaturenModal(true)} style={{ fontSize: '12px', color: '#6ee7b7' }}>
+          <button className="btn btn-ghost btn-sm" onClick={() => setShowSignaturenModal(true)} style={{ fontSize: '12px', color: 'var(--accent)' }}>
             ✍️ Signaturen ({emailSignaturen.length})
           </button>
         </div>
@@ -2211,7 +2211,7 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
                           <span style={{ fontSize: '10px', background: 'rgba(0,120,212,0.12)', color: '#0078d4', border: '1px solid rgba(0,120,212,0.3)', padding: '1px 6px', borderRadius: '10px', flexShrink: 0 }}>Outlook</span>
                         )}
                         {entry.anlagen?.length > 0 && (
-                          <span style={{ fontSize: '10px', color: '#f59e0b', flexShrink: 0 }}>📎 {entry.anlagen.length}</span>
+                          <span style={{ fontSize: '10px', color: 'var(--accent)', flexShrink: 0 }}>📎 {entry.anlagen.length}</span>
                         )}
                       </div>
                       {entry.empfaenger && (
@@ -2948,7 +2948,7 @@ function EmailDetailPanel({
                 {emailVorlagen.length > 0 && (
                   <div style={{ position: 'relative' }}>
                     <button className="btn btn-ghost btn-sm" onClick={() => setShowVorlagenPicker(v => !v)}
-                      style={{ fontSize: '11px', color: '#a78bfa' }}>
+                      style={{ fontSize: '11px', color: 'var(--accent)' }}>
                       📝 Vorlage auswählen ({emailVorlagen.length})
                     </button>
                     {showVorlagenPicker && (
@@ -3312,7 +3312,7 @@ function EmailDetailPanel({
             {entry.anlagen?.length > 0 && (
               <div style={{ padding: '14px 16px', borderTop: '1px solid var(--border)', background: 'rgba(245,158,11,0.03)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
-                  <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#f59e0b' }}>
+                  <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--accent)' }}>
                     📎 {entry.anlagen.length} Anhang{entry.anlagen.length !== 1 ? 'änge' : ''}
                   </div>
                   {selectedAnlagen.size > 0 && (
@@ -3345,12 +3345,12 @@ function EmailDetailPanel({
                         </div>
                         {canDl ? (
                           <button onClick={e => { e.stopPropagation(); onDownload(bin) }}
-                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#f59e0b', fontSize: '14px', padding: '2px', flexShrink: 0 }}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent)', fontSize: '14px', padding: '2px', flexShrink: 0 }}
                             title="Herunterladen">⬇</button>
                         ) : a.tooLarge ? (
                           <a href={`/api/download-attachment?uid=${encodeURIComponent(entry.sourceUid)}&account=${encodeURIComponent(entry.sourceAccount)}&name=${encodeURIComponent(a.name)}`}
                             download={a.name} onClick={e => e.stopPropagation()}
-                            style={{ color: '#f59e0b', fontSize: '14px', textDecoration: 'none', flexShrink: 0 }}
+                            style={{ color: 'var(--accent)', fontSize: '14px', textDecoration: 'none', flexShrink: 0 }}
                             title="Herunterladen">⬇</a>
                         ) : (
                           <span style={{ fontSize: '10px', color: 'var(--text-muted)', flexShrink: 0 }}>⏳</span>
