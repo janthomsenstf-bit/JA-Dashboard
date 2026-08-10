@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, Fragment } from 'react'
 import EmailVorlagenModal   from '../EmailVorlagenModal.jsx'
 import EmailSignaturenModal from '../EmailSignaturenModal.jsx'
 import { sendMailGraph, openAuthPopup, callApi, getMandantPath } from '../../utils/onedriveClient.js'
@@ -1301,7 +1301,26 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
     if (filter === 'gesendet')  return e.status === 'gesendet'
     if (filter === 'entwuerfe') return e.status === 'entwurf'
     return true
+  }).sort((a, b) => {
+    const da = new Date(a.gesendetAm ?? a.erstelltAm ?? 0)
+    const db = new Date(b.gesendetAm ?? b.erstelltAm ?? 0)
+    return db - da   // neueste zuerst
   })
+
+  // Tages-Gruppierung für den Verlauf (Heute / Gestern / …)
+  function tagLabel(iso) {
+    if (!iso) return 'Ohne Datum'
+    const d = new Date(iso)
+    if (isNaN(d.getTime())) return 'Ohne Datum'
+    const heute = new Date(); heute.setHours(0, 0, 0, 0)
+    const tag = new Date(d); tag.setHours(0, 0, 0, 0)
+    const diff = Math.round((heute - tag) / 86400000)
+    if (diff <= 0)  return 'Heute'
+    if (diff === 1) return 'Gestern'
+    if (diff < 7)   return 'Diese Woche'
+    if (diff < 14)  return 'Letzte Woche'
+    return d.toLocaleDateString('de-DE', { month: 'long', year: 'numeric' })
+  }
 
   function fmtDatum(iso) {
     if (!iso) return '–'
@@ -2159,14 +2178,21 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            {filteredEvents.map(entry => {
+            {filteredEvents.map((entry, i) => {
               const cfg    = TYP_CONFIG[entry.typ] ?? TYP_CONFIG.frei
               const sbCfg  = STATUS_BADGES[entry.status] ?? STATUS_BADGES.entwurf
               const isNeu  = entry.typ === 'eingehend' && !entry.erledigtAm
+              const tag     = tagLabel(entry.gesendetAm ?? entry.erstelltAm)
+              const prevTag = i > 0 ? tagLabel(filteredEvents[i - 1].gesendetAm ?? filteredEvents[i - 1].erstelltAm) : null
 
               return (
+                <Fragment key={entry.id}>
+                  {tag !== prevTag && (
+                    <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', margin: i === 0 ? '2px 2px 4px' : '14px 2px 4px' }}>
+                      {tag}
+                    </div>
+                  )}
                 <div
-                  key={entry.id}
                   onClick={() => {
                     setDetailEntry(entry)
                     setActionForm(null)
@@ -2267,6 +2293,7 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
                     </div>
                   </div>
                 </div>
+                </Fragment>
               )
             })}
           </div>
