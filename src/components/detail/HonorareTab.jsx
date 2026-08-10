@@ -719,6 +719,7 @@ function ZeiterfassungBlock({ client, onUpdate }) {
 // ── Haupt-Tab ─────────────────────────────────────────────────────────────────────
 export default function HonorareTab({ client, onUpdate, emailSignaturen = [] }) {
   const [showForm, setShowForm] = useState(false)
+  const [sub, setSub] = useState('honorare')   // 'honorare' | 'rechnung' | 'dauer'
   const honorare = client.honorare ?? []
 
   function addHonorar(h)     { onUpdate({ honorare: [...honorare, h] }); setShowForm(false) }
@@ -738,6 +739,26 @@ export default function HonorareTab({ client, onUpdate, emailSignaturen = [] }) 
   return (
     <div className="tab-content" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
+      {/* ── Unter-Navigation ── */}
+      <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', borderBottom: '1px solid var(--border)' }}>
+        {[
+          { key: 'honorare', label: 'Honorare & Zeiten', icon: '💰' },
+          { key: 'rechnung', label: 'Rechnung',          icon: '🧾' },
+          { key: 'dauer',    label: 'Dauerrechnungen',   icon: '🔁', badge: (client.dauerrechnungen ?? []).filter(d => d.aktiv).length },
+        ].map(s => {
+          const active = sub === s.key
+          return (
+            <button key={s.key} onClick={() => setSub(s.key)}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 14px', border: 'none', borderBottom: active ? `2px solid ${ACCENT}` : '2px solid transparent', background: active ? `${ACCENT}12` : 'transparent', color: active ? ACCENT : 'var(--text-secondary)', fontSize: '13px', fontWeight: 700, cursor: 'pointer', marginBottom: '-1px', whiteSpace: 'nowrap' }}>
+              <span>{s.icon}</span>{s.label}
+              {s.badge > 0 && <span style={{ fontSize: '10px', background: active ? ACCENT : 'var(--border)', color: active ? '#fff' : 'var(--text-muted)', padding: '0 6px', borderRadius: '8px' }}>{s.badge}</span>}
+            </button>
+          )
+        })}
+      </div>
+
+      {sub === 'honorare' && (
+      <>
       {/* ── Zeiterfassung / Leistungen & Zeiten ── */}
       <ZeiterfassungBlock client={client} onUpdate={onUpdate} />
 
@@ -811,16 +832,22 @@ export default function HonorareTab({ client, onUpdate, emailSignaturen = [] }) 
         </div>
       </div>
 
-      {/* ── Rechnung erstellen (sevDesk) ── */}
-      <RechnungSevdeskBlock client={client} onUpdate={onUpdate} signaturen={emailSignaturen} />
-
-      {/* ── Dauerrechnungen (wiederkehrend) ── */}
-      <DauerrechnungenBlock client={client} onUpdate={onUpdate} />
-
       <div style={{ fontSize: '11px', color: 'var(--text-muted)', lineHeight: 1.6, padding: '0 2px' }}>
         💡 Diese Preisvereinbarungen sind rein intern zur Planung und ersetzen keine Buchhaltung.
         Alle aktiven Positionen erscheinen in der globalen <strong>Honorar-Übersicht</strong> in der Seitenleiste.
       </div>
+      </>
+      )}
+
+      {/* ── Rechnung erstellen (sevDesk) ── */}
+      {sub === 'rechnung' && (
+        <RechnungSevdeskBlock client={client} onUpdate={onUpdate} signaturen={emailSignaturen} />
+      )}
+
+      {/* ── Dauerrechnungen (wiederkehrend) ── */}
+      {sub === 'dauer' && (
+        <DauerrechnungenBlock client={client} onUpdate={onUpdate} />
+      )}
     </div>
   )
 }
