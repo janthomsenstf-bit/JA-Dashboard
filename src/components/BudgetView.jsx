@@ -6,6 +6,7 @@
  */
 import { useState, useMemo } from 'react'
 import { LEISTUNGSART_CFG, RHYTHMUS_CFG, toMonatswert, toJahreswert, fmtEuro } from './detail/HonorareTab.jsx'
+import DauerrechnungenSammellauf from './DauerrechnungenSammellauf.jsx'
 
 const ACCENT      = '#0f766e'
 const CURRENT_YR  = new Date().getFullYear()
@@ -323,7 +324,7 @@ function Monatsansicht({ clients, year, nurAktiv, filterArt }) {
 }
 
 // ── Hauptkomponente ───────────────────────────────────────────────────────────────
-export default function BudgetView({ clients, onSelectClient }) {
+export default function BudgetView({ clients, onSelectClient, onUpdateClient }) {
   const [yearFilter,    setYearFilter]    = useState(null)         // null = alle Jahre
   const [viewMode,      setViewMode]      = useState('uebersicht') // 'uebersicht' | 'monate'
   const [filterArt,     setFilterArt]     = useState('alle')
@@ -455,6 +456,9 @@ export default function BudgetView({ clients, onSelectClient }) {
 
   return (
     <div style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+
+      {/* ── Fällige Dauerrechnungen (Sammel-Erzeugung + Versand) ── */}
+      {onUpdateClient && <DauerrechnungenSammellauf clients={clients} onUpdateClient={onUpdateClient} />}
 
       {/* ── Header ── */}
       <div>

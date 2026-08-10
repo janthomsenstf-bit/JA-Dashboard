@@ -195,7 +195,7 @@ function RechnungVoiceBlock({ onParsed }) {
 
 // ── E-Mail-Vorlagen für den Rechnungsversand (Schnellauswahl) ──────────────
 // Platzhalter {mandant} wird beim Einsetzen durch den Mandantennamen ersetzt.
-const MAIL_VORLAGEN = [
+export const MAIL_VORLAGEN = [
   {
     key: 'de', label: '🇩🇪 Deutsch',
     subject: 'Ihre Rechnung',
@@ -208,12 +208,12 @@ const MAIL_VORLAGEN = [
   },
 ]
 
-function applyPlatzhalter(s, client) {
+export function applyPlatzhalter(s, client) {
   return String(s ?? '').replace(/\{mandant\}/gi, client?.name ?? '')
 }
 
 // Vorauswahl anhand der E-Mail/Land (.dk → Dänisch, sonst Deutsch)
-function initialVorlage(client) {
+export function initialVorlage(client) {
   const email = String(client?.rechnung?.email ?? '').toLowerCase()
   const land  = String(client?.rechnung?.land ?? '').toLowerCase()
   const istDK = email.endsWith('.dk') || /danmark|dänemark|denmark|^dk$/i.test(land)
