@@ -193,6 +193,33 @@ function RechnungVoiceBlock({ onParsed }) {
   )
 }
 
+// ── E-Mail-Vorlagen für den Rechnungsversand (Schnellauswahl) ──────────────
+// Platzhalter {mandant} wird beim Einsetzen durch den Mandantennamen ersetzt.
+const MAIL_VORLAGEN = [
+  {
+    key: 'de', label: '🇩🇪 Deutsch',
+    subject: 'Ihre Rechnung',
+    text: 'Sehr geehrte Damen und Herren,\n\nanbei erhalten Sie Ihre Rechnung als PDF.\n\nMit freundlichen Grüßen',
+  },
+  {
+    key: 'da', label: '🇩🇰 Dänisch',
+    subject: 'Din faktura',
+    text: 'Kære kunde,\n\nVedhæftet finder du din faktura som PDF-fil.\n\nMed venlig hilsen',
+  },
+]
+
+function applyPlatzhalter(s, client) {
+  return String(s ?? '').replace(/\{mandant\}/gi, client?.name ?? '')
+}
+
+// Vorauswahl anhand der E-Mail/Land (.dk → Dänisch, sonst Deutsch)
+function initialVorlage(client) {
+  const email = String(client?.rechnung?.email ?? '').toLowerCase()
+  const land  = String(client?.rechnung?.land ?? '').toLowerCase()
+  const istDK = email.endsWith('.dk') || /danmark|dänemark|denmark|^dk$/i.test(land)
+  return MAIL_VORLAGEN.find(v => v.key === (istDK ? 'da' : 'de')) ?? MAIL_VORLAGEN[0]
+}
+
 function InvoiceEntwurf({ client, onUpdate }) {
   const [positions, setPositions]   = useState([mkPos(LEISTUNG_PRESETS[0])])
   const [headText, setHeadText]     = useState('')
@@ -203,9 +230,15 @@ function InvoiceEntwurf({ client, onUpdate }) {
   const [result, setResult]         = useState(null)   // { invoice, pdf }
 
   // Versand (Stufe 5)
+  const initVorlage = initialVorlage(client)
   const [toEmail, setToEmail]       = useState(client.rechnung?.email ?? '')
-  const [mailSubject, setMailSubject] = useState('Ihre Rechnung')
-  const [mailText, setMailText]     = useState('Sehr geehrte Damen und Herren,\n\nanbei erhalten Sie Ihre Rechnung als PDF.\n\nMit freundlichen Grüßen')
+  const [mailSubject, setMailSubject] = useState(applyPlatzhalter(initVorlage.subject, client))
+  const [mailText, setMailText]     = useState(applyPlatzhalter(initVorlage.text, client))
+
+  function vorlageWaehlen(v) {
+    setMailSubject(applyPlatzhalter(v.subject, client))
+    setMailText(applyPlatzhalter(v.text, client))
+  }
   const [finalizing, setFinalizing] = useState(false)
   const [sendError, setSendError]   = useState('')
   const [sent, setSent]             = useState(null)   // { nummer, email, hinweis }
@@ -297,7 +330,8 @@ function InvoiceEntwurf({ client, onUpdate }) {
     setResult(null); setInvError('')
     setSent(null); setSendError('')
     setPositions([mkPos(LEISTUNG_PRESETS[0])]); setHeadText(''); setInvoiceDate(todayISO()); setTimeToPay('14')
-    setToEmail(client.rechnung?.email ?? ''); setMailSubject('Ihre Rechnung')
+    const v = initialVorlage(client)
+    setToEmail(client.rechnung?.email ?? ''); setMailSubject(applyPlatzhalter(v.subject, client)); setMailText(applyPlatzhalter(v.text, client))
   }
 
   // ── Ergebnis-Ansicht (Entwurf angelegt + Vorschau) ──
@@ -353,6 +387,15 @@ function InvoiceEntwurf({ client, onUpdate }) {
               <div>
                 <FieldLabel>Empfänger-E-Mail</FieldLabel>
                 <input value={toEmail} onChange={e => setToEmail(e.target.value)} placeholder="mandant@example.de" style={inputBase} />
+              </div>
+              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+                <span style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)' }}>Vorlage:</span>
+                {MAIL_VORLAGEN.map(v => (
+                  <button key={v.key} onClick={() => vorlageWaehlen(v)}
+                    style={{ padding: '3px 10px', borderRadius: '12px', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-secondary)', fontSize: '11px', cursor: 'pointer' }}>
+                    {v.label}
+                  </button>
+                ))}
               </div>
               <div>
                 <FieldLabel>Betreff</FieldLabel>
