@@ -588,7 +588,7 @@ function InvoiceEntwurf({ client, onUpdate, signaturen = [] }) {
 }
 
 // ── Zahlungsstatus (Offene-Posten-Liste) ───────────────────────────────────
-function berechneFaelligkeit(invoiceDate, timeToPay) {
+export function berechneFaelligkeit(invoiceDate, timeToPay) {
   if (!invoiceDate) return null
   const d = new Date(invoiceDate)
   if (isNaN(d.getTime())) return null
@@ -596,7 +596,7 @@ function berechneFaelligkeit(invoiceDate, timeToPay) {
   return d.toISOString().slice(0, 10)
 }
 
-const ZAHL_STATUS = {
+export const ZAHL_STATUS = {
   bezahlt:      { label: 'Bezahlt',     color: '#16a34a', bg: 'rgba(22,163,74,0.12)' },
   teilbezahlt:  { label: 'Teilbezahlt', color: '#f59e0b', bg: 'rgba(245,158,11,0.14)' },
   ueberfaellig: { label: 'Überfällig',  color: '#ef4444', bg: 'rgba(239,68,68,0.12)' },
@@ -605,7 +605,7 @@ const ZAHL_STATUS = {
 }
 
 // Leitet den Zahlungsstatus aus dem zuletzt abgeglichenen sevDesk-Status ab.
-function zahlStatusKey(r) {
+export function zahlStatusKey(r) {
   const code = r.statusCode
   if (code === 1000) return 'bezahlt'
   if (code === 750)  return 'teilbezahlt'

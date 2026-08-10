@@ -7,6 +7,7 @@
 import { useState, useMemo } from 'react'
 import { LEISTUNGSART_CFG, RHYTHMUS_CFG, toMonatswert, toJahreswert, fmtEuro } from './detail/HonorareTab.jsx'
 import DauerrechnungenSammellauf from './DauerrechnungenSammellauf.jsx'
+import OffenePostenGlobal from './OffenePostenGlobal.jsx'
 
 const ACCENT      = '#0f766e'
 const CURRENT_YR  = new Date().getFullYear()
@@ -459,6 +460,9 @@ export default function BudgetView({ clients, onSelectClient, onUpdateClient, em
 
       {/* ── Fällige Dauerrechnungen (Sammel-Erzeugung + Versand) ── */}
       {onUpdateClient && <DauerrechnungenSammellauf clients={clients} onUpdateClient={onUpdateClient} signaturen={emailSignaturen} />}
+
+      {/* ── Offene Posten über alle Mandanten ── */}
+      {onUpdateClient && <OffenePostenGlobal clients={clients} onUpdateClient={onUpdateClient} onSelectClient={onSelectClient} />}
 
       {/* ── Header ── */}
       <div>
