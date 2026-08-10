@@ -123,6 +123,7 @@ export default function DauerrechnungenSammellauf({ clients = [], onUpdateClient
             invoiceDate: todayISO(),
             positions:   positionen,
             address:     buildAddress(client) || undefined,
+            land:        client.rechnung?.land || undefined,
             headText:    dr.bezeichnung || '',
           })
           const invoiceId = inv.invoice?.id

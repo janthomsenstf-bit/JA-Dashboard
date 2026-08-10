@@ -40,6 +40,46 @@ async function sevdeskFetch(path, options, token) {
 }
 
 // ── Rechnung neu lesen (finale Nummer/Status/Summen/Zahlung) ─────────────────
+// ── Land → sevDesk StaticCountry-ID auflösen ─────────────────────────────────
+// Deutschland = 1 (fix). Andere Länder werden zur Laufzeit über GET /StaticCountry
+// per ISO-Code aufgelöst; Fallback bleibt Deutschland (defensiv).
+const LAND_CODE = {
+  deutschland: 'DE', germany: 'DE', de: 'DE',
+  'dänemark': 'DK', daenemark: 'DK', danmark: 'DK', denmark: 'DK', dk: 'DK',
+  'österreich': 'AT', oesterreich: 'AT', austria: 'AT', at: 'AT',
+  schweiz: 'CH', switzerland: 'CH', ch: 'CH',
+  niederlande: 'NL', netherlands: 'NL', nl: 'NL',
+  frankreich: 'FR', france: 'FR', fr: 'FR',
+  polen: 'PL', poland: 'PL', pl: 'PL',
+  belgien: 'BE', belgium: 'BE', be: 'BE',
+  luxemburg: 'LU', luxembourg: 'LU', lu: 'LU',
+  italien: 'IT', italy: 'IT', it: 'IT',
+  spanien: 'ES', spain: 'ES', es: 'ES',
+  schweden: 'SE', sweden: 'SE', se: 'SE',
+  norwegen: 'NO', norway: 'NO', no: 'NO',
+}
+
+async function resolveCountryId(land, token) {
+  const l = String(land ?? '').trim().toLowerCase()
+  if (!l || l === 'deutschland' || l === 'germany' || l === 'de') return 1
+  const code = LAND_CODE[l] || (l.length === 2 ? l.toUpperCase() : null)
+  if (code === 'DE') return 1
+  try {
+    const r = await sevdeskFetch('/StaticCountry?limit=300', { method: 'GET' }, token)
+    const d = await r.json().catch(() => ({}))
+    const list = Array.isArray(d.objects) ? d.objects : []
+    const match = list.find(c => {
+      const cc = String(c.code ?? '').toUpperCase()
+      const nm = String(c.name ?? '').toLowerCase()
+      const ne = String(c.nameEn ?? '').toLowerCase()
+      return (code && cc === code) || nm === l || ne === l
+    })
+    return match?.id ? Number(match.id) : 1
+  } catch {
+    return 1
+  }
+}
+
 async function readInvoiceSummary(invoiceId, token) {
   const r = await sevdeskFetch(`/Invoice/${encodeURIComponent(invoiceId)}`, { method: 'GET' }, token)
   const d = await r.json().catch(() => ({}))
@@ -226,6 +266,7 @@ export default async function handler(req, res) {
         invoiceDate,                 // 'YYYY-MM-DD'
         positions = [],
         address,                     // mehrzeilige Empfängeranschrift (optional)
+        land,                        // Land der Empfängeranschrift (optional, Default DE)
         headText = '',
         footText = '',
         timeToPay = 14,
@@ -243,6 +284,7 @@ export default async function handler(req, res) {
 
       const datum = /^\d{4}-\d{2}-\d{2}$/.test(String(invoiceDate || '')) ? invoiceDate : new Date().toISOString().slice(0, 10)
       const ersterSatz = Number(positions[0]?.taxRate) || 0
+      const countryId = await resolveCountryId(land, token)
 
       const invoice = {
         objectName:    'Invoice',
@@ -264,7 +306,7 @@ export default async function handler(req, res) {
         taxText:       ersterSatz ? `Umsatzsteuer ${ersterSatz}%` : 'Steuerfrei',
         taxType:       'default',
         ...(address ? { address: String(address) } : {}),
-        addressCountry: { id: 1, objectName: 'StaticCountry' },  // 1 = Deutschland
+        addressCountry: { id: countryId, objectName: 'StaticCountry' },  // dynamisch (Default DE=1)
       }
 
       const invoicePosArray = positions.map(p => ({

@@ -343,6 +343,7 @@ function InvoiceEntwurf({ client, onUpdate, signaturen = [] }) {
         timeToPay:   Number(timeToPay) || 0,
         headText,
         address:     buildAddress(client) || undefined,
+        land:        client.rechnung?.land || undefined,
         positions:   valid.map(p => ({ name: p.name.trim(), quantity: p.quantity, price: p.price, taxRate: p.taxRate, text: p.text })),
       })
       let pdf = null
