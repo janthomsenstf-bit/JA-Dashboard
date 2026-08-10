@@ -717,7 +717,7 @@ function ZeiterfassungBlock({ client, onUpdate }) {
 }
 
 // ── Haupt-Tab ─────────────────────────────────────────────────────────────────────
-export default function HonorareTab({ client, onUpdate }) {
+export default function HonorareTab({ client, onUpdate, emailSignaturen = [] }) {
   const [showForm, setShowForm] = useState(false)
   const honorare = client.honorare ?? []
 
@@ -812,7 +812,7 @@ export default function HonorareTab({ client, onUpdate }) {
       </div>
 
       {/* ── Rechnung erstellen (sevDesk) ── */}
-      <RechnungSevdeskBlock client={client} onUpdate={onUpdate} />
+      <RechnungSevdeskBlock client={client} onUpdate={onUpdate} signaturen={emailSignaturen} />
 
       {/* ── Dauerrechnungen (wiederkehrend) ── */}
       <DauerrechnungenBlock client={client} onUpdate={onUpdate} />

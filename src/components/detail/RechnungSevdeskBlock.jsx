@@ -16,6 +16,7 @@ import {
   createSevdeskInvoice, getSevdeskInvoicePdf, sendSevdeskInvoiceEmail, enshrineSevdeskInvoice,
 } from '../../utils/sevdeskClient.js'
 import { callAI, hasAiKey } from '../../utils/aiClient.js'
+import { buildMailHtml } from '../../utils/mailFormat.js'
 
 const ACCENT = '#4f46e5'
 
@@ -220,7 +221,7 @@ export function initialVorlage(client) {
   return MAIL_VORLAGEN.find(v => v.key === (istDK ? 'da' : 'de')) ?? MAIL_VORLAGEN[0]
 }
 
-function InvoiceEntwurf({ client, onUpdate }) {
+function InvoiceEntwurf({ client, onUpdate, signaturen = [] }) {
   const [positions, setPositions]   = useState([mkPos(LEISTUNG_PRESETS[0])])
   const [headText, setHeadText]     = useState('')
   const [invoiceDate, setInvoiceDate] = useState(todayISO())
@@ -242,6 +243,7 @@ function InvoiceEntwurf({ client, onUpdate }) {
   const [finalizing, setFinalizing] = useState(false)
   const [sendError, setSendError]   = useState('')
   const [sent, setSent]             = useState(null)   // { nummer, email, hinweis }
+  const [sigId, setSigId]           = useState(() => (signaturen.find(s => s.isDefault) ?? signaturen[0])?.id ?? '')
 
   async function festschreibenUndSenden() {
     const inv = result?.invoice
@@ -257,7 +259,10 @@ function InvoiceEntwurf({ client, onUpdate }) {
     setFinalizing(true); setSendError('')
     try {
       // 1. Versenden (finalisiert die Rechnung → Nummer + Status offen + Mail raus)
-      const sd = await sendSevdeskInvoiceEmail({ invoiceId: inv.id, toEmail: toEmail.trim(), subject: mailSubject, text: mailText })
+      // Text als HTML (Zeilenumbrüche bleiben) + optionale Signatur.
+      const sig = signaturen.find(s => s.id === sigId)
+      const html = buildMailHtml(mailText, sig?.text)
+      const sd = await sendSevdeskInvoiceEmail({ invoiceId: inv.id, toEmail: toEmail.trim(), subject: mailSubject, text: html })
       let finalInv = sd.invoice ?? inv
       let nummer   = finalInv.invoiceNumber ?? null
 
@@ -405,6 +410,24 @@ function InvoiceEntwurf({ client, onUpdate }) {
                 <FieldLabel>Nachricht</FieldLabel>
                 <textarea value={mailText} onChange={e => setMailText(e.target.value)} rows={4} style={{ ...inputBase, resize: 'vertical', lineHeight: 1.5 }} />
               </div>
+              <div>
+                <FieldLabel>Signatur</FieldLabel>
+                {signaturen.length === 0 ? (
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                    Keine Signaturen hinterlegt. Anlegen unter „Kommunikation → ✍️ Signaturen".
+                  </div>
+                ) : (
+                  <select value={sigId} onChange={e => setSigId(e.target.value)} style={inputBase}>
+                    <option value="">— keine Signatur —</option>
+                    {signaturen.map(s => <option key={s.id} value={s.id}>{s.name}{s.isDefault ? ' (Standard)' : ''}</option>)}
+                  </select>
+                )}
+                {sigId && signaturen.find(s => s.id === sigId)?.text && (
+                  <pre style={{ margin: '6px 0 0', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: '6px', background: 'var(--surface2)', fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'inherit', whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>
+                    {signaturen.find(s => s.id === sigId).text}
+                  </pre>
+                )}
+              </div>
               {sendError && (
                 <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', padding: '8px 12px', fontSize: '12px', color: '#ef4444' }}>
                   ⚠ {sendError}
@@ -542,7 +565,7 @@ function InvoiceEntwurf({ client, onUpdate }) {
   )
 }
 
-export default function RechnungSevdeskBlock({ client, onUpdate }) {
+export default function RechnungSevdeskBlock({ client, onUpdate, signaturen = [] }) {
   const rechnung = { ...leerRechnung(), ...(client.rechnung ?? {}) }
 
   // ── Verbindungstest ──────────────────────────────────────────────────────
@@ -864,7 +887,7 @@ export default function RechnungSevdeskBlock({ client, onUpdate }) {
 
         {/* Rechnung erstellen (Entwurf + Vorschau) – nur bei verknüpftem Kontakt */}
         {client.sevdeskContactId ? (
-          <InvoiceEntwurf client={client} onUpdate={onUpdate} />
+          <InvoiceEntwurf client={client} onUpdate={onUpdate} signaturen={signaturen} />
         ) : (
           <div style={{ fontSize: '12px', color: 'var(--text-muted)', border: '1px dashed var(--border)', borderRadius: '10px', padding: '12px 14px', textAlign: 'center' }}>
             🔗 Zum Erstellen einer Rechnung zuerst oben einen <strong>sevDesk-Kontakt verknüpfen</strong>.

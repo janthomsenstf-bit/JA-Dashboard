@@ -324,7 +324,7 @@ function Monatsansicht({ clients, year, nurAktiv, filterArt }) {
 }
 
 // ── Hauptkomponente ───────────────────────────────────────────────────────────────
-export default function BudgetView({ clients, onSelectClient, onUpdateClient }) {
+export default function BudgetView({ clients, onSelectClient, onUpdateClient, emailSignaturen = [] }) {
   const [yearFilter,    setYearFilter]    = useState(null)         // null = alle Jahre
   const [viewMode,      setViewMode]      = useState('uebersicht') // 'uebersicht' | 'monate'
   const [filterArt,     setFilterArt]     = useState('alle')
@@ -458,7 +458,7 @@ export default function BudgetView({ clients, onSelectClient, onUpdateClient }) 
     <div style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
       {/* ── Fällige Dauerrechnungen (Sammel-Erzeugung + Versand) ── */}
-      {onUpdateClient && <DauerrechnungenSammellauf clients={clients} onUpdateClient={onUpdateClient} />}
+      {onUpdateClient && <DauerrechnungenSammellauf clients={clients} onUpdateClient={onUpdateClient} signaturen={emailSignaturen} />}
 
       {/* ── Header ── */}
       <div>

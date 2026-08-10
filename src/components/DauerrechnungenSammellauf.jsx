@@ -14,6 +14,7 @@ import { createSevdeskInvoice, sendSevdeskInvoiceEmail, enshrineSevdeskInvoice }
 import { INTERVALLE, summeBrutto } from './detail/DauerrechnungenBlock.jsx'
 import { MAIL_VORLAGEN, applyPlatzhalter, initialVorlage } from './detail/RechnungSevdeskBlock.jsx'
 import { fmtEuro } from './detail/HonorareTab.jsx'
+import { buildMailHtml } from '../utils/mailFormat.js'
 
 const ACCENT = '#7c3aed'
 
@@ -41,8 +42,10 @@ function buildAddress(client) {
   ].map(s => String(s ?? '').trim()).filter(Boolean).join('\n')
 }
 
-export default function DauerrechnungenSammellauf({ clients = [], onUpdateClient }) {
+export default function DauerrechnungenSammellauf({ clients = [], onUpdateClient, signaturen = [] }) {
   const now = useMemo(() => new Date(), [])
+  const [sprachModus, setSprachModus] = useState('auto')   // 'auto' (je Mandant .dk) | 'de' | 'da'
+  const [sigId, setSigId] = useState(() => (signaturen.find(s => s.isDefault) ?? signaturen[0])?.id ?? '')
 
   // Fällige Items über alle Mandanten sammeln
   const items = useMemo(() => {
@@ -123,11 +126,15 @@ export default function DauerrechnungenSammellauf({ clients = [], onUpdateClient
             headText:    dr.bezeichnung || '',
           })
           const invoiceId = inv.invoice?.id
-          const vorlage = initialVorlage(client)
+          const vorlage = sprachModus === 'auto'
+            ? initialVorlage(client)
+            : (MAIL_VORLAGEN.find(v => v.key === sprachModus) ?? initialVorlage(client))
+          const sig = signaturen.find(s => s.id === sigId)
+          const html = buildMailHtml(applyPlatzhalter(vorlage.text, client), sig?.text)
           const sd = await sendSevdeskInvoiceEmail({
             invoiceId, toEmail: it.email,
             subject: applyPlatzhalter(vorlage.subject, client),
-            text:    applyPlatzhalter(vorlage.text, client),
+            text:    html,
           })
           let finalInv = sd.invoice ?? inv.invoice ?? {}
           let nummer   = finalInv.invoiceNumber ?? null
@@ -178,6 +185,26 @@ export default function DauerrechnungenSammellauf({ clients = [], onUpdateClient
           </div>
         ) : (
           <>
+            {/* Anschreiben-Sprache + Signatur für den Lauf */}
+            <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+              <div style={{ minWidth: '180px', flex: 1 }}>
+                <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', marginBottom: '4px' }}>Anschreiben</div>
+                <select value={sprachModus} onChange={e => setSprachModus(e.target.value)} disabled={status !== 'idle'}
+                  style={{ width: '100%', padding: '7px 10px', border: '1px solid var(--border)', borderRadius: '6px', background: 'var(--surface)', color: 'var(--text)', fontSize: '12px' }}>
+                  <option value="auto">Automatisch je Mandant (🇩🇪/🇩🇰)</option>
+                  {MAIL_VORLAGEN.map(v => <option key={v.key} value={v.key}>{v.label} für alle</option>)}
+                </select>
+              </div>
+              <div style={{ minWidth: '180px', flex: 1 }}>
+                <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', marginBottom: '4px' }}>Signatur</div>
+                <select value={sigId} onChange={e => setSigId(e.target.value)} disabled={status !== 'idle' || signaturen.length === 0}
+                  style={{ width: '100%', padding: '7px 10px', border: '1px solid var(--border)', borderRadius: '6px', background: 'var(--surface)', color: 'var(--text)', fontSize: '12px' }}>
+                  <option value="">{signaturen.length === 0 ? '— keine hinterlegt —' : '— keine Signatur —'}</option>
+                  {signaturen.map(s => <option key={s.id} value={s.id}>{s.name}{s.isDefault ? ' (Standard)' : ''}</option>)}
+                </select>
+              </div>
+            </div>
+
             <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
               {items.map(i => {
                 const res = results.find(r => r.key === i.key)

@@ -371,7 +371,7 @@ export default function DetailView({
           )}
 
           {activeTab === TAB.honorare && (
-            <HonorareTab key={client.id} client={client} onUpdate={onUpdate} />
+            <HonorareTab key={client.id} client={client} onUpdate={onUpdate} emailSignaturen={emailSignaturen} />
           )}
 
           {activeTab === TAB.beratung && (
