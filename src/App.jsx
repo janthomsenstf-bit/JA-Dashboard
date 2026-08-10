@@ -1216,6 +1216,7 @@ export default function App() {
     <BudgetView
       clients={clients}
       onSelectClient={(id) => { setDetailInitialTab(4); setSelectedId(id) }}
+      onUpdateClient={updateClient}
     />
   )
 
