@@ -22,20 +22,7 @@
  * (Weitere Actions – sendViaEmail, enshrine – folgen in den nächsten Stufen.)
  */
 
-// Konsistent mit api/onedrive-api.js: raw body selbst lesen (unabhängig von Vercel-bodyParser)
-export const config = { api: { bodyParser: false } }
-
 const DEFAULT_BASE = 'https://my.sevdesk.de/api/v1'
-
-// ── Raw body lesen ───────────────────────────────────────────────────────────
-async function readRawBody(req) {
-  return new Promise((resolve, reject) => {
-    const chunks = []
-    req.on('data', c => chunks.push(c))
-    req.on('end',  () => resolve(Buffer.concat(chunks)))
-    req.on('error', reject)
-  })
-}
 
 // ── sevDesk-Fetch ────────────────────────────────────────────────────────────
 // Zentraler Aufrufer: hängt Token + Base-URL an. `path` beginnt mit "/".
@@ -70,14 +57,14 @@ export default async function handler(req, res) {
     })
   }
 
-  let body
-  try {
-    const raw = await readRawBody(req)
-    const str = raw.toString('utf-8')
-    body = str ? JSON.parse(str) : {}
-  } catch {
-    return res.status(400).json({ success: false, error: 'Invalid request body' })
+  // Vercel parst den JSON-Body automatisch (req.body). Nur falls er als String
+  // ankommt, selbst parsen. KEIN eigenes Stream-Lesen – der Body-Stream ist von
+  // Vercel bereits konsumiert, ein erneutes Lesen würde hängen (Timeout/HTTP 500).
+  let body = req.body
+  if (typeof body === 'string') {
+    try { body = JSON.parse(body) } catch { return res.status(400).json({ success: false, error: 'Invalid request body' }) }
   }
+  body = body ?? {}
 
   const { action, ...params } = body
   if (!action) return res.status(400).json({ success: false, error: 'action fehlt' })
@@ -105,7 +92,7 @@ export default async function handler(req, res) {
         connected: true,
         user: user ? {
           id:       user.id,
-          fullname: user.fullname ?? [user.firstName, user.lastName].filter(Boolean).join(' ') || null,
+          fullname: user.fullname ?? ([user.firstName, user.lastName].filter(Boolean).join(' ') || null),
           email:    user.email ?? null,
         } : null,
       })
