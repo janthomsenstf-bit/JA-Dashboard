@@ -41,14 +41,35 @@ const RECHNUNG_FELDER = [
   { key: 'plz',     label: 'PLZ',              pflicht: true,  placeholder: 'z. B. 24103' },
   { key: 'ort',     label: 'Ort',             pflicht: true,  placeholder: 'z. B. Kiel' },
   { key: 'land',    label: 'Land',            pflicht: false, placeholder: 'Deutschland' },
-  { key: 'email',   label: 'Rechnungs-E-Mail', pflicht: true, placeholder: 'z. B. buchhaltung@mandant.de' },
   { key: 'ustId',   label: 'USt-IdNr. (B2B)', pflicht: false, b2b: true, placeholder: 'z. B. DE123456789' },
   { key: 'steuernummer', label: 'Steuernr.', pflicht: false, placeholder: 'z. B. 12/345/67890' },
   { key: 'kundennummer', label: 'Kundennr. (optional)', pflicht: false, placeholder: 'intern' },
 ]
 
 function leerRechnung() {
-  return { strasse: '', plz: '', ort: '', land: 'Deutschland', email: '', ustId: '', steuernummer: '', kundennummer: '' }
+  return { strasse: '', plz: '', ort: '', land: 'Deutschland', email: '', ustId: '', steuernummer: '', kundennummer: '', kontaktId: '' }
+}
+
+// Effektive Rechnungs-E-Mail: bevorzugt die definierte Kontaktperson (dynamisch),
+// sonst die manuell hinterlegte Adresse. So geht die Rechnung gezielt an EINE Adresse.
+export function rechnungsEmail(client) {
+  const r = client?.rechnung ?? {}
+  if (r.kontaktId) {
+    const k = (client?.kontakte ?? []).find(x => x.id === r.kontaktId)
+    if (k?.email) return String(k.email).trim()
+  }
+  return String(r.email ?? '').trim()
+}
+
+// Empfänger für die Anzeige: {name, email, rolle} oder null.
+export function rechnungsEmpfaenger(client) {
+  const r = client?.rechnung ?? {}
+  if (r.kontaktId) {
+    const k = (client?.kontakte ?? []).find(x => x.id === r.kontaktId)
+    if (k) return { name: k.name || '', email: String(k.email ?? '').trim(), rolle: k.rolle || '' }
+  }
+  const email = String(r.email ?? '').trim()
+  return email ? { name: '', email, rolle: '' } : null
 }
 
 // ── Rechnungs-Editor (Entwurf + Vorschau) ──────────────────────────────────
@@ -232,7 +253,7 @@ function InvoiceEntwurf({ client, onUpdate, signaturen = [] }) {
 
   // Versand (Stufe 5)
   const initVorlage = initialVorlage(client)
-  const [toEmail, setToEmail]       = useState(client.rechnung?.email ?? '')
+  const [toEmail, setToEmail]       = useState(rechnungsEmail(client))
   const [mailSubject, setMailSubject] = useState(applyPlatzhalter(initVorlage.subject, client))
   const [mailText, setMailText]     = useState(applyPlatzhalter(initVorlage.text, client))
 
@@ -336,7 +357,7 @@ function InvoiceEntwurf({ client, onUpdate, signaturen = [] }) {
     setSent(null); setSendError('')
     setPositions([mkPos(LEISTUNG_PRESETS[0])]); setHeadText(''); setInvoiceDate(todayISO()); setTimeToPay('14')
     const v = initialVorlage(client)
-    setToEmail(client.rechnung?.email ?? ''); setMailSubject(applyPlatzhalter(v.subject, client)); setMailText(applyPlatzhalter(v.text, client))
+    setToEmail(rechnungsEmail(client)); setMailSubject(applyPlatzhalter(v.subject, client)); setMailText(applyPlatzhalter(v.text, client))
   }
 
   // ── Ergebnis-Ansicht (Entwurf angelegt + Vorschau) ──
@@ -696,9 +717,13 @@ export default function RechnungSevdeskBlock({ client, onUpdate, signaturen = []
     setEditing(false)
   }
 
-  // Vollständigkeit für die Anzeige
+  // Vollständigkeit für die Anzeige (Empfänger-E-Mail separat, da über Kontaktperson)
+  const emailFehlt = !rechnungsEmail(client)
   const fehlendePflicht = RECHNUNG_FELDER.filter(f => f.pflicht && !String(rechnung[f.key] ?? '').trim())
-  const istVollstaendig = fehlendePflicht.length === 0
+  const fehlendGesamt = fehlendePflicht.length + (emailFehlt ? 1 : 0)
+  const istVollstaendig = fehlendGesamt === 0
+  const empfaenger = rechnungsEmpfaenger(client)
+  const kontakte = client.kontakte ?? []
 
   return (
     <div style={{ border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden' }}>
@@ -830,11 +855,18 @@ export default function RechnungSevdeskBlock({ client, onUpdate, signaturen = []
               </span>
               {istVollstaendig
                 ? <span style={{ fontSize: '10px', background: 'rgba(22,163,74,0.12)', color: '#16a34a', padding: '2px 8px', borderRadius: '10px', fontWeight: 700 }}>vollständig</span>
-                : <span style={{ fontSize: '10px', background: 'rgba(249,115,22,0.12)', color: '#f97316', padding: '2px 8px', borderRadius: '10px', fontWeight: 700 }}>{fehlendePflicht.length} Pflichtfeld{fehlendePflicht.length !== 1 ? 'er' : ''} fehlt</span>}
+                : <span style={{ fontSize: '10px', background: 'rgba(249,115,22,0.12)', color: '#f97316', padding: '2px 8px', borderRadius: '10px', fontWeight: 700 }}>{fehlendGesamt} Pflichtfeld{fehlendGesamt !== 1 ? 'er' : ''} fehlt</span>}
               <button onClick={startEdit}
                 style={{ padding: '4px 12px', borderRadius: '6px', border: `1px solid ${ACCENT}`, background: 'transparent', color: ACCENT, fontSize: '11px', fontWeight: 700, cursor: 'pointer' }}>
                 ✏️ Bearbeiten
               </button>
+            </div>
+            {/* Rechnungsempfänger (definierte Kontaktperson bzw. E-Mail) */}
+            <div style={{ marginBottom: '10px', padding: '8px 10px', border: `1px solid ${emailFehlt ? 'rgba(249,115,22,0.4)' : 'var(--border)'}`, borderRadius: '8px', background: 'var(--surface2)' }}>
+              <span style={{ fontSize: '10px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>📧 Rechnungsempfänger *</span>
+              <div style={{ fontSize: '12px', color: emailFehlt ? '#f97316' : 'var(--text)', fontWeight: 600 }}>
+                {empfaenger ? `${empfaenger.name ? empfaenger.name + (empfaenger.rolle ? ` (${empfaenger.rolle})` : '') + ' · ' : ''}${empfaenger.email}` : '⚠ fehlt – bitte Kontaktperson/E-Mail hinterlegen'}
+              </div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '8px 16px' }}>
               {RECHNUNG_FELDER.map(f => {
@@ -863,6 +895,32 @@ export default function RechnungSevdeskBlock({ client, onUpdate, signaturen = []
               ✏️ Rechnungs-Stammdaten bearbeiten
             </div>
             <div style={{ padding: '14px', background: 'var(--surface)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {/* Rechnungsempfänger: Kontaktperson wählen oder E-Mail manuell */}
+              <div>
+                <FieldLabel>Rechnungsempfänger *</FieldLabel>
+                {kontakte.length > 0 && (
+                  <select
+                    value={form.kontaktId ? form.kontaktId : (form.email ? '__frei__' : '')}
+                    onChange={e => { const v = e.target.value; set('kontaktId', v === '__frei__' || v === '' ? '' : v) }}
+                    style={inputBase}
+                  >
+                    <option value="">– Kontaktperson wählen –</option>
+                    {kontakte.map(k => (
+                      <option key={k.id} value={k.id}>{k.name}{k.rolle ? ` (${k.rolle})` : ''}{k.email ? ` – ${k.email}` : ''}</option>
+                    ))}
+                    <option value="__frei__">Andere E-Mail (manuell)…</option>
+                  </select>
+                )}
+                {!form.kontaktId && (
+                  <input value={form.email ?? ''} onChange={e => set('email', e.target.value)} placeholder="z. B. buchhaltung@mandant.de"
+                    style={{ ...inputBase, marginTop: kontakte.length > 0 ? '6px' : '0' }} />
+                )}
+                {kontakte.length === 0 && (
+                  <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                    Tipp: Kontaktpersonen pflegst du im Tab „Kommunikation" – dann kannst du hier gezielt eine als Rechnungsempfänger wählen.
+                  </div>
+                )}
+              </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '10px' }}>
                 {RECHNUNG_FELDER.map(f => (
                   <div key={f.key}>

@@ -12,7 +12,7 @@
 import { useState, useMemo } from 'react'
 import { createSevdeskInvoice, sendSevdeskInvoiceEmail, enshrineSevdeskInvoice } from '../utils/sevdeskClient.js'
 import { INTERVALLE, summeBrutto } from './detail/DauerrechnungenBlock.jsx'
-import { MAIL_VORLAGEN, applyPlatzhalter, initialVorlage } from './detail/RechnungSevdeskBlock.jsx'
+import { MAIL_VORLAGEN, applyPlatzhalter, initialVorlage, rechnungsEmail } from './detail/RechnungSevdeskBlock.jsx'
 import { fmtEuro } from './detail/HonorareTab.jsx'
 import { buildMailHtml } from '../utils/mailFormat.js'
 
@@ -53,7 +53,7 @@ export default function DauerrechnungenSammellauf({ clients = [], onUpdateClient
     for (const client of clients) {
       for (const dr of (client.dauerrechnungen ?? [])) {
         if (!istFaellig(dr, now)) continue
-        const email = String(client.rechnung?.email ?? '').trim()
+        const email = rechnungsEmail(client)
         const bereit = !!client.sevdeskContactId && !!email
         list.push({
           key:     client.id + ':' + dr.id,
@@ -61,7 +61,7 @@ export default function DauerrechnungenSammellauf({ clients = [], onUpdateClient
           client, dr,
           email,
           bereit,
-          grund:   !client.sevdeskContactId ? 'kein sevDesk-Kontakt' : (!email ? 'keine Rechnungs-E-Mail' : ''),
+          grund:   !client.sevdeskContactId ? 'kein sevDesk-Kontakt' : (!email ? 'kein Rechnungsempfänger' : ''),
           brutto:  summeBrutto(dr),
         })
       }
