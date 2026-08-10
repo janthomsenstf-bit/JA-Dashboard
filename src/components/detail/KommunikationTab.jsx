@@ -1498,7 +1498,7 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
           {/* Felder */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
             <div>
-              <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>An (Empfänger)</label>
+              <label style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', display: 'block', marginBottom: '5px' }}>An (Empfänger)</label>
               {(client.kontakte ?? []).length > 0 ? (
                 <select className="input" value={empfaenger} onChange={e => setEmpfaenger(e.target.value)} style={{ width: '100%', fontSize: '13px' }}>
                   <option value="">– Kontaktperson wählen –</option>
@@ -1515,7 +1515,7 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
               )}
             </div>
             <div>
-              <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
+              <label style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', display: 'block', marginBottom: '5px' }}>
                 Von (Absender)
                 <button onClick={() => setShowAbsenderModal(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent)', fontSize: '10px', marginLeft: '6px' }}>
                   ⚙ verwalten
@@ -1538,7 +1538,7 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
           </div>
 
           <div style={{ marginBottom: '10px' }}>
-            <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>Betreff</label>
+            <label style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', display: 'block', marginBottom: '5px' }}>Betreff</label>
             <input className="input" value={betreff} onChange={e => setBetreff(e.target.value)}
               placeholder="Betreff..." style={{ width: '100%', fontSize: '13px' }} />
           </div>
@@ -1613,7 +1613,7 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
           {/* CC + Anhänge-Zeile */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '10px', alignItems: 'end', marginBottom: '10px' }}>
             <div>
-              <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
+              <label style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', display: 'block', marginBottom: '5px' }}>
                 CC
                 {(client.kontakte ?? []).length > 0 && (
                   <span style={{ marginLeft: '8px', fontSize: '10px', color: 'var(--accent)' }}>
@@ -1638,7 +1638,7 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
           </div>
           {showBCC && (
             <div style={{ marginBottom: '10px' }}>
-              <label style={{ fontSize: '11px', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>BCC</label>
+              <label style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', display: 'block', marginBottom: '5px' }}>BCC</label>
               <input className="input" value={bcc} onChange={e => setBCC(e.target.value)} placeholder="bcc@kanzlei.de" style={{ width: '100%', fontSize: '13px' }} />
             </div>
           )}
