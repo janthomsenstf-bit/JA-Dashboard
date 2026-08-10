@@ -13,7 +13,7 @@
 import { useState } from 'react'
 import {
   pingSevdesk, findSevdeskContacts, getSevdeskContactDetails, createSevdeskContact,
-  createSevdeskInvoice, getSevdeskInvoicePdf,
+  createSevdeskInvoice, getSevdeskInvoicePdf, sendSevdeskInvoiceEmail, enshrineSevdeskInvoice,
 } from '../../utils/sevdeskClient.js'
 
 const ACCENT = '#4f46e5'
@@ -87,7 +87,7 @@ function buildAddress(client) {
   return lines.join('\n')
 }
 
-function InvoiceEntwurf({ client }) {
+function InvoiceEntwurf({ client, onUpdate }) {
   const [positions, setPositions]   = useState([mkPos(LEISTUNG_PRESETS[0])])
   const [headText, setHeadText]     = useState('')
   const [invoiceDate, setInvoiceDate] = useState(todayISO())
@@ -95,6 +95,61 @@ function InvoiceEntwurf({ client }) {
   const [creating, setCreating]     = useState(false)
   const [invError, setInvError]     = useState('')
   const [result, setResult]         = useState(null)   // { invoice, pdf }
+
+  // Versand (Stufe 5)
+  const [toEmail, setToEmail]       = useState(client.rechnung?.email ?? '')
+  const [mailSubject, setMailSubject] = useState('Ihre Rechnung')
+  const [mailText, setMailText]     = useState('Sehr geehrte Damen und Herren,\n\nanbei erhalten Sie Ihre Rechnung als PDF.\n\nMit freundlichen Grüßen')
+  const [finalizing, setFinalizing] = useState(false)
+  const [sendError, setSendError]   = useState('')
+  const [sent, setSent]             = useState(null)   // { nummer, email, hinweis }
+
+  async function festschreibenUndSenden() {
+    const inv = result?.invoice
+    if (!inv?.id) return
+    if (!toEmail.trim()) { setSendError('Bitte eine Empfänger-E-Mail angeben.'); return }
+    const ok = window.confirm(
+      `Rechnung jetzt an ${toEmail.trim()} senden und festschreiben (GoBD)?\n\n` +
+      `Betrag: ${fmtEuro(inv.sumGross ?? gross)}\n\n` +
+      `Dabei wird eine Rechnungsnummer vergeben – das ist nicht mehr rückgängig zu machen.`
+    )
+    if (!ok) return
+
+    setFinalizing(true); setSendError('')
+    try {
+      // 1. Versenden (finalisiert die Rechnung → Nummer + Status offen + Mail raus)
+      const sd = await sendSevdeskInvoiceEmail({ invoiceId: inv.id, toEmail: toEmail.trim(), subject: mailSubject, text: mailText })
+      let finalInv = sd.invoice ?? inv
+      let nummer   = finalInv.invoiceNumber ?? null
+
+      // 2. Festschreiben (GoBD) – best effort; scheitert es, ist die Rechnung trotzdem versendet
+      let hinweis = ''
+      try {
+        const en = await enshrineSevdeskInvoice(inv.id)
+        if (en.invoice) finalInv = en.invoice
+        nummer = finalInv.invoiceNumber ?? nummer
+      } catch (e) {
+        hinweis = 'Versendet, aber GoBD-Festschreiben nicht möglich (' + (e.message || 'Fehler') + ') – ggf. in sevDesk festschreiben.'
+      }
+
+      // 3. Spiegel am Mandanten (ADDITIV in client.rechnungen[])
+      const eintrag = {
+        id:           'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+        sevdeskId:    inv.id,
+        nummer:       nummer,
+        datum:        invoiceDate,
+        betragNetto:  finalInv.sumNet ?? sums.net,
+        betragBrutto: finalInv.sumGross ?? gross,
+        email:        toEmail.trim(),
+        status:       'versendet',
+        erstelltAm:   new Date().toISOString(),
+      }
+      onUpdate({ rechnungen: [ ...(client.rechnungen ?? []), eintrag ] })
+      setSent({ nummer, email: toEmail.trim(), hinweis })
+    } catch (e) {
+      setSendError(e.message || 'Versand fehlgeschlagen.')
+    } finally { setFinalizing(false) }
+  }
 
   const setPos = (id, k, v) => setPositions(ps => ps.map(p => p.id === id ? { ...p, [k]: v } : p))
   const addPos = (preset)   => setPositions(ps => [...ps, mkPos(preset)])
@@ -134,7 +189,9 @@ function InvoiceEntwurf({ client }) {
 
   function neueRechnung() {
     setResult(null); setInvError('')
+    setSent(null); setSendError('')
     setPositions([mkPos(LEISTUNG_PRESETS[0])]); setHeadText(''); setInvoiceDate(todayISO()); setTimeToPay('14')
+    setToEmail(client.rechnung?.email ?? ''); setMailSubject('Ihre Rechnung')
   }
 
   // ── Ergebnis-Ansicht (Entwurf angelegt + Vorschau) ──
@@ -170,10 +227,52 @@ function InvoiceEntwurf({ client }) {
               PDF-Vorschau nicht verfügbar – der Entwurf liegt aber in sevDesk (ID {inv.id}).
             </div>
           )}
-          <div style={{ fontSize: '11px', color: 'var(--text-muted)', lineHeight: 1.6 }}>
-            💡 Dies ist ein <strong>Entwurf</strong> (noch keine Rechnungsnummer, kein Versand). Prüfe die Vorschau –
-            der Versand an die Mandanten-E-Mail folgt in einem eigenen Schritt auf deinen Klick.
-          </div>
+          {sent ? (
+            /* ── Erfolg: versendet + festgeschrieben ── */
+            <div style={{ background: 'rgba(22,163,74,0.08)', border: '1px solid rgba(22,163,74,0.35)', borderRadius: '8px', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <div style={{ fontSize: '13px', fontWeight: 700, color: '#16a34a' }}>
+                ✓ Rechnung{sent.nummer ? ` ${sent.nummer}` : ''} an {sent.email} versendet{sent.hinweis ? '' : ' und festgeschrieben'}.
+              </div>
+              {sent.hinweis && (
+                <div style={{ fontSize: '11px', color: '#f97316' }}>⚠ {sent.hinweis}</div>
+              )}
+              <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                Der Vorgang ist in der Rechnungshistorie unten am Mandanten gespiegelt.
+              </div>
+            </div>
+          ) : (
+            /* ── Versand-Panel (Entwurf prüfen → senden) ── */
+            <div style={{ border: '1px solid var(--border)', borderRadius: '8px', padding: '12px 14px', background: 'var(--surface2)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)' }}>An Mandant senden</div>
+              <div>
+                <FieldLabel>Empfänger-E-Mail</FieldLabel>
+                <input value={toEmail} onChange={e => setToEmail(e.target.value)} placeholder="mandant@example.de" style={inputBase} />
+              </div>
+              <div>
+                <FieldLabel>Betreff</FieldLabel>
+                <input value={mailSubject} onChange={e => setMailSubject(e.target.value)} style={inputBase} />
+              </div>
+              <div>
+                <FieldLabel>Nachricht</FieldLabel>
+                <textarea value={mailText} onChange={e => setMailText(e.target.value)} rows={4} style={{ ...inputBase, resize: 'vertical', lineHeight: 1.5 }} />
+              </div>
+              {sendError && (
+                <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', padding: '8px 12px', fontSize: '12px', color: '#ef4444' }}>
+                  ⚠ {sendError}
+                </div>
+              )}
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <button onClick={festschreibenUndSenden} disabled={finalizing || !toEmail.trim()}
+                  style={{ padding: '9px 20px', borderRadius: '8px', border: 'none', background: (finalizing || !toEmail.trim()) ? 'var(--border)' : '#16a34a', color: '#fff', fontSize: '13px', fontWeight: 700, cursor: (finalizing || !toEmail.trim()) ? 'not-allowed' : 'pointer' }}>
+                  {finalizing ? '⏳ wird gesendet …' : '📧 Festschreiben & an Mandant senden'}
+                </button>
+              </div>
+              <div style={{ fontSize: '11px', color: 'var(--text-muted)', lineHeight: 1.6 }}>
+                Prüfe die Vorschau oben. Beim Senden vergibt sevDesk die Rechnungsnummer, verschickt die E-Rechnung
+                und schreibt sie fest (GoBD) – <strong>endgültig, kein Auto-Versand ohne diesen Klick</strong>.
+              </div>
+            </div>
+          )}
         </div>
       </div>
     )
@@ -599,10 +698,33 @@ export default function RechnungSevdeskBlock({ client, onUpdate }) {
 
         {/* Rechnung erstellen (Entwurf + Vorschau) – nur bei verknüpftem Kontakt */}
         {client.sevdeskContactId ? (
-          <InvoiceEntwurf client={client} />
+          <InvoiceEntwurf client={client} onUpdate={onUpdate} />
         ) : (
           <div style={{ fontSize: '12px', color: 'var(--text-muted)', border: '1px dashed var(--border)', borderRadius: '10px', padding: '12px 14px', textAlign: 'center' }}>
             🔗 Zum Erstellen einer Rechnung zuerst oben einen <strong>sevDesk-Kontakt verknüpfen</strong>.
+          </div>
+        )}
+
+        {/* Rechnungshistorie (Spiegel am Mandanten) */}
+        {Array.isArray(client.rechnungen) && client.rechnungen.length > 0 && (
+          <div style={{ border: '1px solid var(--border)', borderRadius: '10px', padding: '12px 14px', background: 'var(--surface)' }}>
+            <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '8px' }}>
+              Erstellte Rechnungen ({client.rechnungen.length})
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+              {[...client.rechnungen].reverse().map(r => (
+                <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '7px 10px', border: '1px solid var(--border)', borderRadius: '7px', background: 'var(--surface2)', fontSize: '12px' }}>
+                  <span style={{ fontWeight: 700, color: 'var(--text)', minWidth: '90px' }}>{r.nummer || 'ohne Nr.'}</span>
+                  <span style={{ color: 'var(--text-muted)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {r.datum || '—'} · {r.email || '—'}
+                  </span>
+                  <span style={{ fontWeight: 700, color: 'var(--text)', whiteSpace: 'nowrap' }}>{fmtEuro(r.betragBrutto)}</span>
+                  <span style={{ fontSize: '10px', background: 'rgba(22,163,74,0.12)', color: '#16a34a', padding: '2px 8px', borderRadius: '10px', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                    {r.status || 'versendet'}
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 

@@ -106,3 +106,21 @@ export async function createSevdeskInvoice(data) {
 export async function getSevdeskInvoicePdf(invoiceId) {
   return callSevdesk('getPdf', { invoiceId })
 }
+
+/**
+ * Rechnung per E-Mail an den Mandanten senden (finalisiert + vergibt Nummer).
+ * @param {object} data - { invoiceId, toEmail, subject, text, copy? }
+ * @returns {Promise<{sent: boolean, invoice: object}>}
+ */
+export async function sendSevdeskInvoiceEmail(data) {
+  return callSevdesk('sendViaEmail', data)
+}
+
+/**
+ * Rechnung festschreiben (GoBD, unveränderlich).
+ * @param {string|number} invoiceId
+ * @returns {Promise<{enshrined: boolean, invoice: object}>}
+ */
+export async function enshrineSevdeskInvoice(invoiceId) {
+  return callSevdesk('enshrine', { invoiceId })
+}

@@ -18,8 +18,8 @@
  *   createContact     → neuen Kontakt (Organisation) anlegen
  *   createInvoice     → Rechnung als ENTWURF anlegen (POST /Invoice/Factory/saveInvoice)
  *   getPdf            → (Vorschau-)PDF einer Rechnung als Base64
- *
- * (Weitere Actions – sendViaEmail, enshrine – folgen in den nächsten Stufen.)
+ *   sendViaEmail      → Rechnung per E-Mail an Mandant senden (finalisiert + Nummer)
+ *   enshrine          → Rechnung festschreiben (GoBD, unveränderlich)
  */
 
 const DEFAULT_BASE = 'https://my.sevdesk.de/api/v1'
@@ -36,6 +36,21 @@ async function sevdeskFetch(path, options, token) {
       ...(options?.headers ?? {}),
     },
   })
+}
+
+// ── Rechnung neu lesen (finale Nummer/Status/Summen) ─────────────────────────
+async function readInvoiceSummary(invoiceId, token) {
+  const r = await sevdeskFetch(`/Invoice/${encodeURIComponent(invoiceId)}`, { method: 'GET' }, token)
+  const d = await r.json().catch(() => ({}))
+  const inv = Array.isArray(d.objects) ? d.objects[0] : d.objects
+  if (!inv) return null
+  return {
+    id:            inv.id,
+    invoiceNumber: inv.invoiceNumber || null,
+    status:        inv.status ?? null,
+    sumNet:        Number(inv.sumNet)   || null,
+    sumGross:      Number(inv.sumGross) || null,
+  }
 }
 
 // ── Handler ──────────────────────────────────────────────────────────────────
@@ -300,6 +315,40 @@ export default async function handler(req, res) {
       const base64 = o.base64 ?? o.content ?? null
       if (!base64) return fail(500, 'sevDesk hat kein PDF zurückgegeben.', { raw: d })
       return ok({ filename: o.filename ?? 'rechnung.pdf', mimetype: o.mimetype ?? 'application/pdf', base64 })
+    }
+
+    // ── sendViaEmail (Versand an Mandant) ─────────────────────────────────────
+    // Versendet die Rechnung per E-Mail über sevDesk; dabei wird die Rechnung
+    // finalisiert (Nummer aus dem Nummernkreis, Status „offen/versendet").
+    if (action === 'sendViaEmail') {
+      const { invoiceId, toEmail, subject, text, copy = false } = params
+      if (!invoiceId) return fail(400, 'invoiceId fehlt')
+      if (!toEmail)   return fail(400, 'Empfänger-E-Mail fehlt')
+
+      const r = await sevdeskFetch(`/Invoice/${encodeURIComponent(invoiceId)}/sendViaEmail`, {
+        method:  'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ toEmail, subject: subject || 'Ihre Rechnung', text: text || '', copy: !!copy }),
+      }, token)
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok) return fail(r.status, sevError(r, d, 'Versand fehlgeschlagen'))
+
+      const invoice = await readInvoiceSummary(invoiceId, token)
+      return ok({ sent: true, invoice })
+    }
+
+    // ── enshrine (Festschreiben / GoBD) ───────────────────────────────────────
+    // Macht die Rechnung revisionssicher/unveränderlich. Best-effort nach Versand.
+    if (action === 'enshrine') {
+      const { invoiceId } = params
+      if (!invoiceId) return fail(400, 'invoiceId fehlt')
+      const r = await sevdeskFetch(`/Invoice/${encodeURIComponent(invoiceId)}/enshrine`, { method: 'PUT' }, token)
+      if (!r.ok && r.status !== 201) {
+        const d = await r.json().catch(() => ({}))
+        return fail(r.status, sevError(r, d, 'Festschreiben fehlgeschlagen'))
+      }
+      const invoice = await readInvoiceSummary(invoiceId, token)
+      return ok({ enshrined: true, invoice })
     }
 
     return fail(400, `Unbekannte action: ${action}`)
