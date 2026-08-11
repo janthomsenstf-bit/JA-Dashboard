@@ -78,6 +78,7 @@ export default async function handler(req, res) {
         betreff: env.subject   ?? '(kein Betreff)',
         an:      (env.to ?? []).map(a => a.address).join(', '),
         cc:      (env.cc ?? []).map(a => a.address).join(', '),
+        messageId: env.messageId ?? null,
       })
     }
 

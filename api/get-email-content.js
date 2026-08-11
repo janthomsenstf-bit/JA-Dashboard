@@ -34,8 +34,8 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end()
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' })
 
-  const { uid, account = 'hostinger' } = req.query
-  if (!uid) return res.status(400).json({ error: 'Parameter uid fehlt' })
+  const { uid, account = 'hostinger', folder = 'INBOX', messageId = '' } = req.query
+  if (!uid && !messageId) return res.status(400).json({ error: 'Parameter uid oder messageId fehlt' })
 
   const cfg = ACCOUNTS[account]
   if (!cfg) return res.status(400).json({ error: `Unbekanntes Konto: ${account}` })
@@ -51,19 +51,44 @@ export default async function handler(req, res) {
     logger: false,
   })
 
+  const wantedMsgId = String(messageId || '').replace(/^<|>$/g, '').trim()
+
   try {
     await client.connect()
-    await client.mailboxOpen('INBOX')
 
-    // Vollständige Rohdaten der E-Mail per UID laden
-    let rawBuffer = null
-    for await (const msg of client.fetch(String(uid), { source: true }, { uid: true })) {
-      rawBuffer = msg.source
+    let rawBuffer   = null
+    let foundFolder = null
+
+    // 1) Schnellpfad: per UID im angegebenen Ordner (Standard INBOX). Sicher – UID ist pro Ordner eindeutig.
+    if (uid) {
+      try {
+        await client.mailboxOpen(folder)
+        for await (const msg of client.fetch(String(uid), { source: true }, { uid: true })) rawBuffer = msg.source
+        if (rawBuffer) foundFolder = folder
+      } catch { /* Ordner nicht öffenbar → weiter zur Message-ID-Suche */ }
+    }
+
+    // 2) Ordnerübergreifend per Message-ID (global eindeutig → nie eine falsche Mail).
+    if (!rawBuffer && wantedMsgId) {
+      let boxes = []
+      try { boxes = await client.list() } catch {}
+      const rank = p => /sent|gesend|papierkorb|trash|deleted|archiv/i.test(p) ? 0 : 1
+      const paths = boxes.map(b => b.path).filter(p => p && p !== folder).sort((a, b) => rank(a) - rank(b))
+      for (const p of paths) {
+        try {
+          await client.mailboxOpen(p)
+          const ids = await client.search({ header: { 'message-id': wantedMsgId } }, { uid: true })
+          if (ids && ids.length) {
+            for await (const msg of client.fetch(ids[ids.length - 1], { source: true }, { uid: true })) rawBuffer = msg.source
+            if (rawBuffer) { foundFolder = p; break }
+          }
+        } catch { /* dieser Ordner nicht durchsuchbar → nächster */ }
+      }
     }
 
     if (!rawBuffer) {
       await client.logout()
-      return res.status(404).json({ error: 'E-Mail nicht gefunden (möglicherweise bereits gelöscht)' })
+      return res.status(404).json({ error: 'E-Mail in keinem Ordner gefunden (evtl. endgültig gelöscht)' })
     }
 
     // Größen-Guard: > 25 MB → Vercel-Memory-Limit
@@ -97,6 +122,7 @@ export default async function handler(req, res) {
 
     await client.logout()
     return res.status(200).json({
+      folder:      foundFolder,
       text:        parsed.text  ?? null,
       html:        parsed.html  ?? null,
       from:        parsed.from?.value?.[0]?.address ?? null,

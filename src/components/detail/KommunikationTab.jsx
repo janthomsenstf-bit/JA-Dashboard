@@ -759,7 +759,8 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
     setContentLoading(prev => ({ ...prev, [entry.id]: true }))
     setContentError(prev => ({ ...prev, [entry.id]: '' }))
     try {
-      const res  = await fetch(`/api/get-email-content?uid=${encodeURIComponent(entry.sourceUid)}&account=${encodeURIComponent(entry.sourceAccount)}`)
+      const mid  = entry.messageId ? `&messageId=${encodeURIComponent(entry.messageId)}` : ''
+      const res  = await fetch(`/api/get-email-content?uid=${encodeURIComponent(entry.sourceUid)}&account=${encodeURIComponent(entry.sourceAccount)}${mid}`)
       const data = await res.json()
       if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`)
       // Text + HTML + Anlage-Metadaten + CC/An persistent in Event speichern
@@ -769,6 +770,7 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
         html:          data.html ?? undefined,
         anlagen:       data.attachments.map(a => ({ name: a.name, size: a.size, contentType: a.contentType, tooLarge: a.tooLarge ?? false })),
         contentLoaded: true,
+        messageId:     data.messageId ?? e.messageId,
         ...(data.cc  ? { cc: data.cc }            : {}),
         ...(data.to  ? { empfaenger: data.to }     : {}),
         ...(data.from ? { absender: data.from }     : {}),
@@ -792,7 +794,8 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
     if (entry.text) return entry.text
     if (!entry.sourceUid || !entry.sourceAccount) return ''
     try {
-      const res = await fetch(`/api/get-email-content?uid=${encodeURIComponent(entry.sourceUid)}&account=${encodeURIComponent(entry.sourceAccount)}`)
+      const mid = entry.messageId ? `&messageId=${encodeURIComponent(entry.messageId)}` : ''
+      const res = await fetch(`/api/get-email-content?uid=${encodeURIComponent(entry.sourceUid)}&account=${encodeURIComponent(entry.sourceAccount)}${mid}`)
       const d = await res.json()
       if (!res.ok || d.error) return ''
       return d.text || ''
@@ -2886,9 +2889,9 @@ function EmailDetailPanel({
             {/* Email Content */}
             <div style={{ flex: 1, overflowY: 'auto', padding: '0 24px 20px', ...(replyMode ? { maxHeight: '35%' } : {}) }}>
               {contentLoading[entry.id] && <div style={{ color: 'var(--text-muted)', fontSize: '13px', padding: '20px 0' }}>⏳ E-Mail-Inhalt wird geladen…</div>}
-              {contentError[entry.id] && (
-                <div style={{ fontSize: '12px', color: '#dc2626', padding: '10px 14px', background: 'rgba(220,38,38,0.06)', borderRadius: '10px', marginBottom: '12px', display: 'flex', gap: '8px', alignItems: 'center' }}>
-                  ⚠️ {contentError[entry.id]}
+              {contentError[entry.id] && !entry.text && (
+                <div style={{ fontSize: '12px', color: 'var(--text-muted)', padding: '10px 14px', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '10px', marginBottom: '12px', display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <span>ℹ️ Inhalt aktuell nicht abrufbar – die Nachricht liegt evtl. im Papierkorb, in „Gesendet" oder in einem Unterordner. Die gespeicherten Angaben (Betreff, Absender, Datum) sind oben zu sehen.</span>
                   <button className="btn btn-ghost btn-sm" onClick={() => onFetch(entry)} style={{ fontSize: '10px' }}>Erneut versuchen</button>
                 </div>
               )}
@@ -2900,7 +2903,11 @@ function EmailDetailPanel({
                   />
                 ) : (
                   <pre style={{ fontFamily: 'inherit', fontSize: '13px', lineHeight: '1.7', whiteSpace: 'pre-wrap', color: 'var(--text)', margin: 0 }}>
-                    {entry.text || (entry.sourceUid && !entry.contentLoaded ? '(Inhalt wird geladen…)' : '(kein Text)')}
+                    {entry.text || (contentLoading[entry.id]
+                      ? '(Inhalt wird geladen…)'
+                      : contentError[entry.id]
+                        ? '(Kein zwischengespeicherter Text – Inhalt derzeit nicht abrufbar.)'
+                        : (entry.sourceUid && !entry.contentLoaded ? '(Inhalt wird geladen…)' : '(kein Text)'))}
                   </pre>
                 )
               )}

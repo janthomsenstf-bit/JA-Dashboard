@@ -652,6 +652,7 @@ export default function App() {
       gesendetAm: email.datum,
       sourceUid: String(email.uid),
       sourceAccount: email.account,
+      messageId: email.messageId ?? null,
     }
   }
 
