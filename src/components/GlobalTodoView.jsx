@@ -1,5 +1,15 @@
 import { useState, useMemo, useCallback, useEffect } from 'react'
-import { AUFTRAGS_TYP_CFG, AUFTRAGS_STATUS_CFG, generateSerieInstanzen, intervallLabel } from './detail/AuftraegeTab.jsx'
+import { AUFTRAGS_TYP_CFG, AUFTRAGS_STATUS_CFG, JA_WORKFLOW_STATUS, generateSerieInstanzen, intervallLabel } from './detail/AuftraegeTab.jsx'
+import { generateAufgaben, generateManuelleAufgaben, getStatus as getAufgabeStatus, buildTogglePatch } from '../utils/aufgaben.js'
+
+// Automatisch generierte Fristen (aus Stammdaten) → Auftrags-Typen der Übersicht.
+// JA fehlt bewusst (im Auftrags-System reicher abgebildet – sonst Doppelung).
+const GEN_TYP_MAP = { USt: 'ust', Lohn: 'lohn', LohnSV: 'lohn', FIBU: 'fibu', Zusatz: 'freitext' }
+// Zeitfenster (Tage), in dem generierte Fristen im Radar/Eilig mitzählen.
+const GEN_WINDOW_BACK = 60
+const GEN_WINDOW_FWD  = 90
+// Ersatz-Mandant für manuelle Aufgaben ohne Mandantenbezug (Kanzlei-Todos).
+const KANZLEI_CLIENT = { id: '__kanzlei__', name: 'Ohne Mandant (Kanzlei)', mandatstyp: 'intern', mandantennummer: '' }
 
 const CUR_MONAT = new Date().getMonth() + 1
 const CUR_JAHR  = new Date().getFullYear()
@@ -80,6 +90,103 @@ function fmtDE(date, opts) {
   return date.toLocaleDateString('de-DE', opts)
 }
 
+// ISO-Zeitstempel → lokales yyyy-mm-dd (verhindert Zeitzonen-Verschiebung um 1 Tag)
+function isoToLocalYMD(iso) {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return ''
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+}
+
+// ── Dringlichkeit ──────────────────────────────────────────────────────────────
+// Ein Auftrag bekommt einen Dringlichkeits-Score. Höher = dringender.
+// Reihenfolge: überfällig > 🔥 eilig (Fertigstellung überfällig) > nachfassen >
+//              🔥 eilig (markiert) > Frist ≤ 7 Tage > Priorität hoch > Frist ≤ 30 Tage > normal.
+// Ab so vielen Tagen Wartezeit gilt ein JA-Auftrag als „nachzufassen".
+const NACHFASS_TAGE = 14
+const WARTE_STATUS  = { warte_rueckmeldung: 'Rückmeldung', warte_unterschrift: 'Unterschrift' }
+
+// Ampel-/Level-Farben (zentral, damit Tabellen & Mandantensicht identisch aussehen)
+const URGENCY_COLOR = {
+  overfaellig: '#ef4444',
+  nachfassen:  '#f59e0b',
+  eilig:       '#ef4444',
+  frist_bald:  '#f97316',
+  prio_hoch:   '#eab308',
+  frist_monat: '#eab308',
+  normal:      'var(--text-muted)',
+  erledigt:    '#16a34a',
+}
+
+function computeUrgency(au) {
+  if (au.status === 'erledigt') return { level: 'erledigt', score: 0, reason: 'erledigt' }
+
+  // Monatssicht: mitgenommene überfällige Aufgaben tragen ihre Überfälligkeit selbst
+  if (au._carryForward && au._carryDays > 0) {
+    return { level: 'overfaellig', score: 5000 + au._carryDays, days: au._carryDays,
+      reason: `überfällig seit ${au._carryDays} Tag${au._carryDays !== 1 ? 'en' : ''}` }
+  }
+
+  const heute = new Date(); heute.setHours(0, 0, 0, 0)
+  const exact = getExactDate(au)   // yyyy-mm-dd oder null
+  let daysUntil = null, overdueDays = 0
+  if (exact) {
+    const d = new Date(exact + 'T00:00:00')
+    const diff = Math.round((d - heute) / 86400000)
+    if (diff < 0) overdueDays = -diff; else daysUntil = diff
+  }
+
+  // 1) Fälligkeitsdatum überfällig
+  if (overdueDays > 0) {
+    return { level: 'overfaellig', score: 5000 + overdueDays, days: overdueDays,
+      reason: `überfällig seit ${overdueDays} Tag${overdueDays !== 1 ? 'en' : ''}` }
+  }
+  // 2) 🔥 Eilig mit abgelaufener Fertigstellungsfrist
+  if (au.eilig && au.eiligBis) {
+    const ebDiff = Math.round((new Date(au.eiligBis + 'T00:00:00') - heute) / 86400000)
+    if (ebDiff < 0) return { level: 'overfaellig', score: 5000 + Math.abs(ebDiff), days: Math.abs(ebDiff),
+      reason: `🔥 Fertigstellung ${Math.abs(ebDiff)} Tag${Math.abs(ebDiff) !== 1 ? 'e' : ''} überfällig` }
+  }
+  // 3) Nachfassen (JA wartet zu lange auf Rückmeldung/Unterschrift)
+  if (WARTE_STATUS[au.jaWorkflowStatus] && au.jaWorkflowStatusDatum) {
+    const w = daysSince(au.jaWorkflowStatusDatum)
+    if (w >= NACHFASS_TAGE) return { level: 'nachfassen', score: 3500 + w, days: w,
+      reason: `wartet ${w} Tage auf ${WARTE_STATUS[au.jaWorkflowStatus]}` }
+  }
+  // 4) Manuell als eilig markiert
+  if (au.eilig) return { level: 'eilig', score: 3000,
+    reason: au.eiligBis ? `🔥 eilig · bis ${fmtDE(new Date(au.eiligBis + 'T00:00:00'), { day:'2-digit', month:'2-digit' })}` : '🔥 eilig markiert' }
+  // 5) Frist ≤ 7 Tage
+  if (daysUntil !== null && daysUntil <= 7) return { level: 'frist_bald', score: 2500 + (7 - daysUntil), days: daysUntil,
+    reason: daysUntil === 0 ? 'heute fällig' : `fällig in ${daysUntil} Tag${daysUntil !== 1 ? 'en' : ''}` }
+  // 6) Priorität hoch
+  if (au.prioritaet === 'hoch') return { level: 'prio_hoch', score: 2000, reason: 'Priorität hoch' }
+  // 7) Frist ≤ 30 Tage
+  if (daysUntil !== null && daysUntil <= 30) return { level: 'frist_monat', score: 1000 + (30 - daysUntil), days: daysUntil,
+    reason: `fällig in ${daysUntil} Tagen` }
+  // 8) Ohne besondere Dringlichkeit
+  return { level: 'normal', score: 100, reason: '' }
+}
+
+// Sortiert Aufträge dringlichkeitsabsteigend (stabil per Frist als Tiebreak)
+function sortByUrgency(list) {
+  return [...list].sort((a, b) => {
+    const d = computeUrgency(b).score - computeUrgency(a).score
+    if (d !== 0) return d
+    return (getExactDate(a) || a.frist || '9999').localeCompare(getExactDate(b) || b.frist || '9999')
+  })
+}
+
+// Generierte Fristen zählen nur im aktuellen Zeitfenster fürs Radar/Eilig mit.
+// Echte Aufträge sind bewusst angelegt → immer relevant.
+function istRadarRelevant(au) {
+  if (!au._generiert) return true
+  if (!au.frist) return false
+  const heute = new Date(); heute.setHours(0, 0, 0, 0)
+  const diff = Math.round((new Date(au.frist + 'T00:00:00') - heute) / 86400000)
+  return diff >= -GEN_WINDOW_BACK && diff <= GEN_WINDOW_FWD
+}
+
 // ── Gemeinsame Tabellenzeile ───────────────────────────────────────────────────
 const thStyle = { padding:'8px 12px', textAlign:'left', fontWeight:600, color:'var(--text-muted)', fontSize:'11px', borderBottom:'2px solid var(--border)' }
 
@@ -115,11 +222,13 @@ function AuftragRow({ au, idx, onSelectClient, onCycleStatus, onToggleDone, onNa
         </button>
       </td>
       <td style={{ padding:'8px 12px', whiteSpace:'nowrap' }}>
-        <button onClick={() => onNavigateToAuftrag?.(au.client.id, au.id)} title={`→ ${typCfg.label} öffnen`}
+        <button onClick={() => (au._generiert || au._manuell) ? onSelectClient(au.client.id) : onNavigateToAuftrag?.(au.client.id, au.id)}
+          title={au._generiert ? '→ Mandant öffnen (auto-Frist)' : au._manuell ? '→ Mandant öffnen (manuelle Aufgabe)' : `→ ${typCfg.label} öffnen`}
           style={{ fontSize:'11px', fontWeight:700, padding:'2px 8px', borderRadius:'10px', background:typCfg.bg, color:typCfg.color, border:`1px solid ${typCfg.border}`, whiteSpace:'nowrap', cursor:'pointer', transition:'filter 0.15s' }}
           onMouseEnter={e => e.currentTarget.style.filter = 'brightness(0.92)'}
           onMouseLeave={e => e.currentTarget.style.filter = 'none'}>
-          {typCfg.icon} {typCfg.label}
+          {typCfg.icon} {au._manuell ? 'Aufgabe' : typCfg.label}
+          {au._generiert && <span title="automatisch aus Stammdaten erzeugte Frist" style={{ fontWeight:700, opacity:0.75 }}> · auto</span>}
         </button>
       </td>
       <td style={{ padding:'8px 12px', maxWidth:'260px' }}>
@@ -132,6 +241,16 @@ function AuftragRow({ au, idx, onSelectClient, onCycleStatus, onToggleDone, onNa
           {vzJahr && (
             <span title="Veranlagungsjahr" style={{ fontSize:'10px', fontWeight:700, color:'#2563eb', background:'rgba(37,99,235,0.1)', border:'1px solid rgba(37,99,235,0.25)', padding:'1px 6px', borderRadius:'6px', flexShrink:0 }}>
               VZ {vzJahr}
+            </span>
+          )}
+          {!erledigt && au.eilig && (
+            <span title={au.eiligBis ? `Fertigstellung bis ${au.eiligBis}` : 'Als eilig markiert'} style={{ fontSize:'10px', fontWeight:700, color:'#ef4444', background:'rgba(239,68,68,0.1)', border:'1px solid rgba(239,68,68,0.3)', padding:'1px 6px', borderRadius:'6px', flexShrink:0 }}>
+              🔥 Eilig
+            </span>
+          )}
+          {!erledigt && !au.eilig && au.prioritaet === 'hoch' && (
+            <span title="Priorität hoch" style={{ fontSize:'10px', fontWeight:700, color:'#d97706', background:'rgba(217,119,6,0.1)', border:'1px solid rgba(217,119,6,0.3)', padding:'1px 6px', borderRadius:'6px', flexShrink:0 }}>
+              ▲ Hoch
             </span>
           )}
           <span style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{bezeichnung ?? (istJA ? typCfg.label : `${typCfg.label} ${zeitraum}`)}</span>
@@ -236,7 +355,7 @@ function MonthTable({ gefiltert, alleAuftraege, onSelectClient, onCycleStatus, o
             </tr>
           </thead>
           <tbody>
-            {[...gefiltert].sort((a, b) => (b._carryForward ? 1 : 0) - (a._carryForward ? 1 : 0)).map((au, idx) => (
+            {sortByUrgency(gefiltert).map((au, idx) => (
               <AuftragRow key={au.id} au={au} idx={idx} onSelectClient={onSelectClient} onCycleStatus={onCycleStatus} onToggleDone={onToggleDone} onNavigateToAuftrag={onNavigateToAuftrag}
                 overdueDays={au._carryForward ? au._carryDays : undefined} />
             ))}
@@ -276,6 +395,64 @@ function EiligTable({ items, onSelectClient, onCycleStatus, onToggleDone, onNavi
           </tbody>
         </table>
       )}
+    </div>
+  )
+}
+
+// ── Mandanten-Ansicht ─────────────────────────────────────────────────────────
+// Ein verdichteter Eintrag pro Mandant: Ampel = dringlichster Punkt, Klartext-Zeile
+// und Zähler-Badges. Sortiert nach Dringlichkeit – „wo brennt was".
+function Pill({ color, children }) {
+  const muted = color === 'var(--text-muted)'
+  return (
+    <span style={{ fontSize:'11px', fontWeight:600, padding:'2px 8px', borderRadius:'20px', whiteSpace:'nowrap',
+      color, background:'var(--surface)', border:`1px solid ${muted ? 'var(--border)' : color + '55'}` }}>
+      {children}
+    </span>
+  )
+}
+
+function MandantenView({ rows, onSelectClient }) {
+  if (rows.length === 0) {
+    return <div style={{ padding:'48px', textAlign:'center', color:'var(--text-muted)', fontSize:'14px' }}>Keine aktiven Mandate für diesen Filter.</div>
+  }
+  return (
+    <div style={{ flex:1, overflowY:'auto', background:'var(--bg)' }}>
+      {rows.map(r => {
+        const au     = r.top?.au
+        const typCfg = au ? (AUFTRAGS_TYP_CFG[au.typ] ?? AUFTRAGS_TYP_CFG.freitext) : null
+        const label  = au ? (au.bezeichnung || typCfg.label) : null
+        const reason = r.top?.u.reason
+        return (
+          <div key={r.client.id} onClick={() => onSelectClient(r.client.id)}
+            style={{ display:'flex', alignItems:'center', gap:'12px', padding:'11px 16px', borderBottom:'1px solid var(--border)', cursor:'pointer', transition:'background 0.1s',
+              background: r.level === 'overfaellig' ? 'rgba(239,68,68,0.04)' : 'transparent' }}
+            onMouseEnter={e => e.currentTarget.style.background = 'var(--surface2)'}
+            onMouseLeave={e => e.currentTarget.style.background = r.level === 'overfaellig' ? 'rgba(239,68,68,0.04)' : 'transparent'}>
+            <span title={r.level === 'overfaellig' ? 'überfällig' : r.level === 'leer' ? 'nichts offen' : 'Handlungsbedarf'}
+              style={{ width:'10px', height:'10px', borderRadius:'50%', background:r.ampel, flexShrink:0 }} />
+            <div style={{ flex:1, minWidth:0 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:'6px' }}>
+                <span style={{ fontWeight:600, fontSize:'13px', color:'var(--accent)' }}>{r.client.name}</span>
+                {(r.client.mandatstyp ?? 'extern') === 'intern' && (
+                  <span style={{ fontSize:'9px', fontWeight:700, padding:'1px 5px', borderRadius:'8px', background:'rgba(124,58,237,0.1)', color:'#7c3aed', border:'1px solid rgba(124,58,237,0.25)' }}>INTERN</span>
+                )}
+                {r.client.mandantennummer && <span style={{ fontSize:'10px', color:'var(--text-muted)', fontFamily:'monospace' }}>{r.client.mandantennummer}</span>}
+              </div>
+              <div style={{ fontSize:'12px', marginTop:'1px', color: r.level === 'leer' ? '#16a34a' : (URGENCY_COLOR[r.level] ?? 'var(--text-muted)'), overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                {r.level === 'leer' ? 'Alles erledigt · nichts offen' : `${typCfg.icon} ${label}${reason ? ' · ' + reason : ''}`}
+              </div>
+            </div>
+            <div style={{ display:'flex', gap:'5px', flexShrink:0, alignItems:'center' }}>
+              {r.overfaellig > 0 && <Pill color="#ef4444">{r.overfaellig} überfällig</Pill>}
+              {r.nachfassen  > 0 && <Pill color="#f59e0b">{r.nachfassen} nachfassen</Pill>}
+              {r.bald        > 0 && <Pill color="#f97316">{r.bald} ≤ 7 Tage</Pill>}
+              {r.offen       > 0 && <Pill color="var(--text-muted)">{r.offen} offen</Pill>}
+            </div>
+            <span style={{ color:'var(--text-muted)', fontSize:'16px', flexShrink:0 }}>›</span>
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -351,7 +528,7 @@ function WeekCard({ au, onSelectClient, onCycleStatus, onNavigateToAuftrag }) {
       opacity: erledigt ? 0.6 : 1,
     }}>
       <div style={{ display:'flex', alignItems:'center', gap:'4px', marginBottom:'2px' }}>
-        <button onClick={() => onNavigateToAuftrag?.(au.client.id, au.id)} title={`→ ${typCfg.label} öffnen`}
+        <button onClick={() => (au._generiert || au._manuell) ? onSelectClient(au.client.id) : onNavigateToAuftrag?.(au.client.id, au.id)} title={(au._generiert || au._manuell) ? '→ Mandant öffnen' : `→ ${typCfg.label} öffnen`}
           style={{ fontSize:'11px', background:'none', border:'none', cursor:'pointer', padding:0, lineHeight:1 }}>{typCfg.icon}</button>
         {au.istSerie && <span style={{ fontSize:'9px', color:'rgba(99,102,241,0.8)', fontWeight:700 }}>🔁</span>}
         {isOverdue && <span style={{ fontSize:'9px', color:'#ef4444', fontWeight:700 }}>⚠{overdueDays}d</span>}
@@ -375,8 +552,8 @@ function WeekCard({ au, onSelectClient, onCycleStatus, onNavigateToAuftrag }) {
 function DayTable({ items, date, onSelectClient, onCycleStatus, onToggleDone, onQuickCreate, onNavigateToAuftrag }) {
   const heute = new Date(); heute.setHours(0,0,0,0)
   const istHeute    = isSameDay(date, heute)
-  const carryItems  = items.filter(a => a._carryForward)
-  const todayItems  = items.filter(a => !a._carryForward)
+  const carryItems  = sortByUrgency(items.filter(a => a._carryForward))
+  const todayItems  = sortByUrgency(items.filter(a => !a._carryForward))
 
   function TableSection({ rows, startIdx = 0 }) {
     return (
@@ -525,8 +702,14 @@ function QuickCreateModal({ day, clients, onClose, onCreate }) {
   )
 }
 
-// ── Neuer-Auftrag-Modal (mit Mandantensuche) ───────────────────────────────────
-function NewAuftragModal({ clients, onClose, onCreate }) {
+// ── Neuer-Auftrag-Modal (Auftrag ODER mandantenübergreifende Aufgabe) ───────────
+function todayISOLocal() {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+}
+
+function NewAuftragModal({ clients, onClose, onCreate, onCreateAufgabe }) {
+  const [modus,       setModus]       = useState('auftrag')   // 'auftrag' | 'aufgabe'
   const [query,       setQuery]       = useState('')
   const [clientId,    setClientId]    = useState('')
   const [typ,         setTyp]         = useState('fibu')
@@ -537,26 +720,66 @@ function NewAuftragModal({ clients, onClose, onCreate }) {
   const [beschreibung, setBeschreibung] = useState('')
   const [status,      setStatus]      = useState('offen')
 
+  const istAufgabe = modus === 'aufgabe'
   const selected = clients.find(c => c.id === clientId)
   const matches = (query.trim().length >= 1 && !selected)
     ? clients.filter(c => (c.name || '').toLowerCase().includes(query.toLowerCase()) || String(c.mandantennummer || '').includes(query.trim())).slice(0, 8)
     : []
 
+  // Auftrag braucht einen Mandanten; Aufgabe nur einen Titel (Mandant optional).
+  const canSubmit = istAufgabe ? bezeichnung.trim().length > 0 : !!clientId
+
   function submit() {
-    if (!clientId) return
-    onCreate({ clientId, typ, bezeichnung: bezeichnung.trim(), frist, istSerie, prioritaet, beschreibung: beschreibung.trim(), status })
+    if (!canSubmit) return
+    if (istAufgabe) {
+      const datum = frist || todayISOLocal()
+      const tag   = Math.min(28, Math.max(1, parseInt(datum.slice(8, 10), 10) || 1))
+      if (istSerie) {
+        onCreateAufgabe?.({
+          typ: 'serie', titel: bezeichnung.trim(), beschreibung: beschreibung.trim(),
+          mandantId: clientId || null, startDatum: datum, endDatum: '',
+          faelligTag: tag, frequenz: 'monatlich', intervallTyp: 'monate', intervallWert: 1,
+          erledigtInstanzen: {},
+        })
+      } else {
+        onCreateAufgabe?.({
+          typ: 'einmal', titel: bezeichnung.trim(), beschreibung: beschreibung.trim(),
+          mandantId: clientId || null, faellig: datum, erledigt: false, erledigtAm: null,
+        })
+      }
+    } else {
+      onCreate({ clientId, typ, bezeichnung: bezeichnung.trim(), frist, istSerie, prioritaet, beschreibung: beschreibung.trim(), status })
+    }
   }
+
+  const modusBtn = (m, label) => ({
+    flex: 1, padding: '7px 10px', borderRadius: '7px', fontSize: '12px', fontWeight: 700, cursor: 'pointer',
+    border: 'none', transition: 'background 0.15s',
+    background: modus === m ? 'var(--accent)' : 'transparent',
+    color: modus === m ? '#fff' : 'var(--text-muted)',
+  })
 
   return (
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.55)', zIndex:9000, display:'flex', alignItems:'center', justifyContent:'center', padding:'16px' }}
       onClick={e => e.target === e.currentTarget && onClose()}>
       <div style={{ background:'var(--surface)', borderRadius:'12px', padding:'22px', width:'min(480px, 94vw)', maxHeight:'90vh', overflowY:'auto', boxShadow:'0 24px 60px rgba(0,0,0,0.4)', border:'1px solid var(--border)' }}>
-        <div style={{ fontWeight:700, fontSize:'15px', marginBottom:'16px' }}>➕ Neuer Auftrag</div>
+        <div style={{ fontWeight:700, fontSize:'15px', marginBottom:'14px' }}>{istAufgabe ? '📌 Neue Aufgabe' : '➕ Neuer Auftrag'}</div>
+
+        {/* Modus-Umschalter */}
+        <div style={{ display:'flex', gap:'3px', background:'var(--surface2)', borderRadius:'9px', padding:'3px', border:'1px solid var(--border)', marginBottom:'16px' }}>
+          <button onClick={() => setModus('auftrag')} style={modusBtn('auftrag', '📋 Auftrag')}>📋 Auftrag</button>
+          <button onClick={() => setModus('aufgabe')} style={modusBtn('aufgabe', '📌 Aufgabe')}>📌 Aufgabe</button>
+        </div>
+        <div style={{ fontSize:'11px', color:'var(--text-muted)', marginBottom:'14px', marginTop:'-6px' }}>
+          {istAufgabe
+            ? 'Mandantenübergreifende Aufgabe – Mandant optional (ohne = Kanzlei-Todo).'
+            : 'Auftrag für einen bestimmten Mandanten (Jahresabschluss, FIBU, Lohn …).'}
+        </div>
 
         <div style={{ display:'flex', flexDirection:'column', gap:'12px' }}>
           {/* Mandantensuche */}
           <div>
-            <span style={modalLabelStyle}>Mandant</span>
+            <span style={modalLabelStyle}>{istAufgabe ? 'Mandant (optional)' : 'Mandant'}</span>
             {selected ? (
               <div style={{ display:'flex', alignItems:'center', gap:'8px', padding:'7px 10px', borderRadius:'7px', border:'1px solid var(--accent)', background:'var(--surface2)' }}>
                 <span style={{ fontSize:'13px', fontWeight:600, flex:1 }}>{selected.name}{selected.mandantennummer ? ` (${selected.mandantennummer})` : ''}</span>
@@ -564,7 +787,7 @@ function NewAuftragModal({ clients, onClose, onCreate }) {
               </div>
             ) : (
               <>
-                <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Name eintippen… z. B. Müller GmbH" style={modalInputStyle} autoFocus />
+                <input value={query} onChange={e => setQuery(e.target.value)} placeholder={istAufgabe ? 'leer lassen für Kanzlei-Todo…' : 'Name eintippen… z. B. Müller GmbH'} style={modalInputStyle} autoFocus={!istAufgabe} />
                 {matches.length > 0 && (
                   <div style={{ marginTop:'4px', border:'1px solid var(--border)', borderRadius:'7px', overflow:'hidden', maxHeight:'190px', overflowY:'auto' }}>
                     {matches.map(c => (
@@ -575,39 +798,52 @@ function NewAuftragModal({ clients, onClose, onCreate }) {
                     ))}
                   </div>
                 )}
-                {query.trim() && matches.length === 0 && <div style={{ fontSize:'11px', color:'var(--text-muted)', marginTop:'4px' }}>Kein Mandant gefunden.</div>}
+                {!istAufgabe && query.trim() && matches.length === 0 && <div style={{ fontSize:'11px', color:'var(--text-muted)', marginTop:'4px' }}>Kein Mandant gefunden.</div>}
               </>
             )}
           </div>
 
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px' }}>
-            <label><span style={modalLabelStyle}>Auftragstyp</span>
-              <select value={typ} onChange={e => setTyp(e.target.value)} style={modalInputStyle}>
-                {Object.entries(AUFTRAGS_TYP_CFG).map(([k, v]) => <option key={k} value={k}>{v.icon} {v.label}</option>)}
-              </select>
-            </label>
-            <label><span style={modalLabelStyle}>Status</span>
-              <select value={status} onChange={e => setStatus(e.target.value)} style={modalInputStyle}>
-                {Object.entries(AUFTRAGS_STATUS_CFG).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-              </select>
-            </label>
-          </div>
+          {/* Auftragstyp + Status – nur im Auftrag-Modus */}
+          {!istAufgabe && (
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px' }}>
+              <label><span style={modalLabelStyle}>Auftragstyp</span>
+                <select value={typ} onChange={e => setTyp(e.target.value)} style={modalInputStyle}>
+                  {Object.entries(AUFTRAGS_TYP_CFG).map(([k, v]) => <option key={k} value={k}>{v.icon} {v.label}</option>)}
+                </select>
+              </label>
+              <label><span style={modalLabelStyle}>Status</span>
+                <select value={status} onChange={e => setStatus(e.target.value)} style={modalInputStyle}>
+                  {Object.entries(AUFTRAGS_STATUS_CFG).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                </select>
+              </label>
+            </div>
+          )}
 
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px' }}>
-            <label><span style={modalLabelStyle}>Interne Frist</span>
+          {/* Frist (+ Priorität nur im Auftrag-Modus) */}
+          {istAufgabe ? (
+            <label><span style={modalLabelStyle}>{istSerie ? 'Start / fällig am' : 'Fällig am'}</span>
               <input type="date" value={frist} onChange={e => setFrist(e.target.value)} style={modalInputStyle} />
             </label>
-            <label><span style={modalLabelStyle}>Priorität</span>
-              <select value={prioritaet} onChange={e => setPrioritaet(e.target.value)} style={modalInputStyle}>
-                <option value="niedrig">Niedrig</option>
-                <option value="normal">Normal</option>
-                <option value="hoch">Hoch</option>
-              </select>
-            </label>
-          </div>
+          ) : (
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px' }}>
+              <label><span style={modalLabelStyle}>Interne Frist</span>
+                <input type="date" value={frist} onChange={e => setFrist(e.target.value)} style={modalInputStyle} />
+              </label>
+              <label><span style={modalLabelStyle}>Priorität</span>
+                <select value={prioritaet} onChange={e => setPrioritaet(e.target.value)} style={modalInputStyle}>
+                  <option value="niedrig">Niedrig</option>
+                  <option value="normal">Normal</option>
+                  <option value="hoch">Hoch</option>
+                </select>
+              </label>
+            </div>
+          )}
 
-          <label><span style={modalLabelStyle}>Bezeichnung</span>
-            <input value={bezeichnung} onChange={e => setBezeichnung(e.target.value)} placeholder="z. B. Buchhaltung Mai 2026" style={modalInputStyle} />
+          <label><span style={modalLabelStyle}>{istAufgabe ? 'Titel' : 'Bezeichnung'}</span>
+            <input value={bezeichnung} onChange={e => setBezeichnung(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && canSubmit && submit()}
+              placeholder={istAufgabe ? 'z. B. Kanzlei-Meeting vorbereiten' : 'z. B. Buchhaltung Mai 2026'}
+              style={modalInputStyle} autoFocus={istAufgabe} />
           </label>
 
           <label><span style={modalLabelStyle}>Beschreibung (optional)</span>
@@ -616,16 +852,18 @@ function NewAuftragModal({ clients, onClose, onCreate }) {
 
           <label style={{ display:'flex', alignItems:'center', gap:'8px', cursor:'pointer' }}>
             <input type="checkbox" checked={istSerie} onChange={e => setIstSerie(e.target.checked)} style={{ width:'15px', height:'15px', accentColor:'var(--accent)', cursor:'pointer' }} />
-            <span style={{ fontSize:'13px', color:'var(--text)' }}>Serienauftrag (monatlich wiederkehrend)</span>
+            <span style={{ fontSize:'13px', color:'var(--text)' }}>{istAufgabe ? 'Wiederkehrend (monatlich)' : 'Serienauftrag (monatlich wiederkehrend)'}</span>
           </label>
-          {istSerie && <div style={{ fontSize:'11px', color:'var(--text-muted)', marginTop:'-4px' }}>Startet ab der internen Frist (bzw. aktuellem Monat). Details später im Mandanten-Reiter „Aufträge" anpassbar.</div>}
+          {istSerie && <div style={{ fontSize:'11px', color:'var(--text-muted)', marginTop:'-4px' }}>
+            {istAufgabe ? 'Erzeugt monatliche Instanzen ab dem gewählten Datum.' : 'Startet ab der internen Frist (bzw. aktuellem Monat). Details später im Mandanten-Reiter „Aufträge" anpassbar.'}
+          </div>}
         </div>
 
         <div style={{ display:'flex', gap:'8px', justifyContent:'flex-end', marginTop:'20px' }}>
           <button onClick={onClose} style={{ padding:'7px 14px', borderRadius:'7px', border:'1px solid var(--border)', background:'transparent', color:'var(--text-muted)', fontSize:'13px', cursor:'pointer' }}>Abbrechen</button>
-          <button onClick={submit} disabled={!clientId}
-            style={{ padding:'7px 18px', borderRadius:'7px', border:'none', background: clientId ? 'var(--accent)' : 'var(--border)', color: clientId ? '#fff' : 'var(--text-muted)', fontWeight:700, fontSize:'13px', cursor: clientId ? 'pointer' : 'not-allowed' }}>
-            ✓ Auftrag anlegen
+          <button onClick={submit} disabled={!canSubmit}
+            style={{ padding:'7px 18px', borderRadius:'7px', border:'none', background: canSubmit ? 'var(--accent)' : 'var(--border)', color: canSubmit ? '#fff' : 'var(--text-muted)', fontWeight:700, fontSize:'13px', cursor: canSubmit ? 'pointer' : 'not-allowed' }}>
+            {istAufgabe ? '✓ Aufgabe anlegen' : '✓ Auftrag anlegen'}
           </button>
         </div>
       </div>
@@ -644,7 +882,7 @@ function StatBadge({ label, count, color, bg }) {
 }
 
 // ── Hauptkomponente ───────────────────────────────────────────────────────────
-export default function GlobalTodoView({ clients, onUpdateClient, onSelectClient, onNavigateToAuftrag }) {
+export default function GlobalTodoView({ clients, aufgabenListe = [], onUpdateAufgabe, onAddAufgabe, onUpdateClient, onSelectClient, onNavigateToAuftrag }) {
   const aktiveClients = useMemo(() => clients.filter(c => !c.archiviert), [clients])
   const saved = useMemo(() => loadTodoFilters(), [])
 
@@ -660,6 +898,7 @@ export default function GlobalTodoView({ clients, onUpdateClient, onSelectClient
   const [filterTyp,        setFilterTyp]        = useState(saved.filterTyp ?? 'alle')
   const [filterStatus,     setFilterStatus]     = useState(saved.filterStatus ?? 'aktiv')
   const [filterMandatstyp, setFilterMandatstyp] = useState(saved.filterMandatstyp ?? 'alle')
+  const [filterQuelle,     setFilterQuelle]     = useState(saved.filterQuelle ?? 'alle')
 
   // Letzte Ansicht automatisch merken (gerätelokal, nur Anzeige-Einstellungen)
   useEffect(() => {
@@ -667,10 +906,10 @@ export default function GlobalTodoView({ clients, onUpdateClient, onSelectClient
       localStorage.setItem(TODO_FILTER_KEY, JSON.stringify({
         viewMode,
         navDate: (navDate instanceof Date && !isNaN(navDate)) ? navDate.toISOString() : null,
-        filterJahr, filterMonat, filterTyp, filterStatus, filterMandatstyp,
+        filterJahr, filterMonat, filterTyp, filterStatus, filterMandatstyp, filterQuelle,
       }))
     } catch {}
-  }, [viewMode, navDate, filterJahr, filterMonat, filterTyp, filterStatus, filterMandatstyp])
+  }, [viewMode, navDate, filterJahr, filterMonat, filterTyp, filterStatus, filterMandatstyp, filterQuelle])
 
   // ── Alle Aufträge (Serien expandiert) ─────────────────────────────────────
   const alleAuftraege = useMemo(() => {
@@ -691,9 +930,59 @@ export default function GlobalTodoView({ clients, onUpdateClient, onSelectClient
           result.push({ ...au, client })
         }
       }
+      // ── Automatisch generierte Fristen (USt/Lohn/SV/FIBU/Zusatz) ────────────
+      for (const t of generateAufgaben(client)) {
+        const mappedTyp = GEN_TYP_MAP[t.type]
+        if (!mappedTyp) continue                       // JA & Unbekanntes auslassen
+        const st = getAufgabeStatus(client, t.key)
+        result.push({
+          id:          `gen_${client.id}_${t.key}`,
+          _generiert:  true,
+          _genKey:     t.key,
+          typ:         mappedTyp,
+          bezeichnung: t.label,
+          jahr:        t.jahr,
+          monat:       t.monat,
+          quartal:     t.quartal,
+          frist:       isoToLocalYMD(t.faellig),
+          status:      st.erledigt ? 'erledigt' : 'offen',
+          erledigtAm:  st.erledigtAm ?? null,
+          istSerie:    false,
+          client,
+        })
+      }
+    }
+    // ── Globale manuelle Aufgaben (mandantenübergreifend, Serien für Jahresfenster) ─
+    const clientById = new Map(aktiveClients.map(c => [c.id, c]))
+    const manuellJahre = [CUR_JAHR - 1, CUR_JAHR, CUR_JAHR + 1]
+    const gesehen = new Map()
+    for (const y of manuellJahre) {
+      for (const t of generateManuelleAufgaben(aufgabenListe, y)) {
+        if (!gesehen.has(t.key)) gesehen.set(t.key, t)
+      }
+    }
+    for (const t of gesehen.values()) {
+      const client = (t.mandantId && clientById.get(t.mandantId)) || KANZLEI_CLIENT
+      result.push({
+        id:           `man_${t.key}`,
+        _manuell:     true,
+        _manuellId:   t.aufgabeId,
+        _serieInstanz: t.serieInstanz ?? null,
+        typ:          'freitext',
+        bezeichnung:  t.label,
+        notiz:        t.beschreibung || '',
+        jahr:         t.jahr,
+        monat:        t.monat,
+        quartal:      t.quartal,
+        frist:        isoToLocalYMD(t.faellig),
+        status:       t.erledigt ? 'erledigt' : 'offen',
+        erledigtAm:   t.erledigtAm ?? null,
+        istSerie:     false,
+        client,
+      })
     }
     return result
-  }, [aktiveClients])
+  }, [aktiveClients, aufgabenListe])
 
   // ── Verfügbare Jahre ──────────────────────────────────────────────────────
   const verfuegbareJahre = useMemo(() => {
@@ -718,8 +1007,11 @@ export default function GlobalTodoView({ clients, onUpdateClient, onSelectClient
   const passesCommon = useCallback((au) => {
     if (filterTyp !== 'alle' && au.typ !== filterTyp) return false
     if (filterMandatstyp !== 'alle' && (au.client.mandatstyp ?? 'extern') !== filterMandatstyp) return false
+    if (filterQuelle === 'auftraege' && (au._generiert || au._manuell)) return false
+    if (filterQuelle === 'fristen'   && !au._generiert) return false
+    if (filterQuelle === 'manuell'   && !au._manuell)   return false
     return passesStatus(au)
-  }, [filterTyp, filterMandatstyp, passesStatus])
+  }, [filterTyp, filterMandatstyp, filterQuelle, passesStatus])
 
   // ── Monatssicht: gefilterte Aufträge (inkl. mitgenommene überfällige) ─────
   const gefiltert = useMemo(() => {
@@ -733,7 +1025,7 @@ export default function GlobalTodoView({ clients, onUpdateClient, onSelectClient
       const inSelected = dp.jahr === filterJahr && (filterMonat === null || dp.monat === null || dp.monat === filterMonat)
       if (inSelected) { result.push(au); continue }
       // Carry-forward: nicht erledigte, heute überfällige Aufgaben bleiben im aktuellen/zukünftigen Monat sichtbar
-      if (selVal !== null && selVal >= curVal && au.status !== 'erledigt' && dp.monat != null && dp.jahr != null) {
+      if (selVal !== null && selVal >= curVal && au.status !== 'erledigt' && !au._generiert && dp.monat != null && dp.jahr != null) {
         const itemVal = dp.jahr * 12 + dp.monat
         if (itemVal < curVal) {
           const ref = au.frist ? new Date(au.frist + 'T12:00:00') : new Date(dp.jahr, dp.monat, 0, 12)
@@ -767,10 +1059,11 @@ export default function GlobalTodoView({ clients, onUpdateClient, onSelectClient
       const idx = days.findIndex(d => isSameDay(d.date, exactDate))
       if (idx >= 0) { days[idx].items.push(au); continue }
       // Carry-forward: nicht erledigte, heute überfällige Aufgaben in aktueller/zukünftiger Woche zeigen
-      if (weekCurrentOrFuture && exactDate < heute && au.status !== 'erledigt') {
+      if (weekCurrentOrFuture && exactDate < heute && au.status !== 'erledigt' && !au._generiert) {
         days[carryIdx].items.push({ ...au, _carryForward: true, _carryDays: Math.floor((heute - exactDate) / 86400000), _carryFromDate: exact })
       }
     }
+    for (const d of days) d.items = sortByUrgency(d.items)
     return days
   }, [alleAuftraege, viewMode, navDate, passesCommon])
 
@@ -788,7 +1081,7 @@ export default function GlobalTodoView({ clients, onUpdateClient, onSelectClient
       const exactDate = new Date(exact + 'T00:00:00')
       if (isSameDay(exactDate, navDate)) {
         result.push(au)
-      } else if (isCurrentOrFuture && exactDate < navDay && au.status !== 'erledigt') {
+      } else if (isCurrentOrFuture && exactDate < navDay && au.status !== 'erledigt' && !au._generiert) {
         result.push({ ...au,
           _carryForward: true,
           _carryDays:    Math.floor((navDay - exactDate) / 86400000),
@@ -799,14 +1092,65 @@ export default function GlobalTodoView({ clients, onUpdateClient, onSelectClient
     return result
   }, [alleAuftraege, viewMode, navDate, passesCommon])
 
-  // ── Eilig-Ansicht: alle als „eilig" markierten Aufträge, sortiert nach Frist ─
+  // ── Eilig-Ansicht: automatisch alles Dringliche – manuell „eilig", überfällig,
+  //    Frist ≤ 7 Tage und Nachfass-Fälle – dringlichkeitssortiert ────────────────
   const eiligItems = useMemo(() => {
     if (viewMode !== 'eilig') return []
+    const DRINGLICH = new Set(['overfaellig', 'nachfassen', 'eilig', 'frist_bald'])
     return alleAuftraege
-      .filter(au => au.eilig && passesCommon(au))
-      .map(au => ({ ...au, frist: au.eiligBis || au.frist }))   // Frist-Spalte zeigt „Fertigstellung bis"
-      .sort((a, b) => (a.frist || '9999-12-31').localeCompare(b.frist || '9999-12-31'))
+      .filter(au => passesCommon(au) && istRadarRelevant(au))
+      .map(au => ({ au, u: computeUrgency(au) }))
+      .filter(({ au, u }) => au.eilig || DRINGLICH.has(u.level))
+      .sort((a, b) => b.u.score - a.u.score)
+      .map(({ au }) => ({ ...au, frist: au.eiligBis || au.frist }))   // Frist-Spalte zeigt „Fertigstellung bis"
   }, [alleAuftraege, viewMode, passesCommon])
+
+  // ── Mandanten-Ansicht: ein verdichteter Eintrag pro Mandant, nach Dringlichkeit ─
+  const mandantenItems = useMemo(() => {
+    if (viewMode !== 'mandanten') return []
+    // Nur Typ- & Mandatstyp-Filter greifen; Status ignorieren – wir zeigen offene Arbeit.
+    const passOhneStatus = (au) => {
+      if (filterTyp !== 'alle' && au.typ !== filterTyp) return false
+      if (filterMandatstyp !== 'alle' && (au.client.mandatstyp ?? 'extern') !== filterMandatstyp) return false
+      if (filterQuelle === 'auftraege' && (au._generiert || au._manuell)) return false
+      if (filterQuelle === 'fristen'   && !au._generiert) return false
+      if (filterQuelle === 'manuell'   && !au._manuell)   return false
+      if (!istRadarRelevant(au)) return false
+      return au.status !== 'erledigt'
+    }
+    const byClient = new Map()
+    for (const au of alleAuftraege) {
+      if (!passOhneStatus(au)) continue
+      const cid = au.client.id
+      if (!byClient.has(cid)) byClient.set(cid, { client: au.client, items: [] })
+      byClient.get(cid).items.push({ au, u: computeUrgency(au) })
+    }
+    // Auch aktive Mandanten ganz ohne offene Aufträge aufnehmen (grün)
+    for (const c of aktiveClients) {
+      if (filterMandatstyp !== 'alle' && (c.mandatstyp ?? 'extern') !== filterMandatstyp) continue
+      if (!byClient.has(c.id)) byClient.set(c.id, { client: c, items: [] })
+    }
+    const rows = [...byClient.values()].map(({ client, items }) => {
+      const top = items.reduce((best, cur) => (cur.u.score > (best?.u.score ?? -1) ? cur : best), null)
+      const level = top?.u.level ?? 'leer'
+      const ampel = level === 'leer' ? '#16a34a'
+        : level === 'overfaellig' ? '#ef4444'
+        : (top.u.score >= 2000 ? '#f59e0b' : 'var(--text-muted)')   // gelb ab eilig/nachfassen/frist_bald/prio_hoch
+      return {
+        client,
+        top,
+        level,
+        ampel,
+        score: top?.u.score ?? -1,
+        offen:       items.length,
+        overfaellig: items.filter(i => i.u.level === 'overfaellig').length,
+        nachfassen:  items.filter(i => i.u.level === 'nachfassen').length,
+        bald:        items.filter(i => i.u.level === 'frist_bald').length,
+        eilig:       items.filter(i => i.au.eilig).length,
+      }
+    })
+    return rows.sort((a, b) => b.score - a.score || a.client.name.localeCompare(b.client.name))
+  }, [alleAuftraege, aktiveClients, viewMode, filterTyp, filterMandatstyp, filterQuelle])
 
   // ── Statistiken (status-unabhängig für korrekte Übersicht) ────────────────
   const stats = useMemo(() => {
@@ -859,6 +1203,10 @@ export default function GlobalTodoView({ clients, onUpdateClient, onSelectClient
     } else {
       basis = []
     }
+    // Quellen-Filter auch in den Kennzahlen berücksichtigen
+    if (filterQuelle === 'auftraege') basis = basis.filter(au => !au._generiert && !au._manuell)
+    else if (filterQuelle === 'fristen') basis = basis.filter(au => au._generiert)
+    else if (filterQuelle === 'manuell') basis = basis.filter(au => au._manuell)
     const heute = new Date()
     const ueberfaellig = basis.filter(au => {
       if (au.status === 'erledigt') return false
@@ -872,7 +1220,7 @@ export default function GlobalTodoView({ clients, onUpdateClient, onSelectClient
       erledigt:    basis.filter(a => a.status === 'erledigt').length,
       ueberfaellig,
     }
-  }, [alleAuftraege, viewMode, navDate, filterJahr, filterMonat, filterTyp, filterMandatstyp, weekDays])
+  }, [alleAuftraege, viewMode, navDate, filterJahr, filterMonat, filterTyp, filterMandatstyp, filterQuelle, weekDays])
 
   // ── Navigation ────────────────────────────────────────────────────────────
   function switchView(mode) {
@@ -896,7 +1244,7 @@ export default function GlobalTodoView({ clients, onUpdateClient, onSelectClient
     const t = new Date()
     setViewMode('monat'); setNavDate(t)
     setFilterJahr(t.getFullYear()); setFilterMonat(t.getMonth() + 1)
-    setFilterTyp('alle'); setFilterStatus('aktiv'); setFilterMandatstyp('alle')
+    setFilterTyp('alle'); setFilterStatus('aktiv'); setFilterMandatstyp('alle'); setFilterQuelle('alle')
   }
 
   function goPrev() {
@@ -937,7 +1285,27 @@ export default function GlobalTodoView({ clients, onUpdateClient, onSelectClient
   }, [viewMode, filterMonat, filterJahr, navDate])
 
   // ── Status umschalten ─────────────────────────────────────────────────────
+  // Globale manuelle Aufgabe als erledigt/offen setzen (Einmal & Serieninstanz).
+  function toggleManuell(au, done) {
+    if (!onUpdateAufgabe || !au._manuellId) return
+    const src = aufgabenListe.find(a => a.id === au._manuellId)
+    if (!src) return
+    const stamp = done ? new Date().toISOString() : null
+    if (au._serieInstanz) {
+      onUpdateAufgabe(au._manuellId, { erledigtInstanzen: { ...(src.erledigtInstanzen ?? {}), [au._serieInstanz]: { erledigt: done, erledigtAm: stamp } } })
+    } else {
+      onUpdateAufgabe(au._manuellId, { erledigt: done, erledigtAm: stamp })
+    }
+  }
+
   function cycleStatus(au) {
+    // Generierte Fristen kennen nur erledigt/offen → einfaches Umschalten.
+    if (au._generiert) {
+      onUpdateClient(au.client.id, buildTogglePatch(au.client, au._genKey))
+      return
+    }
+    // Globale manuelle Aufgaben: nur erledigt/offen umschalten.
+    if (au._manuell) { toggleManuell(au, au.status !== 'erledigt'); return }
     const next = STATUS_ORDER[(STATUS_ORDER.indexOf(au.status) + 1) % STATUS_ORDER.length]
     if (au.istSerie && au.serieId && au.serieKey) {
       const upd = (au.client.auftraege ?? []).map(a => {
@@ -955,6 +1323,15 @@ export default function GlobalTodoView({ clients, onUpdateClient, onSelectClient
 
   // ── Direkt erledigt/offen schalten ────────────────────────────────────────
   function markDone(au, done) {
+    // Generierte Fristen: nur umschalten, wenn sich der Zustand ändert.
+    if (au._generiert) {
+      if (getAufgabeStatus(au.client, au._genKey).erledigt !== done) {
+        onUpdateClient(au.client.id, buildTogglePatch(au.client, au._genKey))
+      }
+      return
+    }
+    // Globale manuelle Aufgaben.
+    if (au._manuell) { toggleManuell(au, done); return }
     const status = done ? 'erledigt' : 'offen'
     const stamp  = done ? new Date().toISOString() : null
     if (au.istSerie && au.serieId && au.serieKey) {
@@ -1043,9 +1420,13 @@ export default function GlobalTodoView({ clients, onUpdateClient, onSelectClient
       if (carry > 0) return `${total} Einträge · davon ${carry} mitgenommen`
       return `${total} Einträge`
     }
-    if (viewMode === 'eilig') return `${eiligItems.length} eilige Aufträge`
+    if (viewMode === 'eilig') return `${eiligItems.length} dringliche Aufträge`
+    if (viewMode === 'mandanten') {
+      const bedarf = mandantenItems.filter(r => r.offen > 0).length
+      return `${mandantenItems.length} Mandate · ${bedarf} mit Handlungsbedarf`
+    }
     return ''
-  }, [viewMode, gefiltert.length, weekDays, dayItems, eiligItems.length])
+  }, [viewMode, gefiltert.length, weekDays, dayItems, eiligItems.length, mandantenItems])
 
   // ── Styles ────────────────────────────────────────────────────────────────
   const btnFilter = (active, accentColor) => ({
@@ -1074,7 +1455,7 @@ export default function GlobalTodoView({ clients, onUpdateClient, onSelectClient
 
           {/* Ansicht-Umschalter */}
           <div style={{ display:'flex', background:'rgba(255,255,255,0.07)', borderRadius:'8px', padding:'2px', border:'1px solid rgba(255,255,255,0.12)', marginLeft:'4px' }}>
-            {[['monat','📅 Monat'],['woche','📆 Woche'],['tag','🗓 Tag'],['eilig','🔥 Eilig']].map(([m,l]) => (
+            {[['mandanten','🏢 Mandanten'],['monat','📅 Monat'],['woche','📆 Woche'],['tag','🗓 Tag'],['eilig','🔥 Eilig']].map(([m,l]) => (
               <button key={m} onClick={() => switchView(m)} style={{
                 padding:'4px 11px', borderRadius:'6px', fontSize:'11px', fontWeight:600, cursor:'pointer', border:'none',
                 background: viewMode === m ? (m === 'eilig' ? 'rgba(239,68,68,0.35)' : 'rgba(255,255,255,0.2)') : 'transparent',
@@ -1091,21 +1472,36 @@ export default function GlobalTodoView({ clients, onUpdateClient, onSelectClient
           </button>
 
           {/* Stat-Badges */}
-          <div style={{ marginLeft:'auto', display:'flex', gap:'7px', alignItems:'center', flexWrap:'wrap' }}>
-            <StatBadge label="Offen"    count={stats.offen}    color="#60a5fa" bg="rgba(96,165,250,0.12)" />
-            <StatBadge label="Bearb."   count={stats.in_bearb} color="#a78bfa" bg="rgba(167,139,250,0.12)" />
-            <StatBadge label="Erledigt" count={stats.erledigt} color="#4ade80" bg="rgba(74,222,128,0.12)" />
-            {stats.ueberfaellig > 0 && (
-              <StatBadge label="Überfällig" count={stats.ueberfaellig} color="#f87171" bg="rgba(248,113,113,0.12)" />
-            )}
-          </div>
+          {viewMode === 'mandanten' ? (
+            <div style={{ marginLeft:'auto', display:'flex', gap:'7px', alignItems:'center', flexWrap:'wrap' }}>
+              <StatBadge label="Mit Bedarf" count={mandantenItems.filter(r => r.offen > 0).length} color="#60a5fa" bg="rgba(96,165,250,0.12)" />
+              <StatBadge label="Überfällig" count={mandantenItems.reduce((s, r) => s + r.overfaellig, 0)} color="#f87171" bg="rgba(248,113,113,0.12)" />
+              <StatBadge label="Nachfassen" count={mandantenItems.reduce((s, r) => s + r.nachfassen, 0)} color="#fbbf24" bg="rgba(251,191,36,0.12)" />
+              <StatBadge label="Sauber"     count={mandantenItems.filter(r => r.offen === 0).length} color="#4ade80" bg="rgba(74,222,128,0.12)" />
+            </div>
+          ) : viewMode === 'eilig' ? (
+            <div style={{ marginLeft:'auto', display:'flex', gap:'7px', alignItems:'center', flexWrap:'wrap' }}>
+              <StatBadge label="Dringlich" count={eiligItems.length} color="#f87171" bg="rgba(248,113,113,0.12)" />
+              <StatBadge label="Offen"     count={eiligItems.filter(a => a.status === 'offen').length} color="#60a5fa" bg="rgba(96,165,250,0.12)" />
+              <StatBadge label="Bearb."    count={eiligItems.filter(a => a.status === 'in_bearbeitung').length} color="#a78bfa" bg="rgba(167,139,250,0.12)" />
+            </div>
+          ) : (
+            <div style={{ marginLeft:'auto', display:'flex', gap:'7px', alignItems:'center', flexWrap:'wrap' }}>
+              <StatBadge label="Offen"    count={stats.offen}    color="#60a5fa" bg="rgba(96,165,250,0.12)" />
+              <StatBadge label="Bearb."   count={stats.in_bearb} color="#a78bfa" bg="rgba(167,139,250,0.12)" />
+              <StatBadge label="Erledigt" count={stats.erledigt} color="#4ade80" bg="rgba(74,222,128,0.12)" />
+              {stats.ueberfaellig > 0 && (
+                <StatBadge label="Überfällig" count={stats.ueberfaellig} color="#f87171" bg="rgba(248,113,113,0.12)" />
+              )}
+            </div>
+          )}
         </div>
 
         {/* Zeile 2: Navigation + Filter */}
         <div style={{ display:'flex', gap:'6px', flexWrap:'wrap', alignItems:'center' }}>
 
-          {/* Zeitraum-Navigation (im Eilig-Modus ausgeblendet) */}
-          {viewMode !== 'eilig' && (
+          {/* Zeitraum-Navigation (im Eilig-/Mandanten-Modus ausgeblendet) */}
+          {viewMode !== 'eilig' && viewMode !== 'mandanten' && (
             <>
               <button onClick={goPrev} title="Zurück"
                 style={{ ...inputStyle, padding:'4px 11px', fontWeight:800, fontSize:'14px', lineHeight:1 }}>‹</button>
@@ -1118,7 +1514,12 @@ export default function GlobalTodoView({ clients, onUpdateClient, onSelectClient
           )}
           {viewMode === 'eilig' && (
             <span style={{ fontSize:'12px', fontWeight:700, color:'rgba(248,113,113,0.95)', whiteSpace:'nowrap', display:'flex', alignItems:'center', gap:'6px' }}>
-              🔥 Eilige Aufträge · nach Frist sortiert
+              🔥 Dringliches · überfällig, Frist ≤ 7 Tage, nachfassen &amp; eilig
+            </span>
+          )}
+          {viewMode === 'mandanten' && (
+            <span style={{ fontSize:'12px', fontWeight:700, color:'rgba(255,255,255,0.9)', whiteSpace:'nowrap', display:'flex', alignItems:'center', gap:'6px' }}>
+              🏢 Ein Eintrag pro Mandant · nach Dringlichkeit sortiert
             </span>
           )}
 
@@ -1172,12 +1573,22 @@ export default function GlobalTodoView({ clients, onUpdateClient, onSelectClient
           ))}
 
           {divider}
-          <button onClick={resetFilters} title="Alle Filter auf Standard zurücksetzen (aktueller Monat, alle Typen, aktiv)"
+
+          {/* Quellen-Filter: eigene Aufträge · auto-Fristen · manuelle Aufgaben */}
+          {[['alle','🗂 Alle Quellen'],['auftraege','📋 Aufträge'],['fristen','📅 Fristen (auto)'],['manuell','📌 Aufgaben']].map(([k,l]) => (
+            <button key={k} onClick={() => setFilterQuelle(k)} style={btnFilter(filterQuelle === k, '#22d3ee')}>{l}</button>
+          ))}
+
+          {divider}
+          <button onClick={resetFilters} title="Alle Filter auf Standard zurücksetzen (aktueller Monat, alle Typen, aktiv, alle Quellen)"
             style={{ ...inputStyle, fontSize:'11px', fontWeight:600 }}>↺ Zurücksetzen</button>
         </div>
       </div>
 
       {/* ── Inhalt ── */}
+      {viewMode === 'mandanten' && (
+        <MandantenView rows={mandantenItems} onSelectClient={onSelectClient} />
+      )}
       {viewMode === 'monat' && (
         <MonthTable gefiltert={gefiltert} alleAuftraege={alleAuftraege} onSelectClient={onSelectClient} onCycleStatus={cycleStatus} onToggleDone={markDone} onNavigateToAuftrag={onNavigateToAuftrag} />
       )}
@@ -1195,7 +1606,7 @@ export default function GlobalTodoView({ clients, onUpdateClient, onSelectClient
       <div style={{ padding:'6px 16px', background:'var(--surface)', borderTop:'1px solid var(--border)', fontSize:'11px', color:'var(--text-muted)', display:'flex', gap:'16px', alignItems:'center', flexShrink:0 }}>
         <span>{footerInfo}</span>
         <span>{aktiveClients.length} Mandate aktiv</span>
-        <span>{alleAuftraege.filter(a => !a.istSerie).length} Einzelaufträge · {alleAuftraege.filter(a => a.istSerie).length} Serieninstanzen</span>
+        <span>{alleAuftraege.filter(a => !a.istSerie && !a._generiert && !a._manuell).length} Aufträge · {alleAuftraege.filter(a => a.istSerie).length} Serien · {alleAuftraege.filter(a => a._generiert).length} auto-Fristen · {alleAuftraege.filter(a => a._manuell).length} Aufgaben</span>
         <span style={{ marginLeft:'auto' }}>Tipp: Klick auf Mandantenname öffnet die Detail-Ansicht · Klick auf Status wechselt ihn</span>
       </div>
 
@@ -1215,6 +1626,7 @@ export default function GlobalTodoView({ clients, onUpdateClient, onSelectClient
           clients={aktiveClients}
           onClose={() => setShowNew(false)}
           onCreate={(data) => { createAuftrag(data); setShowNew(false) }}
+          onCreateAufgabe={(data) => { onAddAufgabe?.(data); setShowNew(false) }}
         />
       )}
     </div>

@@ -1203,6 +1203,9 @@ export default function App() {
   const aufgabenEl = (
     <GlobalTodoView
       clients={clients}
+      aufgabenListe={aufgabenListe}
+      onUpdateAufgabe={updateAufgabe}
+      onAddAufgabe={addAufgabe}
       onUpdateClient={updateClient}
       onSelectClient={id => setSelectedId(id)}
       onNavigateToAuftrag={(clientId, auftragId) => {
