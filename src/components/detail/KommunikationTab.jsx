@@ -2193,6 +2193,9 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
           })()}
         </div>
 
+        <style>{`.komm-split{display:grid;grid-template-columns:360px 1fr;gap:14px;align-items:start}@media(max-width:900px){.komm-split{grid-template-columns:1fr}}`}</style>
+        <div className="komm-split">
+          <div style={{ minWidth: 0 }}>
         {filteredEvents.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text-muted)', fontSize: '13px' }}>
             {events.length === 0 ? 'Noch keine E-Mails gesendet oder gespeichert.' : 'Keine Einträge für diesen Filter.'}
@@ -2228,98 +2231,50 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
                     }
                   }}
                   style={{
-                    background: isNeu ? 'rgba(8,145,178,0.07)' : 'var(--surface)',
-                    border: isNeu ? '1px solid rgba(8,145,178,0.45)' : '1px solid var(--border)',
-                    borderLeft: isNeu ? '4px solid #0891b2' : undefined,
-                    borderRadius: '8px', overflow: 'hidden', cursor: 'pointer',
-                    transition: 'border-color 0.15s',
+                    position: 'relative',
+                    display: 'grid', gridTemplateColumns: '26px 1fr auto', gap: '10px', alignItems: 'start',
+                    padding: '10px 12px', cursor: 'pointer', borderRadius: '9px',
+                    border: '1px solid ' + (detailEntry?.id === entry.id ? 'var(--accent)' : 'var(--border)'),
+                    background: detailEntry?.id === entry.id ? 'var(--accent-dim, rgba(8,145,178,0.10))' : 'var(--surface)',
+                    transition: 'background 0.12s, border-color 0.12s',
                   }}
-                  onMouseEnter={e => e.currentTarget.style.borderColor = isNeu ? '#0891b2' : 'var(--accent)'}
-                  onMouseLeave={e => {
-                    e.currentTarget.style.borderColor = isNeu ? 'rgba(8,145,178,0.45)' : 'var(--border)'
-                  }}
+                  onMouseEnter={e => { if (detailEntry?.id !== entry.id) e.currentTarget.style.background = 'var(--surface2)' }}
+                  onMouseLeave={e => { if (detailEntry?.id !== entry.id) e.currentTarget.style.background = 'var(--surface)' }}
                 >
-                  <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: '24px 122px 88px 1fr 128px 78px 34px',
-                    alignItems: 'center', gap: '10px',
-                    padding: '10px 14px',
-                  }}>
-                    <span title={richtLabel} style={{ width: '22px', height: '22px', borderRadius: '6px', display: 'grid', placeItems: 'center', fontSize: '12px', background: richtBg, color: richtColor, flexShrink: 0 }}>
-                      {richtIcon}
-                    </span>
-                    <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
-                      {fmtDatum(entry.gesendetAm ?? entry.erstelltAm)}
-                    </span>
-                    <span style={{
-                      fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '20px',
-                      background: cfg.bg, color: cfg.color, whiteSpace: 'nowrap',
-                    }}>
-                      {cfg.icon} {cfg.label}
-                    </span>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: '13px', fontWeight: isNeu ? 700 : 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{entry.betreff || '(kein Betreff)'}</span>
-                        {isNeu && (
-                          <span style={{ fontSize: '10px', background: '#0891b2', color: '#fff', fontWeight: 700, padding: '1px 7px', borderRadius: '10px', flexShrink: 0, letterSpacing: '0.03em' }}>NEU</span>
-                        )}
-                        {entry.versandweg === 'outlook' && (
-                          <span style={{ fontSize: '10px', background: 'rgba(0,120,212,0.12)', color: '#0078d4', border: '1px solid rgba(0,120,212,0.3)', padding: '1px 6px', borderRadius: '10px', flexShrink: 0 }}>Outlook</span>
-                        )}
-                        {entry.anlagen?.length > 0 && (
-                          <span style={{ fontSize: '10px', color: 'var(--accent)', flexShrink: 0 }}>📎 {entry.anlagen.length}</span>
-                        )}
-                      </div>
-                      {entry.empfaenger && (
-                        <div style={{ fontSize: '11px', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                          An: {entry.empfaenger}
-                        </div>
+                  <span title={richtLabel} style={{ width: '24px', height: '24px', borderRadius: '6px', display: 'grid', placeItems: 'center', fontSize: '12px', background: richtBg, color: richtColor, marginTop: '1px' }}>
+                    {richtIcon}
+                  </span>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontSize: '13px', fontWeight: isNeu ? 800 : 700, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {entry.typ === 'eingehend' ? (entry.absender || '(unbekannt)') : ('An: ' + (entry.empfaenger || '—'))}
+                      </span>
+                      {isNeu && <span title="ungelesen" style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#0891b2', flexShrink: 0 }} />}
+                    </div>
+                    <div style={{ fontSize: '13px', fontWeight: isNeu ? 700 : 500, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{entry.betreff || '(kein Betreff)'}</span>
+                      {entry.versandweg === 'outlook' && (
+                        <span style={{ fontSize: '9px', background: 'rgba(0,120,212,0.12)', color: '#0078d4', border: '1px solid rgba(0,120,212,0.3)', padding: '0 5px', borderRadius: '8px', flexShrink: 0 }}>Outlook</span>
                       )}
                     </div>
-                    <span style={{ fontSize: '11px', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {entry.absender}
-                    </span>
-                    <span style={{
-                      fontSize: '10px', fontWeight: 700, padding: '2px 8px', borderRadius: '20px',
-                      background: sbCfg.bg, color: sbCfg.color, textAlign: 'center',
-                    }}>
-                      {sbCfg.label}
-                    </span>
-
-                    {/* ── Schnell-Erledigt-Button ── */}
-                    <div onClick={e => e.stopPropagation()} style={{ display: 'flex', justifyContent: 'center' }}>
-                      {entry.erledigtAm ? (
-                        <span title={`Erledigt am ${fmtDatum(entry.erledigtAm)}`}
-                          style={{ fontSize: '14px', color: '#16a34a', cursor: 'default' }}>✓</span>
-                      ) : (
-                        <button
-                          title="Als erledigt markieren"
-                          onClick={() => {
-                            const updated = events.map(e =>
-                              e.id === entry.id ? { ...e, erledigtAm: new Date().toISOString() } : e
-                            )
-                            saveKomm({ events: updated })
-                          }}
-                          style={{
-                            width: '26px', height: '26px', borderRadius: '50%', border: '1px solid var(--border)',
-                            background: 'var(--surface2)', cursor: 'pointer', display: 'flex',
-                            alignItems: 'center', justifyContent: 'center', fontSize: '13px',
-                            color: 'var(--text-muted)', transition: 'all 0.15s', flexShrink: 0,
-                          }}
-                          onMouseEnter={e => {
-                            e.currentTarget.style.background = 'rgba(22,163,74,0.12)'
-                            e.currentTarget.style.borderColor = '#16a34a'
-                            e.currentTarget.style.color = '#16a34a'
-                          }}
-                          onMouseLeave={e => {
-                            e.currentTarget.style.background = 'var(--surface2)'
-                            e.currentTarget.style.borderColor = 'var(--border)'
-                            e.currentTarget.style.color = 'var(--text-muted)'
-                          }}
-                        >
-                          ✓
-                        </button>
-                      )}
+                    <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginTop: '1px' }}>
+                      {(entry.text || '').replace(/\s+/g, ' ').slice(0, 90) || (entry.sourceUid && !entry.contentLoaded ? '(Inhalt wird beim Öffnen geladen)' : '—')}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '5px', whiteSpace: 'nowrap' }}>
+                    <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{fmtDatum(entry.gesendetAm ?? entry.erstelltAm)}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      {entry.anlagen?.length > 0 && <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>📎{entry.anlagen.length}</span>}
+                      <span style={{ fontSize: '9px', fontWeight: 700, padding: '1px 7px', borderRadius: '20px', background: sbCfg.bg, color: sbCfg.color }}>{sbCfg.label}</span>
+                      <div onClick={e => e.stopPropagation()}>
+                        {entry.erledigtAm ? (
+                          <span title={`Erledigt am ${fmtDatum(entry.erledigtAm)}`} style={{ fontSize: '13px', color: '#16a34a' }}>✓</span>
+                        ) : (
+                          <button title="Als erledigt markieren"
+                            onClick={() => saveKomm({ events: events.map(e => e.id === entry.id ? { ...e, erledigtAm: new Date().toISOString() } : e) })}
+                            style={{ width: '22px', height: '22px', borderRadius: '50%', border: '1px solid var(--border)', background: 'var(--surface2)', cursor: 'pointer', fontSize: '12px', color: 'var(--text-muted)', lineHeight: 1 }}>✓</button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -2328,43 +2283,53 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
             })}
           </div>
         )}
+          </div>{/* /linke Spalte (Liste) */}
+
+          {/* rechte Spalte: Lesebereich (inline) */}
+          <div style={{ position: 'sticky', top: '12px' }}>
+            {detailEntry ? (
+              <EmailDetailPanel
+                inline
+                entry={detailEntry}
+                contentLoading={contentLoading}
+                contentError={contentError}
+                attachmentData={attachmentData}
+                onClose={() => { setDetailEntry(null); setActionForm(null) }}
+                onFetch={fetchEmailContent}
+                onDownload={downloadAttachment}
+                events={events}
+                saveKomm={saveKomm}
+                client={client}
+                onUpdate={onUpdate}
+                setActivTyp={setActivTyp}
+                setEmpfaenger={setEmpfaenger}
+                setAbsenderVal={setAbsenderVal}
+                setBetreff={setBetreff}
+                setText={setText}
+                setCC={setCC}
+                setBCC={setBCC}
+                setEditorOpen={setEditorOpen}
+                sendFromHistory={sendFromHistory}
+                actionForm={actionForm}
+                setActionForm={setActionForm}
+                emailSignaturen={emailSignaturen}
+                emailVorlagen={emailVorlagen}
+                onedriveTokens={onedriveTokens}
+                onUpdateOnedriveTokens={onUpdateOnedriveTokens}
+              />
+            ) : (
+              <div style={{ border: '1px dashed var(--border)', borderRadius: '14px', minHeight: '520px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '10px', color: 'var(--text-muted)', textAlign: 'center', padding: '40px 20px' }}>
+                <div style={{ fontSize: '32px', opacity: 0.55 }}>✉️</div>
+                <div style={{ fontSize: '13px' }}>Wähle links eine Nachricht,<br />um sie hier zu lesen.</div>
+              </div>
+            )}
+          </div>
+        </div>{/* /komm-split */}
       </div>
 
       {/* ── Absender-Modal ── */}
       {showAbsenderModal && (
         <AbsenderModal onClose={() => setShowAbsenderModal(false)} />
-      )}
-
-      {/* ── E-Mail Detail Panel ── */}
-      {detailEntry && (
-        <EmailDetailPanel
-          entry={detailEntry}
-          contentLoading={contentLoading}
-          contentError={contentError}
-          attachmentData={attachmentData}
-          onClose={() => { setDetailEntry(null); setActionForm(null) }}
-          onFetch={fetchEmailContent}
-          onDownload={downloadAttachment}
-          events={events}
-          saveKomm={saveKomm}
-          client={client}
-          onUpdate={onUpdate}
-          setActivTyp={setActivTyp}
-          setEmpfaenger={setEmpfaenger}
-          setAbsenderVal={setAbsenderVal}
-          setBetreff={setBetreff}
-          setText={setText}
-          setCC={setCC}
-          setBCC={setBCC}
-          setEditorOpen={setEditorOpen}
-          sendFromHistory={sendFromHistory}
-          actionForm={actionForm}
-          setActionForm={setActionForm}
-          emailSignaturen={emailSignaturen}
-          emailVorlagen={emailVorlagen}
-          onedriveTokens={onedriveTokens}
-          onUpdateOnedriveTokens={onUpdateOnedriveTokens}
-        />
       )}
     </div>
   )
@@ -2383,6 +2348,7 @@ function EmailDetailPanel({
   emailVorlagen = [],
   onedriveTokens = null,
   onUpdateOnedriveTokens,
+  inline = false,
 }) {
   const [toast,          setToast]          = useState('')
   const [aufgabeTitel,   setAufgabeTitel]   = useState(entry.betreff ?? '')
@@ -2842,11 +2808,20 @@ function EmailDetailPanel({
 
   return (
     <>
-      <div onClick={onClose} style={{
+      {!inline && <div onClick={onClose} style={{
         position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1799,
         display: 'flex', alignItems: 'center', justifyContent: 'center', padding: isNarrow ? '8px' : '24px',
-      }} />
-      <div onClick={e => e.stopPropagation()} style={{
+      }} />}
+      <div onClick={e => e.stopPropagation()} style={inline ? {
+        position: 'relative',
+        width: '100%',
+        height: 'calc(100vh - 150px)',
+        minHeight: '520px',
+        background: 'var(--surface)',
+        borderRadius: '14px',
+        border: '1px solid var(--border)',
+        display: 'flex', flexDirection: 'column', overflow: 'hidden',
+      } : {
         position: 'fixed',
         top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
         width: isNarrow ? '98vw' : '92vw',
