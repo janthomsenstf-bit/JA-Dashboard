@@ -422,7 +422,7 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
   const [sucheError,    setSucheError]    = useState('')
   const [sucheErgebnis, setSucheErgebnis] = useState(null)  // { antwort, treffer:[{id,zitat,warum}] }
   const [mailModus,     setMailModus]     = useState('suchen') // 'suchen' | 'briefing'
-  const [briefErgebnis, setBriefErgebnis] = useState(null)  // { ueberblick, verlauf[], zusammenfassung, handlungsempfehlungen[], offenePunkte[] }
+  const [briefErgebnis, setBriefErgebnis] = useState(null)  // { kurzfazit, themen[{thema,anzahl,kurz}], offenePunkte[], naechsteSchritte[], fehlerhaft? }
   const [istDiktat,     setIstDiktat]     = useState(false)
   const diktatRef = useRef(null)
 
@@ -859,12 +859,24 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
     setSucheLoading(true); setSucheError(''); setBriefErgebnis(null); setSucheErgebnis(null)
     try {
       const zr = parseZeitraum(q)
+      const mCount = q.match(/letzte[nr]?\s+(\d{1,3})\s*(?:mails?|nachrichten|e-?mails?)/i)
       const dOf = e => { const d = new Date(e.gesendetAm ?? e.erstelltAm); return isNaN(d) ? null : d }
       let list = events.filter(e => e && (e.betreff || e.text || e.sourceUid))
-      if (zr) list = list.filter(e => { const d = dOf(e); return d && d >= zr.seit && (!zr.bis || d < zr.bis) })
-      else { const seit = new Date(); seit.setDate(seit.getDate() - 14); list = list.filter(e => { const d = dOf(e); return d && d >= seit }) }
+      let basisLabel
+      if (mCount) {
+        const n = Math.max(1, Math.min(parseInt(mCount[1], 10), 100))
+        list = list.sort((a, b) => (dOf(a) || 0) - (dOf(b) || 0)).slice(-n)
+        basisLabel = `letzte ${n} Nachrichten`
+      } else if (zr) {
+        list = list.filter(e => { const d = dOf(e); return d && d >= zr.seit && (!zr.bis || d < zr.bis) })
+        basisLabel = zr.label
+      } else {
+        const seit = new Date(); seit.setDate(seit.getDate() - 14)
+        list = list.filter(e => { const d = dOf(e); return d && d >= seit })
+        basisLabel = 'letzte 14 Tage'
+      }
       list = list.sort((a, b) => (dOf(a) || 0) - (dOf(b) || 0)).slice(-60)
-      if (!list.length) { setBriefErgebnis({ ueberblick: `Keine Nachrichten im Zeitraum${zr ? ` (${zr.label})` : ' (letzte 14 Tage)'}.`, verlauf: [], zusammenfassung: '', handlungsempfehlungen: [], offenePunkte: [] }); return }
+      if (!list.length) { setBriefErgebnis({ kurzfazit: `Keine Nachrichten (${basisLabel}).`, themen: [], offenePunkte: [], naechsteSchritte: [] }); return }
       const texte = await mapPool(list, ladeBody, 4)
       const geladen = {}; list.forEach((e, i) => { if (!e.text && texte[i]) geladen[e.id] = texte[i] })
       if (Object.keys(geladen).length) saveKomm({ events: events.map(e => geladen[e.id] ? { ...e, text: geladen[e.id], contentLoaded: true } : e) })
@@ -873,15 +885,19 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
         const body = (e.text || texte[i] || '').replace(/\s+/g, ' ').slice(0, 1500)
         return `Datum: ${fmtDatum(e.gesendetAm ?? e.erstelltAm)} | ${richtung} | Von: ${e.absender || ''} | Betreff: ${e.betreff || ''}\n${body || '(kein Textinhalt)'}`
       }).join('\n\n---\n\n')
-      const sys = 'Du bist die Assistenz eines Steuerberaters und fasst E-Mail-Korrespondenz mit einem Mandanten zusammen. Antworte AUSSCHLIESSLICH als JSON: {"ueberblick":"1 Satz: Zeitraum, Anzahl Nachrichten, Beteiligte/Thema","verlauf":["chronologische Stichpunkte, je: Datum – Richtung – was passierte"],"zusammenfassung":"kurzer Fließtext: worum es geht und wo es aktuell steht","handlungsempfehlungen":["konkrete nächste Schritte für den Steuerberater"],"offenePunkte":["unbeantwortete Fragen / worauf gewartet wird"]}. Nutze nur, was in den Mails steht; nichts erfinden. Deutsch.'
-      const user = `Aufgabe: ${q || 'Fasse die Korrespondenz zusammen'}\nZeitraum: ${zr ? zr.label : 'letzte 14 Tage'}\n\nKorrespondenz (chronologisch):\n${corpus}`
-      const r = await callAI(sys, user)
+      const sys = 'Du bist die Assistenz eines deutschen Steuerberaters und fasst die E-Mail-Korrespondenz mit einem Mandanten so zusammen, dass er in 10 Sekunden Bescheid weiß. GRUPPIERE die Nachrichten nach Thema – kein chronologisches Mail-für-Mail-Protokoll. Antworte AUSSCHLIESSLICH als reines JSON (ohne Markdown, ohne Code-Zäune): {"kurzfazit":"ein knapper Satz zum Gesamteindruck","themen":[{"thema":"kurzer Themenname","anzahl":ZahlDerMailsZuDiesemThema,"kurz":"ein Satz: worum es geht und aktueller Stand"}],"offenePunkte":["knapp: worauf gewartet wird / unbeantwortet"],"naechsteSchritte":["konkrete nächste Schritte für den Steuerberater"]}. Sortiere themen nach anzahl absteigend. Fasse ähnliche Betreffe zu einem Thema zusammen. Halte alles sehr knapp und konkret. Haben Mails keinen Textinhalt, arbeite mit der Betreffzeile und erwähne fehlende Inhalte höchstens einmal ganz kurz – lamentiere nicht. Erfinde nichts. Deutsch.'
+      const user = `Aufgabe: ${q || 'Fasse die Korrespondenz nach Themen zusammen'}\nBasis: ${basisLabel}\n\nKorrespondenz (chronologisch):\n${corpus}`
+      const r = await callAI(sys, user, { maxTokens: 2000 })
+      const themen = Array.isArray(r.themen) ? r.themen.filter(t => t && t.thema) : []
+      const roh = String(r.kurzfazit || r.ueberblick || r.text || '').trim()
+      const siehtNachJson = roh.startsWith('```') || /^\{?\s*"?(ueberblick|kurzfazit|themen|verlauf)"?\s*:/.test(roh)
       setBriefErgebnis({
-        ueberblick: r.ueberblick || r.text || '',
-        verlauf: Array.isArray(r.verlauf) ? r.verlauf : [],
-        zusammenfassung: r.zusammenfassung || '',
-        handlungsempfehlungen: Array.isArray(r.handlungsempfehlungen) ? r.handlungsempfehlungen : [],
+        kurzfazit: siehtNachJson ? '' : roh,
+        themen,
         offenePunkte: Array.isArray(r.offenePunkte) ? r.offenePunkte : [],
+        naechsteSchritte: Array.isArray(r.naechsteSchritte) ? r.naechsteSchritte
+                          : (Array.isArray(r.handlungsempfehlungen) ? r.handlungsempfehlungen : []),
+        fehlerhaft: siehtNachJson && themen.length === 0,
       })
     } catch (e) { setSucheError(e.message || String(e)) }
     finally { setSucheLoading(false) }
@@ -2154,7 +2170,7 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
           </div>
           <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', marginTop: '4px' }}>
             {mailModus === 'briefing'
-              ? 'Fasst die Korrespondenz zusammen (Zeitraum aus der Anfrage, z. B. „letzte 7 Tage") – Überblick, Verlauf, Handlungsempfehlungen.'
+              ? 'Fasst die Korrespondenz nach Themen zusammen (Zeitraum oder Anzahl aus der Anfrage, z. B. „letzte 7 Tage" oder „letzte 15 Mails") – mit Anzahl je Thema, offenen Punkten und nächsten Schritten.'
               : 'Durchsucht die Mails dieses Mandanten – Inhalte werden bei Bedarf geladen.'} Aktuell INBOX + Gesendete (Ordner-Mails folgen).
           </div>
           {sucheError && <div style={{ color: '#dc2626', fontSize: '12px', marginTop: '6px' }}>⚠️ {sucheError}</div>}
@@ -2182,15 +2198,37 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
           )}
 
           {mailModus === 'briefing' && briefErgebnis && (() => {
-            const sectTitle = { fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '2px' }
+            const b = briefErgebnis
+            if (b.fehlerhaft) return (
+              <div style={{ marginTop: '8px', fontSize: '13px', color: '#c2410c' }}>
+                Die Zusammenfassung ließ sich diesmal nicht sauber strukturieren. Bitte nochmal auf „Briefing" klicken.
+              </div>
+            )
+            const sectTitle = { fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '3px' }
             const liste = (arr) => <ul style={{ margin: '2px 0 0', paddingLeft: '18px' }}>{arr.map((x, i) => <li key={i} style={{ marginBottom: '2px' }}>{x}</li>)}</ul>
+            const themen = Array.isArray(b.themen) ? b.themen : []
+            const offene = Array.isArray(b.offenePunkte) ? b.offenePunkte : []
+            const schritte = Array.isArray(b.naechsteSchritte) ? b.naechsteSchritte : []
             return (
               <div style={{ marginTop: '8px', fontSize: '13px', color: 'var(--text)' }}>
-                {briefErgebnis.ueberblick && <div style={{ fontWeight: 700, marginBottom: '8px' }}>{briefErgebnis.ueberblick}</div>}
-                {briefErgebnis.verlauf.length > 0 && <div style={{ marginBottom: '10px' }}><div style={sectTitle}>Verlauf</div>{liste(briefErgebnis.verlauf)}</div>}
-                {briefErgebnis.zusammenfassung && <div style={{ marginBottom: '10px' }}><div style={sectTitle}>Zusammenfassung</div><div style={{ whiteSpace: 'pre-wrap' }}>{briefErgebnis.zusammenfassung}</div></div>}
-                {briefErgebnis.handlungsempfehlungen.length > 0 && <div style={{ marginBottom: '10px' }}><div style={{ ...sectTitle, color: '#7c3aed' }}>Handlungsempfehlungen</div>{liste(briefErgebnis.handlungsempfehlungen)}</div>}
-                {briefErgebnis.offenePunkte.length > 0 && <div><div style={{ ...sectTitle, color: '#c2410c' }}>Offene Punkte</div>{liste(briefErgebnis.offenePunkte)}</div>}
+                {b.kurzfazit && <div style={{ fontWeight: 700, marginBottom: '10px' }}>{b.kurzfazit}</div>}
+                {themen.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '12px' }}>
+                    {themen.map((t, i) => (
+                      <div key={i} style={{ display: 'flex', gap: '9px', alignItems: 'flex-start' }}>
+                        <span style={{ flexShrink: 0, minWidth: '24px', textAlign: 'center', fontSize: '11px', fontWeight: 700, color: 'var(--accent)', background: 'var(--accent-dim)', borderRadius: '999px', padding: '2px 7px', lineHeight: 1.4 }}>
+                          {t.anzahl ?? '•'}
+                        </span>
+                        <div style={{ lineHeight: 1.45 }}>
+                          <span style={{ fontWeight: 700 }}>{t.thema}</span>
+                          {t.kurz && <span style={{ color: 'var(--text-secondary)' }}> — {t.kurz}</span>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {offene.length > 0 && <div style={{ marginBottom: '10px' }}><div style={{ ...sectTitle, color: '#c2410c' }}>Offene Punkte</div>{liste(offene)}</div>}
+                {schritte.length > 0 && <div><div style={{ ...sectTitle, color: '#7c3aed' }}>Nächste Schritte</div>{liste(schritte)}</div>}
               </div>
             )
           })()}

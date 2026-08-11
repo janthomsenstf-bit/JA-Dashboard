@@ -39,19 +39,22 @@ export function hasAiKey() {
 
 // ── Gemeinsamer Aufrufer ──────────────────────────────────────────────────────
 /**
- * callAI(systemPrompt, userText)
+ * callAI(systemPrompt, userText, opts?)
  * Ruft Claude oder OpenAI auf – je nach Einstellung.
  * Gibt immer ein Objekt zurück: { text: "..." } oder geparste JSON-Struktur.
+ * opts.maxTokens erlaubt längere Antworten (Standard 1500) – wichtig für
+ * strukturierte JSON-Antworten, die sonst abgeschnitten und dann nicht mehr
+ * geparst werden können.
  */
-export async function callAI(systemPrompt, userText) {
+export async function callAI(systemPrompt, userText, opts = {}) {
   const provider = loadAiProvider()
   return provider === 'openai'
-    ? _callOpenAI(systemPrompt, userText)
-    : _callClaude(systemPrompt, userText)
+    ? _callOpenAI(systemPrompt, userText, opts)
+    : _callClaude(systemPrompt, userText, opts)
 }
 
 // ── Claude ────────────────────────────────────────────────────────────────────
-async function _callClaude(systemPrompt, userText) {
+async function _callClaude(systemPrompt, userText, opts = {}) {
   const key = loadClaudeKey()
   if (!key) throw new Error('Claude API-Schlüssel fehlt (Stammdaten → ⚙️ → API-Schlüssel).')
 
@@ -65,7 +68,7 @@ async function _callClaude(systemPrompt, userText) {
     },
     body: JSON.stringify({
       model: 'claude-sonnet-4-6',
-      max_tokens: 1500,
+      max_tokens: opts.maxTokens ?? 1500,
       system: systemPrompt,
       messages: [{ role: 'user', content: userText }],
     }),
@@ -81,7 +84,7 @@ async function _callClaude(systemPrompt, userText) {
 }
 
 // ── OpenAI ────────────────────────────────────────────────────────────────────
-async function _callOpenAI(systemPrompt, userText) {
+async function _callOpenAI(systemPrompt, userText, opts = {}) {
   const key   = loadOpenAiKey()
   const model = loadOpenAiModel()
   if (!key) throw new Error('OpenAI API-Schlüssel fehlt (Stammdaten → ⚙️ → API-Schlüssel).')
@@ -94,7 +97,7 @@ async function _callOpenAI(systemPrompt, userText) {
     },
     body: JSON.stringify({
       model,
-      max_tokens: 1500,
+      max_tokens: opts.maxTokens ?? 1500,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user',   content: userText },
