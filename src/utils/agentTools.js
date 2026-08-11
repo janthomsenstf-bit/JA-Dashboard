@@ -54,6 +54,26 @@ function istEingehend(ev) {
   return ev.typ === 'eingehend'
 }
 
+// Offene (unbeantwortete) eingehende Mails eines Mandanten.
+function offeneEingehende(client) {
+  const alle = eventsSortiert(client)
+  return alle.filter(e => {
+    if (!istEingehend(e) || e.erledigtAm) return false
+    const t = new Date(e.erstelltAm || 0).getTime()
+    return !alle.some(x => !istEingehend(x) && x.status === 'gesendet' && new Date(x.erstelltAm || 0).getTime() > t)
+  })
+}
+
+function checklistenZusammenfassung(client) {
+  const cl = client?.checklisten ?? {}
+  let erledigt = 0, offen = 0
+  for (const items of Object.values(cl)) {
+    if (!items || typeof items !== 'object') continue
+    for (const e of Object.values(items)) { if (e && e.erledigt) erledigt++; else offen++ }
+  }
+  return { erledigtGesamt: erledigt, offenGesamt: offen }
+}
+
 // ── Werkzeuge ─────────────────────────────────────────────────────────────────
 
 const mandant_finden = {
@@ -80,6 +100,113 @@ const mandant_finden = {
         mandantennummer: c.mandantennummer || null,
         rechtsform: c.rechtsform || null,
       })),
+    }
+  },
+}
+
+const mandanten_liste = {
+  name: 'mandanten_liste',
+  description:
+    'Gibt einen kompakten Überblick über ALLE aktiven Mandanten mit Status-Kennzahlen ' +
+    '(in Bearbeitung, Abschluss fertig, offene Rückfragen, offene E-Mails). ' +
+    'Ideal für Fragen über die ganze Kanzlei, für Vergleiche, Ranglisten oder „wer braucht Aufmerksamkeit".',
+  mutating: false,
+  input_schema: { type: 'object', properties: {} },
+  run(_input, ctx) {
+    const aktive = (ctx.clients ?? []).filter(c => !c.archiviert)
+    return {
+      anzahl: aktive.length,
+      mandanten: aktive.map(c => ({
+        mandantId: c.id,
+        name: c.name,
+        mandantennummer: c.mandantennummer || null,
+        rechtsform: c.rechtsform || null,
+        veranlagungsjahr: c.veranlagungsjahr ?? null,
+        mandatstyp: c.mandatstyp || null,
+        inBearbeitung: !!c.inBearbeitung,
+        abschlussFertig: !!c.abschlussFertig,
+        faUebermittelt: !!c.faUebermittelt,
+        offeneRueckfragen: (c.rueckfragen ?? []).filter(r => !r.beantwortet).length,
+        offeneMails: offeneEingehende(c).length,
+      })),
+    }
+  },
+}
+
+const mandant_details = {
+  name: 'mandant_details',
+  description:
+    'Liefert das VOLLE Bild eines Mandanten auf einmal: Stammdaten, Bearbeitungsstatus, ' +
+    'Stand der Arbeit, Rückfragen, Checklisten-Stand, E-Mail-Überblick, Aufträge, Kontakte, Notizen. ' +
+    'Nimm dieses Werkzeug, wenn du über einen Mandanten nachdenken oder Schlüsse ziehen sollst.',
+  mutating: false,
+  input_schema: {
+    type: 'object',
+    properties: { mandantId: { type: 'string' } },
+    required: ['mandantId'],
+  },
+  run(input, ctx) {
+    const c = mandantById(ctx.clients, input.mandantId)
+    if (!c) return { fehler: 'Mandant nicht gefunden.' }
+    const sda = c.standDerArbeit ?? {}
+    const rf = Array.isArray(c.rueckfragen) ? c.rueckfragen : []
+    const alleEvents = eventsSortiert(c)
+    const letzteAusgehend = alleEvents.find(e => !istEingehend(e) && e.status === 'gesendet')
+    return {
+      stammdaten: {
+        name: c.name,
+        mandantennummer: c.mandantennummer || null,
+        rechtsform: c.rechtsform || null,
+        gewinnermittlung: c.gewinnermittlung || null,
+        veranlagungsjahr: c.veranlagungsjahr ?? null,
+        steuernummer: c.steuernummer || null,
+        ustId: c.ustId || null,
+        unternehmensgegenstand: c.unternehmensgegenstand || null,
+        korrespondenzsprache: c.korrespondenzsprache || 'de',
+        mandatstyp: c.mandatstyp || null,
+      },
+      status: {
+        inBearbeitung: !!c.inBearbeitung,
+        abschlussFertig: !!c.abschlussFertig,
+        abschlussFertigDatum: c.abschlussFertigDatum ?? null,
+        steGesendet: c.steGesendetDatum ?? null,
+        unterschrift: c.unterschriftDatum ?? null,
+        faUebermittelt: !!c.faUebermittelt,
+        faUebermitteltDatum: c.faUebermitteltDatum ?? null,
+        jahresabschlussErforderlich: !!c.jahresabschlussErforderlich,
+        ustZahlerTyp: c.ustZahlerTyp ?? null,
+        lohnAktiv: !!c.lohnAktiv,
+      },
+      standDerArbeit: {
+        hinweise: Array.isArray(sda.hinweise) ? sda.hinweise : [],
+        offenePunkte: Array.isArray(sda.offenePunkte) ? sda.offenePunkte : [],
+        berechnungen: Array.isArray(sda.berechnungen) ? sda.berechnungen : [],
+      },
+      rueckfragen: {
+        anzahlOffen: rf.filter(r => !r.beantwortet).length,
+        anzahlGesamt: rf.length,
+        offen: rf.filter(r => !r.beantwortet).map(r => ({ text: r.text, buchungskonto: r.buchungskonto || null })),
+        zuletztBeantwortet: rf.filter(r => r.beantwortet).slice(-5).map(r => ({ text: r.text, antwort: r.antwort || null, beantwortetAm: r.beantwortetAm || null })),
+      },
+      checklisten: checklistenZusammenfassung(c),
+      mailUeberblick: {
+        anzahlGesamt: alleEvents.length,
+        offeneEingehende: offeneEingehende(c).length,
+        letzteAntwortVonUnsAm: letzteAusgehend?.erstelltAm ?? null,
+        letzteBetreffe: alleEvents.slice(0, 5).map(e => ({
+          betreff: e.betreff || '(kein Betreff)',
+          richtung: istEingehend(e) ? 'eingehend' : 'ausgehend',
+          datum: e.erstelltAm || null,
+        })),
+      },
+      auftraege: (Array.isArray(c.auftraege) ? c.auftraege : []).map(a => ({
+        typ: a.typ || null,
+        bezeichnung: a.bezeichnung || null,
+        status: a.status || a.jaWorkflowStatus || null,
+        jahr: a.jahr ?? a.abschlussJahr ?? null,
+      })),
+      kontakte: (Array.isArray(c.kontakte) ? c.kontakte : []).map(k => ({ name: k.name || null, rolle: k.rolle || null, email: k.email || null })),
+      notizen: c.notizen || null,
     }
   },
 }
@@ -259,6 +386,8 @@ const mail_entwurf = {
 // ── Registry ──────────────────────────────────────────────────────────────────
 export const ALLE_WERKZEUGE = [
   mandant_finden,
+  mandanten_liste,
+  mandant_details,
   stand_der_arbeit,
   rueckfragen_lesen,
   mails_lesen,
@@ -269,6 +398,8 @@ export const ALLE_WERKZEUGE = [
 // Werkzeuge, die der Nutzer im Skill-Editor an-/abwählen kann (mandant_finden ist
 // immer dabei und wird nicht separat angeboten).
 export const WAEHLBARE_WERKZEUGE = [
+  { name: 'mandanten_liste',   label: 'Kanzlei-Überblick (alle Mandanten)' },
+  { name: 'mandant_details',   label: 'Ganzen Mandanten lesen (volles Bild)' },
   { name: 'stand_der_arbeit',  label: 'Stand der Arbeit lesen' },
   { name: 'rueckfragen_lesen', label: 'Rückfragen lesen' },
   { name: 'mails_lesen',       label: 'E-Mails lesen/zusammenfassen' },

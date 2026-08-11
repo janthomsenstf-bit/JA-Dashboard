@@ -312,17 +312,18 @@ function EntwurfKarte({ entwurf, onOeffneMandant }) {
 // ── Leerer Zustand ──────────────────────────────────────────────────────────────
 function LeererZustand({ hatKey, onBeispiel }) {
   const beispiele = [
-    'Stand der Arbeiten bei Carola Klimek?',
-    'Welche offenen Rückfragen habe ich bei …?',
-    'Fasse die letzten Mails von … zusammen.',
-    'Formulier eine Mail an … wegen der fehlenden Belege.',
+    'Welche Mandanten brauchen gerade meine Aufmerksamkeit?',
+    'Schau dir Carola Klimek an – was fällt dir auf, was ist offen?',
+    'Fasse die letzten Mails von … zusammen und sag, wo ich hinterher bin.',
+    'Wie buche ich eine Kfz-Nutzungsentnahme bei einem EÜR-Mandanten?',
   ]
   return (
     <div style={{ maxWidth: '560px', margin: '6vh auto 0', textAlign: 'center' }}>
       <div style={{ fontSize: '34px', marginBottom: '10px' }} aria-hidden="true">🧭</div>
       <div style={{ fontSize: '17px', fontWeight: 800, color: 'var(--text)', marginBottom: '6px' }}>Wie kann ich helfen?</div>
       <div style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '18px', lineHeight: 1.6 }}>
-        Wähle oben einen Skill oder frag einfach los – per Text oder über das Mikrofon.
+        Frag einfach los – wie in einem normalen Claude-Gespräch. Ich denke mit, schaue bei Bedarf selbst
+        in deine Mandantendaten und ziehe Schlüsse. Skills oben sind nur Abkürzungen, kein Muss.
       </div>
       {!hatKey && (
         <div style={{ fontSize: '12px', color: 'var(--yellow)', background: 'var(--yellow-dim)', border: '1px solid var(--yellow)', borderRadius: 'var(--radius-sm)', padding: '9px 12px', marginBottom: '18px' }}>
