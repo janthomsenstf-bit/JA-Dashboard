@@ -1545,8 +1545,8 @@ export default function App() {
       {(() => {
         const klientOffen = hauptbereich === 'personen' && !!selectedId && clients.some(c => c.id === selectedId)
         const zeigeUebersicht = hauptbereich === 'personen' && !klientOffen
-        const zeigeArbeitsbereich = hauptbereich === 'spielbuch' || klientOffen
-        const eigeneBereiche = ['agent', 'spielbuch', 'personen', 'kommunikation', 'dokumente', 'homepages', 'uebersichten', 'prozesse', 'checklisten', 'intern', 'easyb2b', 'ustreg']
+        const zeigeArbeitsbereich = klientOffen
+        const eigeneBereiche = ['agent', 'personen', 'kommunikation', 'dokumente', 'homepages', 'uebersichten', 'prozesse', 'checklisten', 'intern', 'easyb2b', 'ustreg']
         const zeigePlatzhalter = !eigeneBereiche.includes(hauptbereich)
         const offenerKlient = klientOffen ? clients.find(c => c.id === selectedId) : null
 
