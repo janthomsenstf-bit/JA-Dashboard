@@ -10,6 +10,7 @@
  */
 
 export const HAUPTBEREICHE = [
+  { key: 'agent',        label: 'Co-Trainer',    icon: '🧭', farbe: '#0d9488', beschreibung: 'Dein sprechender Assistent – frag das Spielbuch per Text oder Sprache und lege eigene Skills an.' },
   { key: 'spielbuch',    label: 'Spielbuch',     icon: '📊', farbe: '#2563eb', beschreibung: 'Mandanten, Aufträge, Jahresabschlüsse – der bisherige Arbeitsbereich.' },
   { key: 'homepages',    label: 'Homepages',     icon: '🌐', farbe: '#3b82f6', beschreibung: 'Websites, Inhalte und Anfragen aus dem Netz.' },
   { key: 'kommunikation',label: 'Kommunikation', icon: '✉️', farbe: '#16a34a', beschreibung: 'E-Mails, Vorlagen und der gesamte Schriftverkehr.' },

@@ -38,6 +38,8 @@ import ProzesseBereich from './components/ProzesseBereich.jsx'
 import ChecklistenBereich from './components/ChecklistenBereich.jsx'
 import { loadChecklistenUebersicht } from './utils/checklistenUebersichtStorage.js'
 import InternBereich from './components/InternBereich.jsx'
+import AgentBereich from './components/agent/AgentBereich.jsx'
+import { loadSkills, mergeWithDefaults } from './utils/skillsStorage.js'
 // Easy-B2B ist ein eigenständiges Modul mit rund 9.400 Zeilen. Es wird erst
 // geladen, wenn der Bereich geöffnet wird – so bleibt der Start des Spielbuchs
 // schnell und das Haupt-Bundle klein genug für die Offline-Ablage der PWA.
@@ -320,9 +322,9 @@ function isEmailOpen(incomingEvent, allEvents) {
 export default function App() {
   // Hauptbereich der neuen Navigation. 'spielbuch' = der bisherige Arbeitsbereich
   // (unverändert). Die übrigen Bereiche sind vorbereitet und noch leer.
-  const [hauptbereich, setHauptbereich] = useState(() => {
-    try { return localStorage.getItem('spielbuch-hauptbereich') || 'spielbuch' } catch { return 'spielbuch' }
-  })
+  // Beim Öffnen landet man auf dem Co-Trainer (Startseite). Der zuletzt gewählte
+  // Bereich wird zwar weiter gespeichert, bestimmt aber nicht mehr die Landung.
+  const [hauptbereich, setHauptbereich] = useState('agent')
   const wechselBereich = (key) => {
     setHauptbereich(key)
     try { localStorage.setItem('spielbuch-hauptbereich', key) } catch {}
@@ -355,6 +357,7 @@ export default function App() {
   const [showChecklistEditor, setShowChecklistEditor]   = useState(false)
   const [vorlagen, setVorlagen]                         = useState(() => loadVorlagen())           // Fallback: lokal
   const [checklisten, setChecklisten]                   = useState(() => loadChecklistenUebersicht()) // eigenständige JA-Checklisten
+  const [skills, setSkills]                             = useState(() => mergeWithDefaults(loadSkills())) // Co-Trainer-Skills
   const importRef                         = useRef(null)
 
   // ── Posteingang / E-Mail-Auto-Abruf ──────────────────────────────────────────
@@ -441,6 +444,7 @@ export default function App() {
         if (cloudData['spielbuch-checklisten-v1'])    setChecklistenTypen(cloudData['spielbuch-checklisten-v1'])
         if (cloudData['spielbuch-vorlagen-v1'])       setVorlagen(cloudData['spielbuch-vorlagen-v1'])
         if (Array.isArray(cloudData['spielbuch-checklisten-uebersicht-v1'])) setChecklisten(cloudData['spielbuch-checklisten-uebersicht-v1'])
+        if (Array.isArray(cloudData['spielbuch-skills-v1'])) setSkills(mergeWithDefaults(cloudData['spielbuch-skills-v1']))
         if (Array.isArray(cloudData['unbekannte-emails'])) setUnbekannteEmails(cloudData['unbekannte-emails'])
         if (Array.isArray(cloudData['email-vorlagen-v1']))    setEmailVorlagen(cloudData['email-vorlagen-v1'])
         if (Array.isArray(cloudData['email-signaturen-v1'])) setEmailSignaturen(cloudData['email-signaturen-v1'])
@@ -535,6 +539,10 @@ export default function App() {
     if (!authUser || dataLoading) return
     cloudSave('spielbuch-checklisten-uebersicht-v1', checklisten)
   }, [checklisten])
+  useEffect(() => {
+    if (!authUser || dataLoading) return
+    cloudSave('spielbuch-skills-v1', skills)
+  }, [skills])
   useEffect(() => {
     if (!authUser || dataLoading) return
     cloudSave('sdb-termine', termine)
@@ -1538,7 +1546,7 @@ export default function App() {
         const klientOffen = hauptbereich === 'personen' && !!selectedId && clients.some(c => c.id === selectedId)
         const zeigeUebersicht = hauptbereich === 'personen' && !klientOffen
         const zeigeArbeitsbereich = hauptbereich === 'spielbuch' || klientOffen
-        const eigeneBereiche = ['spielbuch', 'personen', 'kommunikation', 'dokumente', 'homepages', 'uebersichten', 'prozesse', 'checklisten', 'intern', 'easyb2b', 'ustreg']
+        const eigeneBereiche = ['agent', 'spielbuch', 'personen', 'kommunikation', 'dokumente', 'homepages', 'uebersichten', 'prozesse', 'checklisten', 'intern', 'easyb2b', 'ustreg']
         const zeigePlatzhalter = !eigeneBereiche.includes(hauptbereich)
         const offenerKlient = klientOffen ? clients.find(c => c.id === selectedId) : null
 
@@ -1586,6 +1594,22 @@ export default function App() {
 
             {/* Bereich „Intern" – Innovations- und Agentenzentrale (rein lesend) */}
             {hauptbereich === 'intern' && <InternBereich />}
+
+            {/* Bereich „Co-Trainer" – Agenten-Startseite (rein lesend + Mail-Entwurf) */}
+            {hauptbereich === 'agent' && (
+              <AgentBereich
+                clients={clients}
+                skills={skills}
+                onSkillsChange={setSkills}
+                claudeApiKey={claudeApiKey}
+                offenerMandantName={offenerKlient?.name ?? null}
+                onOeffneMandant={(id) => {
+                  setDetailInitialTab(TAB.nachrichten)
+                  setSelectedId(id)
+                  wechselBereich('personen')
+                }}
+              />
+            )}
 
             {/* Bereich „Easy-B2B" – Modul-Gerüst, Übernahme des bestehenden
                 Easy-B2B-Dashboards erfolgt seitenweise (Phase 1: nur Struktur) */}
