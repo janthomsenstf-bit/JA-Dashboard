@@ -753,14 +753,29 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
     return `${(bytes / 1024 / 1024).toFixed(1)} MB`
   }
 
+  // Query-String für /api/get-email-content: UID + Konto immer, plus Message-ID
+  // (präzise) und Betreff/Absender/Datum (Fallback-Suche über ALLE Ordner inkl.
+  // Papierkorb/Gesendet/Unterordner – findet auch verschobene Mails ohne Message-ID).
+  function buildContentQuery(entry) {
+    const p = new URLSearchParams()
+    p.set('uid', entry.sourceUid ?? '')
+    p.set('account', entry.sourceAccount ?? '')
+    if (entry.messageId) p.set('messageId', entry.messageId)
+    if (entry.betreff)   p.set('subject', entry.betreff)
+    const abs = entry.absender || entry.von || ''
+    if (abs) p.set('from', abs)
+    const dt = entry.gesendetAm || entry.erstelltAm || entry.datum || ''
+    if (dt) p.set('date', dt)
+    return p.toString()
+  }
+
   // ── E-Mail-Vollinhalt nachladen (Fetch-on-Open) ──────────────────────────────
   async function fetchEmailContent(entry) {
     if (contentLoading[entry.id] || !entry.sourceUid || !entry.sourceAccount) return
     setContentLoading(prev => ({ ...prev, [entry.id]: true }))
     setContentError(prev => ({ ...prev, [entry.id]: '' }))
     try {
-      const mid  = entry.messageId ? `&messageId=${encodeURIComponent(entry.messageId)}` : ''
-      const res  = await fetch(`/api/get-email-content?uid=${encodeURIComponent(entry.sourceUid)}&account=${encodeURIComponent(entry.sourceAccount)}${mid}`)
+      const res  = await fetch(`/api/get-email-content?${buildContentQuery(entry)}`)
       const data = await res.json()
       if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`)
       // Text + HTML + Anlage-Metadaten + CC/An persistent in Event speichern
@@ -794,8 +809,7 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
     if (entry.text) return entry.text
     if (!entry.sourceUid || !entry.sourceAccount) return ''
     try {
-      const mid = entry.messageId ? `&messageId=${encodeURIComponent(entry.messageId)}` : ''
-      const res = await fetch(`/api/get-email-content?uid=${encodeURIComponent(entry.sourceUid)}&account=${encodeURIComponent(entry.sourceAccount)}${mid}`)
+      const res = await fetch(`/api/get-email-content?${buildContentQuery(entry)}`)
       const d = await res.json()
       if (!res.ok || d.error) return ''
       return d.text || ''
