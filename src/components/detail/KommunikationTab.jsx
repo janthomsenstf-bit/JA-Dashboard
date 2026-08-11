@@ -1329,7 +1329,7 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
   }
 
   return (
-    <div style={{ padding: '20px', maxWidth: '900px' }}>
+    <div style={{ padding: '20px', maxWidth: '100%' }}>
 
       {/* ── 1. Schnellaktionen ── */}
       <div style={{ marginBottom: '20px' }}>
