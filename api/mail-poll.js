@@ -21,7 +21,7 @@ const sb = createClient(SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { a
 
 // Modell bewusst als Konstante — kann später auf ein stärkeres gehoben werden.
 const CLAUDE_MODEL = process.env.MAIL_POLL_MODEL || 'claude-sonnet-5'
-const FEEDER_VERSION = 'v4-3000'
+const FEEDER_VERSION = 'v5-rawtest'
 
 const IMAP_ACCOUNTS = {
   strato:    { host: process.env.IMAP_STRATO_HOST    || 'imap.strato.de',    port: 993, user: process.env.IMAP_STRATO_USER,    pass: process.env.IMAP_STRATO_PASS },
@@ -108,6 +108,27 @@ export default async function handler(req, res) {
 
   // Billiger Versions-Ping (kein IMAP/Claude) – für Deploy-Erkennung.
   if (req.query.ping) return res.status(200).json({ feederVersion: FEEDER_VERSION })
+
+  // Roh-Test: trivialer Claude-Aufruf, zeigt die KOMPLETTE API-Antwort (Diagnose).
+  // Optional ?model=... zum Vergleich verschiedener Modelle.
+  if (req.query.rawtest) {
+    const m = req.query.model || CLAUDE_MODEL
+    let r, data
+    try {
+      r = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+        body: JSON.stringify({ model: m, max_tokens: 200, system: 'Antworte nur mit JSON.', messages: [{ role: 'user', content: 'Gib exakt zurueck: {"ok":true}' }] }),
+      })
+      data = await r.json()
+    } catch (e) { return res.status(200).json({ model: m, fetchError: e.message, keySet: !!process.env.ANTHROPIC_API_KEY }) }
+    return res.status(200).json({
+      model: m, keySet: !!process.env.ANTHROPIC_API_KEY, httpStatus: r.status,
+      stop_reason: data.stop_reason ?? null, contentTypes: (data.content || []).map(c => c.type),
+      textLen: (data.content?.[0]?.text || '').length, text: (data.content?.[0]?.text || '').slice(0, 120),
+      usage: data.usage ?? null, apiError: data.error ?? null,
+    })
+  }
 
   const account = req.query.account || 'strato'
   const days    = parseInt(req.query.days  || '5')
