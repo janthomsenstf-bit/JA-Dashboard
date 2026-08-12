@@ -55,6 +55,46 @@ function draftPreview(intent, draft) {
   }
 }
 
+// ── E-Mail-Inhalt (Zusammenfassung oben, Original ausklappbar) ────────────────────
+function EmailContent({ item, expanded }) {
+  const e = item.draft?._email || {}
+  const [showOrig, setShowOrig] = useState(false)
+  const tags = Array.isArray(e.tags) ? e.tags : []
+  return (
+    <div style={{ padding: '12px 18px', borderBottom: expanded ? '1px solid var(--border)' : 'none' }}>
+      {/* Betreff + Absender-Zeile */}
+      <div style={{ fontSize: '14px', fontWeight: 650, color: 'var(--text)', lineHeight: 1.35 }}>
+        {e.subject || '(kein Betreff)'}
+      </div>
+      <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', marginTop: '2px' }}>
+        {e.fromName ? `${e.fromName} · ` : ''}{e.from}{e.date ? ` · ${e.date}` : ''}{e.account ? ` · ${e.account}` : ''}
+        {e.moeglicherSpam && <span style={{ color: '#f97316', fontWeight: 600 }}> · evtl. Werbung</span>}
+      </div>
+      {/* Tags */}
+      {tags.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', marginTop: '8px' }}>
+          {tags.map((t, i) => (
+            <span key={i} style={{ fontSize: '10.5px', padding: '2px 8px', borderRadius: '20px', background: 'var(--surface2)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}>{t}</span>
+          ))}
+        </div>
+      )}
+      {/* Zusammenfassung */}
+      <div style={{ marginTop: '10px', padding: '10px 12px', borderRadius: '8px', background: 'rgba(37,99,235,0.05)', borderLeft: '3px solid var(--accent)', fontSize: '13px', lineHeight: 1.5, color: 'var(--text)' }}>
+        {e.summary || '—'}
+      </div>
+      {/* Original ein-/ausklappen */}
+      <button onClick={() => setShowOrig(o => !o)} style={{ marginTop: '8px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '11.5px', padding: 0 }}>
+        {showOrig ? '▲ Original ausblenden' : '▼ Original anzeigen'}
+      </button>
+      {showOrig && (
+        <div style={{ marginTop: '6px', fontSize: '12px', color: 'var(--text-muted)', whiteSpace: 'pre-wrap', maxHeight: '240px', overflowY: 'auto', padding: '8px 12px', borderRadius: '8px', background: 'rgba(0,0,0,0.03)', border: '1px solid var(--border)' }}>
+          {item.raw_text}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── ClientSearchField ────────────────────────────────────────────────────────────
 function ClientSearchField({ clients, value, onChange, placeholder }) {
   const [query, setQuery] = useState('')
@@ -808,22 +848,26 @@ export default function BotInbox({ clients, onUpdateClient, onNavigateToClient }
               )}
             </div>
 
-            {/* Original-Nachricht (immer sichtbar) */}
-            <div style={{ padding: '12px 18px', borderBottom: isExpanded ? '1px solid var(--border)' : 'none' }}>
-              <div style={{
-                fontSize: '13px', color: 'var(--text-muted)', fontStyle: 'italic',
-                padding: '8px 12px', borderRadius: '8px', background: 'rgba(0,0,0,0.03)',
-                borderLeft: `3px solid ${cfg.color}40`, lineHeight: 1.5,
-              }}>
-                „{item.raw_text}"
-              </div>
-              {/* KI-Vorschlag Zusammenfassung */}
-              {!isExpanded && item.draft && (
-                <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '6px', padding: '0 2px' }}>
-                  → {draftPreview(item.intent, item.draft)}
+            {/* Inhalt: E-Mail-Ansicht (Zusammenfassung/Original) oder Telegram-Rohtext */}
+            {item.draft?._email ? (
+              <EmailContent item={item} expanded={isExpanded} />
+            ) : (
+              <div style={{ padding: '12px 18px', borderBottom: isExpanded ? '1px solid var(--border)' : 'none' }}>
+                <div style={{
+                  fontSize: '13px', color: 'var(--text-muted)', fontStyle: 'italic',
+                  padding: '8px 12px', borderRadius: '8px', background: 'rgba(0,0,0,0.03)',
+                  borderLeft: `3px solid ${cfg.color}40`, lineHeight: 1.5,
+                }}>
+                  „{item.raw_text}"
                 </div>
-              )}
-            </div>
+                {/* KI-Vorschlag Zusammenfassung */}
+                {!isExpanded && item.draft && (
+                  <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '6px', padding: '0 2px' }}>
+                    → {draftPreview(item.intent, item.draft)}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* ── Erweiterter Bereich (nur wenn expanded + nicht readonly) ── */}
             {isExpanded && !isReadonly && (

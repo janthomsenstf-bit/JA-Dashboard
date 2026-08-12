@@ -21,7 +21,7 @@ const sb = createClient(SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { a
 
 // Modell bewusst als Konstante — kann später auf ein stärkeres gehoben werden.
 const CLAUDE_MODEL = process.env.MAIL_POLL_MODEL || 'claude-sonnet-4-6'
-const FEEDER_VERSION = 'v6-sonnet46'
+const FEEDER_VERSION = 'v7-email16'
 
 const IMAP_ACCOUNTS = {
   strato:    { host: process.env.IMAP_STRATO_HOST    || 'imap.strato.de',    port: 993, user: process.env.IMAP_STRATO_USER,    pass: process.env.IMAP_STRATO_PASS },
@@ -130,6 +130,13 @@ export default async function handler(req, res) {
     })
   }
 
+  // Aufräumen: löscht NUR die E-Mail-Test-Einträge (telegram_message_id 'email:%'),
+  // Telegram-Einträge bleiben unberührt. Für einen sauberen Neustart.
+  if (req.query.reset === 'email') {
+    const { error, count } = await sb.from('bot_inbox').delete({ count: 'exact' }).like('telegram_message_id', 'email:%')
+    return res.status(200).json({ reset: 'email', geloescht: count ?? null, error: error?.message || null })
+  }
+
   const account = req.query.account || 'strato'
   const days    = parseInt(req.query.days  || '5')
   const limit   = parseInt(req.query.limit || '15')
@@ -207,22 +214,27 @@ export default async function handler(req, res) {
           if (byName) { clientId = byName.id; clientName = byName.name }
         }
 
-        const dom = sender.split('@')[1]?.toLowerCase() || ''
         const tags = Array.isArray(cl.tags) ? cl.tags.slice(0, 6) : []
-        const kurzDatum = datum.slice(0, 10)
-        const raw_text =
-          `📧 ${env.from?.[0]?.name || sender} — ${betreff}  (${kurzDatum})\n` +
-          (tags.length ? `🏷 ${tags.join(' · ')}\n` : '') +
-          (hard ? `👤 Absender exakt zugeordnet: ${hard.name}\n` : '') +
-          (cl.spam && !cl.spam_sicher ? `⚠️ evtl. Werbung${!FREEMAIL.has(dom) ? '' : ''}\n` : '') +
-          `\n📝 ${cl.summary || betreff}\n\n— Original —\n${body.slice(0, 900)}`
-
+        // Struktur: raw_text = Original; draft = Aktionsfelder (oben, für executeAction) + _email-Metadaten.
+        const draftObj = {
+          ...(cl.draft || {}),
+          _email: {
+            summary: cl.summary || betreff,
+            tags,
+            from: sender,
+            fromName: env.from?.[0]?.name || '',
+            subject: betreff,
+            date: datum.slice(0, 10),
+            account,
+            moeglicherSpam: !!(cl.spam && !cl.spam_sicher),
+          },
+        }
         const { error: insErr } = await sb.from('bot_inbox').insert({
-          raw_text,
+          raw_text: body.slice(0, 4000),
           intent: cl.intent || 'unknown',
           client_id: clientId,
           client_name: clientName,
-          draft: cl.draft || {},
+          draft: draftObj,
           status: 'neu',
           telegram_message_id: dedupeKey,
         })
