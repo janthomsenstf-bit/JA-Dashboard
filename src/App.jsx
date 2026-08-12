@@ -274,6 +274,55 @@ function migrateClient(c) {
   }
 }
 
+// Additiver Merge einzelner Stotax-Änderungen in einen Mandanten – behält ALLE
+// vorhandenen Felder/Einträge; setzt nur die ausgewählten Werte (Datensicherheit).
+function mergeStotaxChanges(c, changes) {
+  const next = { ...c }
+  let kontakte = Array.isArray(c.kontakte) ? c.kontakte.map(k => ({ ...k })) : []
+  let anschriften = Array.isArray(c.anschriften) ? c.anschriften.map(a => ({ ...a })) : []
+  let kontakteTouched = false, anschriftenTouched = false
+  for (const ch of changes) {
+    if (ch.kind === 'email') {
+      if (kontakte.length === 0) kontakte = [{ name: '', email: ch.neu }]
+      else kontakte[0] = { ...kontakte[0], email: ch.neu }
+      kontakteTouched = true
+    } else if (ch.kind === 'anschrift') {
+      const idx = anschriften.findIndex(a => /sitz/i.test(a.typ))
+      if (idx >= 0) anschriften[idx] = { ...anschriften[idx], text: ch.neu }
+      else anschriften = [...anschriften, { typ: 'Sitz', text: ch.neu }]
+      anschriftenTouched = true
+    } else {
+      next[ch.feld] = ch.neu
+    }
+  }
+  if (kontakteTouched) next.kontakte = kontakte
+  if (anschriftenTouched) next.anschriften = anschriften
+  return next
+}
+
+// Neuer Mandant aus einer Stotax-Zeile (ohne id – die wird beim Anlegen gesetzt).
+function neuerClientAusStotax(sd) {
+  return {
+    mandantennummer: sd.mandantennummer || '',
+    name: sd.name || sd.nameKurz || '',
+    steuernummer: sd.steuernummer || '',
+    steuerIdNr: sd.steuerIdNr || '',
+    finanzamt: sd.finanzamt || '',
+    land: sd.land || '',
+    laenderkuerzel: sd.laenderkuerzel || '',
+    gemeinde: sd.gemeinde || '',
+    bundeslandFa: sd.bundeslandFa || '',
+    telefon: sd.telefon || '',
+    mobil: sd.mobil || '',
+    bank: sd.bank || '',
+    hauptverantwMitarbeiter: sd.hauptverantwMitarbeiter || '',
+    unternehmensgegenstand: sd.unternehmensgegenstand || '',
+    kontakte: sd.email ? [{ name: '', email: sd.email }] : [],
+    anschriften: sd.anschrift ? [{ typ: 'Sitz', text: sd.anschrift }] : [],
+    herkunft: 'stotax-import',
+  }
+}
+
 // Entfernt große E-Mail-Inhalte (text/html) aus kommunikation.events, bevor in die Cloud
 // gespeichert wird. Die Inhalte sind jederzeit per IMAP neu abrufbar – so bleibt der
 // Cloud-Block klein (sonst läuft die Datenbank in 500-Fehler / Datenverlust).
@@ -968,6 +1017,20 @@ export default function App() {
     setClients(prev => [newClient, ...prev])
     setSelectedId(newClient.id)
     setShowNewModal(false)
+  }
+
+  // ── Stotax-Import anwenden (Snapshot -> additiver Merge) ──────────────────────
+  async function applyStotaxImport({ updates, neuMandanten }) {
+    // Sicherung ZUERST – falls der Merge unerwünscht ist, ist der Stand wiederherstellbar.
+    try { await cloudSnapshot(STORAGE_KEY, slimForCloud(clientsRef.current ?? clients)) } catch { /* Snapshot best effort */ }
+    setClients(prev => {
+      const updated = prev.map(c => {
+        const u = (updates || []).find(x => x.clientId === c.id)
+        return u && u.changes.length ? mergeStotaxChanges(c, u.changes) : c
+      })
+      const created = (neuMandanten || []).map(sd => migrateClient({ ...neuerClientAusStotax(sd), id: generateId() }))
+      return [...created, ...updated]
+    })
   }
 
   function deleteClient(id) {
@@ -1977,7 +2040,7 @@ export default function App() {
         <NewClientModal onClose={() => setShowNewModal(false)} onSubmit={addClient} />
       )}
       {showStotaxImport && (
-        <StotaxImportModal clients={clients} onClose={() => setShowStotaxImport(false)} />
+        <StotaxImportModal clients={clients} onApply={applyStotaxImport} onClose={() => setShowStotaxImport(false)} />
       )}
       {archiveTarget && (
         <ArchiveModal
