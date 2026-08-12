@@ -1279,6 +1279,8 @@ export default function App() {
       clients={clients}
       onUpdateClient={updateClient}
       onNavigateToClient={(id, tab) => { setDetailInitialTab(tab ?? 0); setSelectedId(id) }}
+      onedriveTokens={onedriveTokens}
+      onTokenRefresh={setOnedriveTokens}
     />
   )
 

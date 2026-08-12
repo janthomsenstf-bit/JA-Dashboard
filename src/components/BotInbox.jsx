@@ -56,10 +56,34 @@ function draftPreview(intent, draft) {
 }
 
 // ── E-Mail-Inhalt (Zusammenfassung oben, Original ausklappbar) ────────────────────
-function EmailContent({ item, expanded }) {
+function EmailContent({ item, expanded, onedriveTokens, onTokenRefresh }) {
   const e = item.draft?._email || {}
   const [showOrig, setShowOrig] = useState(false)
+  const [upStatus, setUpStatus] = useState(null)   // null | 'laeuft' | { ok, msg }
   const tags = Array.isArray(e.tags) ? e.tags : []
+  const anhaenge = Array.isArray(e.anhaenge) ? e.anhaenge : []
+
+  async function anhaengeAblegen() {
+    if (!onedriveTokens?.accessToken) {
+      setUpStatus({ ok: false, msg: 'Keine OneDrive-Verbindung – bitte im Dashboard verbinden.' }); return
+    }
+    if (e.uid == null) { setUpStatus({ ok: false, msg: 'Keine Mail-Referenz (uid) – Mail neu abrufen.' }); return }
+    setUpStatus('laeuft')
+    try {
+      const res = await fetch('/api/mail-to-posteingang', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ account: e.account, uid: e.uid, filenames: anhaenge.map(a => a.filename), tokens: onedriveTokens }),
+      })
+      const d = await res.json().catch(() => ({}))
+      if (d.newTokens && onTokenRefresh) onTokenRefresh(d.newTokens)
+      if (d.needsReauth) { setUpStatus({ ok: false, msg: 'OneDrive-Sitzung abgelaufen – bitte neu verbinden.' }); return }
+      if (!res.ok || !d.success) { setUpStatus({ ok: false, msg: d.error || `Fehler (HTTP ${res.status})` }); return }
+      const n = (d.hochgeladen || []).length, s = (d.uebersprungen || []).length
+      setUpStatus({ ok: true, msg: `✓ ${n} in Posteingang abgelegt${s ? `, ${s} übersprungen` : ''}` })
+    } catch (err) {
+      setUpStatus({ ok: false, msg: err.message })
+    }
+  }
   return (
     <div style={{ padding: '12px 18px', borderBottom: expanded ? '1px solid var(--border)' : 'none' }}>
       {/* Betreff + Absender-Zeile */}
@@ -82,15 +106,26 @@ function EmailContent({ item, expanded }) {
       <div style={{ marginTop: '10px', padding: '10px 12px', borderRadius: '8px', background: 'rgba(37,99,235,0.05)', borderLeft: '3px solid var(--accent)', fontSize: '13px', lineHeight: 1.5, color: 'var(--text)' }}>
         {e.summary || '—'}
       </div>
-      {/* Anhänge */}
-      {Array.isArray(e.anhaenge) && e.anhaenge.length > 0 && (
-        <div style={{ marginTop: '8px', display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-          {e.anhaenge.map((a, i) => (
-            <span key={i} style={{ fontSize: '11.5px', padding: '3px 9px', borderRadius: '8px', background: 'var(--surface2)', border: '1px solid var(--border)', color: 'var(--text)' }}
-              title={a.contentType}>
-              📎 {a.filename}{a.size ? ` (${a.size < 1048576 ? (a.size / 1024).toFixed(0) + ' KB' : (a.size / 1048576).toFixed(1) + ' MB'})` : ''}
-            </span>
-          ))}
+      {/* Anhänge + Übergabe in den Posteingang */}
+      {anhaenge.length > 0 && (
+        <div style={{ marginTop: '10px' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
+            {anhaenge.map((a, i) => (
+              <span key={i} style={{ fontSize: '11.5px', padding: '3px 9px', borderRadius: '8px', background: 'var(--surface2)', border: '1px solid var(--border)', color: 'var(--text)' }}
+                title={a.contentType}>
+                📎 {a.filename}{a.size ? ` (${a.size < 1048576 ? (a.size / 1024).toFixed(0) + ' KB' : (a.size / 1048576).toFixed(1) + ' MB'})` : ''}
+              </span>
+            ))}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '8px' }}>
+            <button onClick={anhaengeAblegen} disabled={upStatus === 'laeuft'}
+              style={{ fontSize: '12px', fontWeight: 600, padding: '6px 12px', borderRadius: '8px', border: 'none', cursor: upStatus === 'laeuft' ? 'default' : 'pointer', background: 'rgba(15,118,110,0.12)', color: '#0f766e' }}>
+              {upStatus === 'laeuft' ? 'Lädt…' : '📥 In Posteingang ablegen'}
+            </button>
+            {upStatus && upStatus !== 'laeuft' && (
+              <span style={{ fontSize: '12px', color: upStatus.ok ? '#16a34a' : 'var(--red)' }}>{upStatus.msg}</span>
+            )}
+          </div>
         </div>
       )}
       {/* Original ein-/ausklappen */}
@@ -439,7 +474,7 @@ const labelStyle = { fontSize: '11px', fontWeight: 700, color: 'var(--text-muted
 const inputStyle = { fontSize: '13px', padding: '8px 12px', borderRadius: '8px' }
 
 // ── Haupt-Komponente ─────────────────────────────────────────────────────────────
-export default function BotInbox({ clients, onUpdateClient, onNavigateToClient }) {
+export default function BotInbox({ clients, onUpdateClient, onNavigateToClient, onedriveTokens, onTokenRefresh }) {
   const [items,        setItems]        = useState([])
   const [loading,      setLoading]      = useState(true)
   const [toast,        setToast]        = useState('')
@@ -861,7 +896,7 @@ export default function BotInbox({ clients, onUpdateClient, onNavigateToClient }
 
             {/* Inhalt: E-Mail-Ansicht (Zusammenfassung/Original) oder Telegram-Rohtext */}
             {item.draft?._email ? (
-              <EmailContent item={item} expanded={isExpanded} />
+              <EmailContent item={item} expanded={isExpanded} onedriveTokens={onedriveTokens} onTokenRefresh={onTokenRefresh} />
             ) : (
               <div style={{ padding: '12px 18px', borderBottom: isExpanded ? '1px solid var(--border)' : 'none' }}>
                 <div style={{
