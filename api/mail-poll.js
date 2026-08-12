@@ -54,7 +54,7 @@ async function callClaude(system, user) {
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-    body: JSON.stringify({ model: CLAUDE_MODEL, max_tokens: 1500, system, messages: [{ role: 'user', content: user }] }),
+    body: JSON.stringify({ model: CLAUDE_MODEL, max_tokens: 3000, system, messages: [{ role: 'user', content: user }] }),
   })
   const data = await res.json()
   if (!res.ok) throw new Error(data.error?.message || `Claude API ${res.status}`)
@@ -84,7 +84,8 @@ intent-Regeln:
   draft: { "betreff": "Re: ...", "text": "<Antwortentwurf>", "empfaenger": "<Absender-Adresse>" }
 - unknown: unklar. draft: {}
 
-Wichtig: Ordne den Mandanten nur zu, wenn du dir sicher bist (Absender, Name, Bezug). Erfinde nichts.
+Mandantenzuordnung: Ordne nur zu, wenn du sicher bist (Absender-Adresse, Firmen-/Personenname oder Aktenbezug passt zu einem Eintrag der Liste). Wenn du ihn findest, gib IMMER client_id UND client_name exakt aus der Liste zurück (nie nur eines von beiden). Der Mandant kann auch im Text genannt sein, nicht nur beim Absender. Im Zweifel beide auf null. Erfinde nichts.
+Halte summary und draft.text knapp, damit die Antwort vollständig ins JSON passt.
 Antworte NUR mit dem JSON, kein Text drumherum, kein Markdown.`
 
 // ── Handler ────────────────────────────────────────────────────────────────────────
