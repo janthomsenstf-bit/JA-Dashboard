@@ -21,7 +21,7 @@ const sb = createClient(SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { a
 
 // Modell bewusst als Konstante — kann später auf ein stärkeres gehoben werden.
 const CLAUDE_MODEL = process.env.MAIL_POLL_MODEL || 'claude-sonnet-5'
-const FEEDER_VERSION = 'v3-robust'
+const FEEDER_VERSION = 'v4-3000'
 
 const IMAP_ACCOUNTS = {
   strato:    { host: process.env.IMAP_STRATO_HOST    || 'imap.strato.de',    port: 993, user: process.env.IMAP_STRATO_USER,    pass: process.env.IMAP_STRATO_PASS },
@@ -63,7 +63,7 @@ async function callClaude(system, user) {
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-    body: JSON.stringify({ model: CLAUDE_MODEL, max_tokens: 4000, system, messages: [{ role: 'user', content: user }] }),
+    body: JSON.stringify({ model: CLAUDE_MODEL, max_tokens: 3000, system, messages: [{ role: 'user', content: user }] }),
   })
   const data = await res.json()
   if (!res.ok) throw new Error(data.error?.message || `Claude API ${res.status}`)
