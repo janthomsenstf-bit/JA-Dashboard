@@ -21,6 +21,7 @@ const sb = createClient(SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { a
 
 // Modell bewusst als Konstante — kann später auf ein stärkeres gehoben werden.
 const CLAUDE_MODEL = process.env.MAIL_POLL_MODEL || 'claude-sonnet-5'
+const FEEDER_VERSION = 'v2-namematch'
 
 const IMAP_ACCOUNTS = {
   strato:    { host: process.env.IMAP_STRATO_HOST    || 'imap.strato.de',    port: 993, user: process.env.IMAP_STRATO_USER,    pass: process.env.IMAP_STRATO_PASS },
@@ -47,6 +48,14 @@ function clientByExactEmail(clients, sender) {
   const s = (sender || '').toLowerCase().trim()
   if (!s) return null
   return clients.find(c => c.emails.some(e => e.toLowerCase() === s)) || null
+}
+
+// Name -> Client (füllt die ID nach, wenn Claude nur den Namen liefert).
+const normName = s => String(s || '').toLowerCase().replace(/[^a-z0-9äöüß]/g, '')
+function clientByName(clients, name) {
+  const n = normName(name)
+  if (!n) return null
+  return clients.find(c => { const cn = normName(c.name); return cn && (cn === n || cn.includes(n) || n.includes(cn)) }) || null
 }
 
 // ── Claude ───────────────────────────────────────────────────────────────────────
@@ -96,6 +105,9 @@ export default async function handler(req, res) {
   if (process.env.MAIL_POLL_SECRET && req.query.secret !== process.env.MAIL_POLL_SECRET) {
     return res.status(403).json({ error: 'Forbidden' })
   }
+
+  // Billiger Versions-Ping (kein IMAP/Claude) – für Deploy-Erkennung.
+  if (req.query.ping) return res.status(200).json({ feederVersion: FEEDER_VERSION })
 
   const account = req.query.account || 'strato'
   const days    = parseInt(req.query.days  || '5')
@@ -156,8 +168,12 @@ export default async function handler(req, res) {
 
         // Deterministischer Mandanten-Abgleich über die exakte Absenderadresse (schlägt Claude-Rateversuch)
         const hard = clientByExactEmail(clients, sender)
-        const clientId   = hard?.id   || cl.client_id   || null
-        const clientName = hard?.name || cl.client_name || null
+        let clientId   = hard?.id   || cl.client_id   || null
+        let clientName = hard?.name || cl.client_name || null
+        if (!clientId && clientName) {
+          const byName = clientByName(clients, clientName)
+          if (byName) { clientId = byName.id; clientName = byName.name }
+        }
 
         const dom = sender.split('@')[1]?.toLowerCase() || ''
         const tags = Array.isArray(cl.tags) ? cl.tags.slice(0, 6) : []
