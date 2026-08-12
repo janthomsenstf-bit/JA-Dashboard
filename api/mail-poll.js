@@ -20,8 +20,8 @@ const SUPABASE_URL = process.env.SUPABASE_URL || 'https://wtvijpdfdfyagmiwwnlw.s
 const sb = createClient(SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } })
 
 // Modell bewusst als Konstante — kann später auf ein stärkeres gehoben werden.
-const CLAUDE_MODEL = process.env.MAIL_POLL_MODEL || 'claude-sonnet-5'
-const FEEDER_VERSION = 'v5-rawtest'
+const CLAUDE_MODEL = process.env.MAIL_POLL_MODEL || 'claude-sonnet-4-6'
+const FEEDER_VERSION = 'v6-sonnet46'
 
 const IMAP_ACCOUNTS = {
   strato:    { host: process.env.IMAP_STRATO_HOST    || 'imap.strato.de',    port: 993, user: process.env.IMAP_STRATO_USER,    pass: process.env.IMAP_STRATO_PASS },
@@ -59,11 +59,11 @@ function clientByName(clients, name) {
 }
 
 // ── Claude ───────────────────────────────────────────────────────────────────────
-async function callClaude(system, user) {
+async function callClaude(system, user, model = CLAUDE_MODEL) {
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-    body: JSON.stringify({ model: CLAUDE_MODEL, max_tokens: 3000, system, messages: [{ role: 'user', content: user }] }),
+    body: JSON.stringify({ model, max_tokens: 3000, system, messages: [{ role: 'user', content: user }] }),
   })
   const data = await res.json()
   if (!res.ok) throw new Error(data.error?.message || `Claude API ${res.status}`)
@@ -134,6 +134,7 @@ export default async function handler(req, res) {
   const days    = parseInt(req.query.days  || '5')
   const limit   = parseInt(req.query.limit || '15')
   const dry     = req.query.dry === '1'   // Testmodus: klassifizieren, aber NICHT speichern / nicht deduplizieren
+  const reqModel = req.query.model || CLAUDE_MODEL   // Modell pro Aufruf überschreibbar (Test)
   const cfg = IMAP_ACCOUNTS[account]
   if (!cfg)               return res.status(400).json({ error: `Unbekanntes Konto: ${account}` })
   if (!cfg.user || !cfg.pass) return res.status(500).json({ error: `IMAP-Zugangsdaten für ${account} fehlen (Vercel Env)` })
@@ -175,7 +176,7 @@ export default async function handler(req, res) {
         const userPrompt = `Absender: ${env.from?.[0]?.name || ''} <${sender}>\nBetreff: ${betreff}\nDatum: ${datum}\n\nText:\n${body}\n\nMandantenliste:\n${clientListStr}`
         let cl, clFehler = null
         try {
-          let raw = await callClaude(SYSTEM_PROMPT, userPrompt)
+          let raw = await callClaude(SYSTEM_PROMPT, userPrompt, reqModel)
           const rawLen = (raw || '').length
           const a = raw.indexOf('{'), b = raw.lastIndexOf('}')
           if (a < 0 || b <= a) throw new Error(`keine JSON-Klammern (rawLen=${rawLen})`)
@@ -183,7 +184,7 @@ export default async function handler(req, res) {
             cl = JSON.parse(raw.slice(a, b + 1))
           } catch (pe) {
             // Zweiter Versuch: einmal neu anfragen (transiente leere/abgeschnittene Antwort)
-            raw = await callClaude(SYSTEM_PROMPT, userPrompt)
+            raw = await callClaude(SYSTEM_PROMPT, userPrompt, reqModel)
             const a2 = raw.indexOf('{'), b2 = raw.lastIndexOf('}')
             cl = JSON.parse(raw.slice(a2, b2 + 1))
           }
