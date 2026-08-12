@@ -149,6 +149,91 @@ function EmailContent({ item, expanded, onedriveTokens, onTokenRefresh, onSpam }
   )
 }
 
+// ── Dokument-Vorschlagskarte (gebündelt pro Mandant) ──────────────────────────────
+function kategorieVon(d) {
+  const p = (d.zielRel || '').toLowerCase()
+  if (p.includes('buchhaltung')) return 'Buchhaltung'
+  if (p.includes('jahresabschluss')) return 'Jahresabschluss & Steuererklärung'
+  if (p.includes('lohn')) return 'Lohn'
+  if (p.includes('standard')) return 'Standard'
+  return d.typ || 'Sonstiges'
+}
+
+function DokumentBundle({ item, onFreigabe }) {
+  const b = item.draft || {}
+  const docs = Array.isArray(b.dokumente) ? b.dokumente : []
+  const stand = b.stand || 'vorgeschlagen'
+  const [busy, setBusy] = useState(false)
+
+  const gruppen = {}
+  docs.forEach(d => { const k = kategorieVon(d); (gruppen[k] = gruppen[k] || []).push(d) })
+  const kategorien = Object.keys(gruppen)
+
+  const sichFarbe = b.sicherheit === 'niedrig' ? 'var(--red)' : b.sicherheit === 'mittel' ? '#d97706' : '#16a34a'
+
+  async function freigeben(neu) { setBusy(true); try { await onFreigabe(item, neu) } finally { setBusy(false) } }
+
+  return (
+    <div style={{ marginBottom: '12px', borderRadius: '14px', overflow: 'hidden', border: '1px solid var(--border)', background: 'var(--surface)', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+      {/* Kopf */}
+      <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', background: 'rgba(37,99,235,0.05)', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+        <span style={{ fontSize: '15px' }}>📁</span>
+        <span style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text)' }}>{item.client_name || 'Ohne Mandant'}</span>
+        <span style={{ fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '20px', background: sichFarbe + '18', color: sichFarbe }}>{b.sicherheit || 'hoch'}</span>
+        <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{docs.length} Dokument{docs.length !== 1 ? 'e' : ''}</span>
+        <span style={{ marginLeft: 'auto', fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{fmtTime(item.created_at)}</span>
+      </div>
+
+      {/* Typ-Übersicht */}
+      <div style={{ padding: '10px 18px 0', display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+        {kategorien.map(k => (
+          <span key={k} style={{ fontSize: '11.5px', padding: '3px 10px', borderRadius: '20px', background: 'var(--surface2)', border: '1px solid var(--border)', color: 'var(--text)' }}>
+            {gruppen[k].length}× {k}
+          </span>
+        ))}
+      </div>
+
+      {/* Dokumente je Kategorie */}
+      <div style={{ padding: '10px 18px' }}>
+        {kategorien.map(k => (
+          <div key={k} style={{ marginBottom: '10px' }}>
+            <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--text-muted)', marginBottom: '4px' }}>{k}</div>
+            {gruppen[k].map((d, i) => (
+              <div key={i} style={{ fontSize: '12.5px', padding: '5px 0', borderBottom: '1px solid var(--border)' }}>
+                <div style={{ fontWeight: 600, color: 'var(--text)' }}>{d.neuerName}</div>
+                <div style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>{d.erkannt}{d.zielRel ? ` · → ${d.zielRel}` : ''}</div>
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+
+      {/* Aktionen */}
+      <div style={{ padding: '4px 18px 14px', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+        {stand === 'vorgeschlagen' && (
+          <>
+            <button onClick={() => freigeben('freigegeben')} disabled={busy}
+              style={{ fontSize: '13px', fontWeight: 700, padding: '8px 16px', borderRadius: '10px', border: 'none', cursor: busy ? 'default' : 'pointer', background: 'rgba(22,163,74,0.12)', color: '#16a34a' }}>
+              {busy ? '…' : '📁 Alle ablegen freigeben'}
+            </button>
+            <button onClick={() => freigeben('verworfen')} disabled={busy}
+              style={{ fontSize: '12px', padding: '8px 14px', borderRadius: '10px', border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', color: 'var(--text-muted)' }}>
+              🗑 Verwerfen
+            </button>
+            <span style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>„Anpassen" & „Neue E-Mail" folgen</span>
+          </>
+        )}
+        {stand === 'freigegeben' && (
+          <span style={{ fontSize: '12.5px', color: '#16a34a', fontWeight: 600 }}>✅ Freigegeben — Claude Code führt die Ablage beim nächsten Lauf aus.</span>
+        )}
+        {stand === 'verworfen' && (
+          <span style={{ fontSize: '12.5px', color: 'var(--text-muted)' }}>🗑 Verworfen.</span>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── ClientSearchField ────────────────────────────────────────────────────────────
 function ClientSearchField({ clients, value, onChange, placeholder }) {
   const [query, setQuery] = useState('')
@@ -738,6 +823,27 @@ export default function BotInbox({ clients, onUpdateClient, onNavigateToClient, 
     showToast('📦 Archiviert')
   }
 
+  // ── Dokument-Bündel freigeben / verwerfen (Claude Code führt danach aus) ──────
+  async function dokumentFreigeben(item, neuStand) {
+    const dokumente = (item.draft?.dokumente || []).map(d => ({
+      ...d,
+      freigabe: neuStand === 'freigegeben' ? 'ablegen' : neuStand === 'verworfen' ? 'verworfen' : d.freigabe,
+    }))
+    const neuDraft = { ...(item.draft || {}), stand: neuStand, dokumente }
+    const patch = { draft: neuDraft }
+    if (neuStand === 'verworfen') patch.status = 'archiviert'
+    const { error } = await supabase.from('bot_inbox').update(patch).eq('id', item.id)
+    if (error) { showToast('Fehler: ' + error.message); return }
+    if (neuStand === 'verworfen') {
+      setItems(prev => prev.filter(i => i.id !== item.id))
+      setCounts(prev => ({ ...prev, neu: Math.max(0, prev.neu - 1), archiviert: prev.archiviert + 1 }))
+      showToast('🗑 Verworfen')
+    } else {
+      setItems(prev => prev.map(i => i.id === item.id ? { ...i, draft: neuDraft } : i))
+      showToast('✅ Freigegeben — Claude Code führt die Ablage aus')
+    }
+  }
+
   // ── Als Spam lernen (Absender künftig automatisch aussortieren) + archivieren ──
   async function markiereAlsSpam(item, sender) {
     try { await fetch(`/api/mail-poll?spamadd=${encodeURIComponent(sender)}`) } catch {}
@@ -848,6 +954,10 @@ export default function BotInbox({ clients, onUpdateClient, onNavigateToClient, 
 
       {/* Einträge */}
       {items.map(item => {
+        // Dokument-Vorschlagskarte (gebündelt pro Mandant) – eigene Ansicht
+        if (item.intent === 'dokument_ablage') {
+          return <DokumentBundle key={item.id} item={item} onFreigabe={dokumentFreigeben} />
+        }
         const cfg = INTENT_CONFIG[item.intent] || INTENT_CONFIG.unknown
         const isExpanded = expandedId === item.id
         const hasClient = !!(assignedClients[item.id] || item.client_id)
