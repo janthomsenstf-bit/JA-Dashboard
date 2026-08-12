@@ -20,7 +20,7 @@ const SUPABASE_URL = process.env.SUPABASE_URL || 'https://wtvijpdfdfyagmiwwnlw.s
 const sb = createClient(SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } })
 
 // Modell bewusst als Konstante — kann später auf ein stärkeres gehoben werden.
-const CLAUDE_MODEL = process.env.MAIL_POLL_MODEL || 'claude-sonnet-4-20250514'
+const CLAUDE_MODEL = process.env.MAIL_POLL_MODEL || 'claude-sonnet-5'
 
 const IMAP_ACCOUNTS = {
   strato:    { host: process.env.IMAP_STRATO_HOST    || 'imap.strato.de',    port: 993, user: process.env.IMAP_STRATO_USER,    pass: process.env.IMAP_STRATO_PASS },
