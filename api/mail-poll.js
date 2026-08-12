@@ -99,6 +99,7 @@ export default async function handler(req, res) {
   const account = req.query.account || 'strato'
   const days    = parseInt(req.query.days  || '5')
   const limit   = parseInt(req.query.limit || '15')
+  const dry     = req.query.dry === '1'   // Testmodus: klassifizieren, aber NICHT speichern / nicht deduplizieren
   const cfg = IMAP_ACCOUNTS[account]
   if (!cfg)               return res.status(400).json({ error: `Unbekanntes Konto: ${account}` })
   if (!cfg.user || !cfg.pass) return res.status(500).json({ error: `IMAP-Zugangsdaten für ${account} fehlen (Vercel Env)` })
@@ -109,7 +110,7 @@ export default async function handler(req, res) {
     : '(keine Mandanten)'
 
   const imap = new ImapFlow({ host: cfg.host, port: cfg.port, secure: true, auth: { user: cfg.user, pass: cfg.pass }, logger: false })
-  const ergebnis = { konto: account, gesehen: 0, uebersprungen_dublette: 0, spam: 0, angelegt: 0, fehler: 0, eintraege: [] }
+  const ergebnis = { konto: account, gesehen: 0, uebersprungen_dublette: 0, spam: 0, angelegt: 0, fehler: 0, fallback: 0, debug: null, eintraege: [], proben: [] }
 
   try {
     await imap.connect()
@@ -125,9 +126,11 @@ export default async function handler(req, res) {
         const messageId = env.messageId || `uid:${account}:${uid}`
         const dedupeKey = `email:${messageId}`
 
-        // Dublettenschutz: schon in bot_inbox?
-        const { data: exists } = await sb.from('bot_inbox').select('id').eq('telegram_message_id', dedupeKey).limit(1)
-        if (exists && exists.length) { ergebnis.uebersprungen_dublette++; continue }
+        // Dublettenschutz: schon in bot_inbox? (im Testmodus übersprungen)
+        if (!dry) {
+          const { data: exists } = await sb.from('bot_inbox').select('id').eq('telegram_message_id', dedupeKey).limit(1)
+          if (exists && exists.length) { ergebnis.uebersprungen_dublette++; continue }
+        }
 
         const parsed = await simpleParser(msg.source)
         const sender = env.from?.[0]?.address || ''
@@ -136,13 +139,16 @@ export default async function handler(req, res) {
         const body = (parsed.text || parsed.subject || '').replace(/\s+/g, ' ').trim().slice(0, 2500)
 
         const userPrompt = `Absender: ${env.from?.[0]?.name || ''} <${sender}>\nBetreff: ${betreff}\nDatum: ${datum}\n\nText:\n${body}\n\nMandantenliste:\n${clientListStr}`
-        let cl
+        let cl, clFehler = null
         try {
           const raw = await callClaude(SYSTEM_PROMPT, userPrompt)
           cl = JSON.parse(raw.replace(/```json?\s*/g, '').replace(/```/g, '').trim())
-        } catch {
+        } catch (e) {
+          clFehler = e.message
           cl = { spam: false, spam_sicher: false, client_id: null, client_name: null, summary: betreff, tags: [], intent: 'unknown', draft: {} }
         }
+        if (clFehler) { ergebnis.fallback++; if (!ergebnis.debug) ergebnis.debug = clFehler }
+        if (dry) { ergebnis.proben.push({ von: sender, betreff, clFehler, klass: cl }); continue }
 
         // Eindeutiger Spam -> nicht in die Inbox schreiben (Pilot: nur zählen)
         if (cl.spam && cl.spam_sicher) { ergebnis.spam++; continue }
