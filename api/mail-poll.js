@@ -21,7 +21,7 @@ const sb = createClient(SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { a
 
 // Modell bewusst als Konstante — kann später auf ein stärkeres gehoben werden.
 const CLAUDE_MODEL = process.env.MAIL_POLL_MODEL || 'claude-sonnet-4-6'
-const FEEDER_VERSION = 'v7-email16'
+const FEEDER_VERSION = 'v8-anhaenge'
 
 const IMAP_ACCOUNTS = {
   strato:    { host: process.env.IMAP_STRATO_HOST    || 'imap.strato.de',    port: 993, user: process.env.IMAP_STRATO_USER,    pass: process.env.IMAP_STRATO_PASS },
@@ -179,6 +179,10 @@ export default async function handler(req, res) {
         const betreff = env.subject || '(kein Betreff)'
         const datum = env.date?.toISOString() || new Date().toISOString()
         const body = (parsed.text || parsed.subject || '').replace(/\s+/g, ' ').trim().slice(0, 2500)
+        // Echte Dokument-Anhänge (keine Inline-Signaturbildchen): Name/Größe für die Anzeige + spätere Übergabe.
+        const anhaenge = (parsed.attachments || [])
+          .filter(a => a.filename && !a.related && (a.size || 0) > 8000)
+          .map(a => ({ filename: a.filename, size: a.size || 0, contentType: a.contentType || '' }))
 
         const userPrompt = `Absender: ${env.from?.[0]?.name || ''} <${sender}>\nBetreff: ${betreff}\nDatum: ${datum}\n\nText:\n${body}\n\nMandantenliste:\n${clientListStr}`
         let cl, clFehler = null
@@ -226,6 +230,8 @@ export default async function handler(req, res) {
             subject: betreff,
             date: datum.slice(0, 10),
             account,
+            uid,
+            anhaenge,
             moeglicherSpam: !!(cl.spam && !cl.spam_sicher),
           },
         }

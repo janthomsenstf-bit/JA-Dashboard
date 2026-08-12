@@ -82,6 +82,17 @@ function EmailContent({ item, expanded }) {
       <div style={{ marginTop: '10px', padding: '10px 12px', borderRadius: '8px', background: 'rgba(37,99,235,0.05)', borderLeft: '3px solid var(--accent)', fontSize: '13px', lineHeight: 1.5, color: 'var(--text)' }}>
         {e.summary || '—'}
       </div>
+      {/* Anhänge */}
+      {Array.isArray(e.anhaenge) && e.anhaenge.length > 0 && (
+        <div style={{ marginTop: '8px', display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+          {e.anhaenge.map((a, i) => (
+            <span key={i} style={{ fontSize: '11.5px', padding: '3px 9px', borderRadius: '8px', background: 'var(--surface2)', border: '1px solid var(--border)', color: 'var(--text)' }}
+              title={a.contentType}>
+              📎 {a.filename}{a.size ? ` (${a.size < 1048576 ? (a.size / 1024).toFixed(0) + ' KB' : (a.size / 1048576).toFixed(1) + ' MB'})` : ''}
+            </span>
+          ))}
+        </div>
+      )}
       {/* Original ein-/ausklappen */}
       <button onClick={() => setShowOrig(o => !o)} style={{ marginTop: '8px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '11.5px', padding: 0 }}>
         {showOrig ? '▲ Original ausblenden' : '▼ Original anzeigen'}
