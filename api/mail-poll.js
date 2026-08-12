@@ -21,7 +21,7 @@ const sb = createClient(SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { a
 
 // Modell bewusst als Konstante — kann später auf ein stärkeres gehoben werden.
 const CLAUDE_MODEL = process.env.MAIL_POLL_MODEL || 'claude-sonnet-5'
-const FEEDER_VERSION = 'v2-namematch'
+const FEEDER_VERSION = 'v3-robust'
 
 const IMAP_ACCOUNTS = {
   strato:    { host: process.env.IMAP_STRATO_HOST    || 'imap.strato.de',    port: 993, user: process.env.IMAP_STRATO_USER,    pass: process.env.IMAP_STRATO_PASS },
@@ -63,7 +63,7 @@ async function callClaude(system, user) {
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-    body: JSON.stringify({ model: CLAUDE_MODEL, max_tokens: 3000, system, messages: [{ role: 'user', content: user }] }),
+    body: JSON.stringify({ model: CLAUDE_MODEL, max_tokens: 4000, system, messages: [{ role: 'user', content: user }] }),
   })
   const data = await res.json()
   if (!res.ok) throw new Error(data.error?.message || `Claude API ${res.status}`)
@@ -154,8 +154,18 @@ export default async function handler(req, res) {
         const userPrompt = `Absender: ${env.from?.[0]?.name || ''} <${sender}>\nBetreff: ${betreff}\nDatum: ${datum}\n\nText:\n${body}\n\nMandantenliste:\n${clientListStr}`
         let cl, clFehler = null
         try {
-          const raw = await callClaude(SYSTEM_PROMPT, userPrompt)
-          cl = JSON.parse(raw.replace(/```json?\s*/g, '').replace(/```/g, '').trim())
+          let raw = await callClaude(SYSTEM_PROMPT, userPrompt)
+          const rawLen = (raw || '').length
+          const a = raw.indexOf('{'), b = raw.lastIndexOf('}')
+          if (a < 0 || b <= a) throw new Error(`keine JSON-Klammern (rawLen=${rawLen})`)
+          try {
+            cl = JSON.parse(raw.slice(a, b + 1))
+          } catch (pe) {
+            // Zweiter Versuch: einmal neu anfragen (transiente leere/abgeschnittene Antwort)
+            raw = await callClaude(SYSTEM_PROMPT, userPrompt)
+            const a2 = raw.indexOf('{'), b2 = raw.lastIndexOf('}')
+            cl = JSON.parse(raw.slice(a2, b2 + 1))
+          }
         } catch (e) {
           clFehler = e.message
           cl = { spam: false, spam_sicher: false, client_id: null, client_name: null, summary: betreff, tags: [], intent: 'unknown', draft: {} }
