@@ -56,7 +56,7 @@ function draftPreview(intent, draft) {
 }
 
 // ── E-Mail-Inhalt (Zusammenfassung oben, Original ausklappbar) ────────────────────
-function EmailContent({ item, expanded, onedriveTokens, onTokenRefresh }) {
+function EmailContent({ item, expanded, onedriveTokens, onTokenRefresh, onSpam }) {
   const e = item.draft?._email || {}
   const [showOrig, setShowOrig] = useState(false)
   const [upStatus, setUpStatus] = useState(null)   // null | 'laeuft' | { ok, msg }
@@ -128,10 +128,18 @@ function EmailContent({ item, expanded, onedriveTokens, onTokenRefresh }) {
           </div>
         </div>
       )}
-      {/* Original ein-/ausklappen */}
-      <button onClick={() => setShowOrig(o => !o)} style={{ marginTop: '8px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '11.5px', padding: 0 }}>
-        {showOrig ? '▲ Original ausblenden' : '▼ Original anzeigen'}
-      </button>
+      {/* Original ein-/ausklappen + Als Spam */}
+      <div style={{ display: 'flex', gap: '16px', alignItems: 'center', marginTop: '8px' }}>
+        <button onClick={() => setShowOrig(o => !o)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '11.5px', padding: 0 }}>
+          {showOrig ? '▲ Original ausblenden' : '▼ Original anzeigen'}
+        </button>
+        {onSpam && e.from && (
+          <button onClick={() => onSpam(item, e.from)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '11.5px', padding: 0 }}
+            title={`Alles von ${e.from} künftig automatisch als Spam aussortieren`}>
+            🚫 Als Spam
+          </button>
+        )}
+      </div>
       {showOrig && (
         <div style={{ marginTop: '6px', fontSize: '12px', color: 'var(--text-muted)', whiteSpace: 'pre-wrap', maxHeight: '240px', overflowY: 'auto', padding: '8px 12px', borderRadius: '8px', background: 'rgba(0,0,0,0.03)', border: '1px solid var(--border)' }}>
           {item.raw_text}
@@ -730,6 +738,13 @@ export default function BotInbox({ clients, onUpdateClient, onNavigateToClient, 
     showToast('📦 Archiviert')
   }
 
+  // ── Als Spam lernen (Absender künftig automatisch aussortieren) + archivieren ──
+  async function markiereAlsSpam(item, sender) {
+    try { await fetch(`/api/mail-poll?spamadd=${encodeURIComponent(sender)}`) } catch {}
+    await handleArchive(item)
+    showToast(`🚫 „${sender}" wird künftig als Spam aussortiert`)
+  }
+
   // ── Render ─────────────────────────────────
   return (
     <div style={{ padding: '24px', maxWidth: '960px', margin: '0 auto' }}>
@@ -896,7 +911,7 @@ export default function BotInbox({ clients, onUpdateClient, onNavigateToClient, 
 
             {/* Inhalt: E-Mail-Ansicht (Zusammenfassung/Original) oder Telegram-Rohtext */}
             {item.draft?._email ? (
-              <EmailContent item={item} expanded={isExpanded} onedriveTokens={onedriveTokens} onTokenRefresh={onTokenRefresh} />
+              <EmailContent item={item} expanded={isExpanded} onedriveTokens={onedriveTokens} onTokenRefresh={onTokenRefresh} onSpam={markiereAlsSpam} />
             ) : (
               <div style={{ padding: '12px 18px', borderBottom: isExpanded ? '1px solid var(--border)' : 'none' }}>
                 <div style={{

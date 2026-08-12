@@ -21,7 +21,7 @@ const sb = createClient(SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { a
 
 // Modell bewusst als Konstante — kann später auf ein stärkeres gehoben werden.
 const CLAUDE_MODEL = process.env.MAIL_POLL_MODEL || 'claude-sonnet-4-6'
-const FEEDER_VERSION = 'v8-anhaenge'
+const FEEDER_VERSION = 'v9-spam'
 
 const IMAP_ACCOUNTS = {
   strato:    { host: process.env.IMAP_STRATO_HOST    || 'imap.strato.de',    port: 993, user: process.env.IMAP_STRATO_USER,    pass: process.env.IMAP_STRATO_PASS },
@@ -41,6 +41,14 @@ async function loadClients() {
     mandantennummer: c.mandantennummer || '',
     emails: (c.kontakte ?? []).map(k => k.email).filter(Boolean),
   }))
+}
+
+// Gelernte Spam-Liste (Absender + Domains) aus user_data 'mail-spam-v1'.
+async function loadSpamList() {
+  const { data } = await sb.from('user_data').select('value').eq('key', 'mail-spam-v1').limit(1).single()
+  const v = data?.value
+  const arr = Array.isArray(v) ? v : (Array.isArray(v?.eintraege) ? v.eintraege : [])
+  return new Set(arr.map(x => String(x).toLowerCase().trim()).filter(Boolean))
 }
 
 // Deterministischer Treffer über die exakte Absender-Adresse (harter Anker).
@@ -137,6 +145,21 @@ export default async function handler(req, res) {
     return res.status(200).json({ reset: 'email', geloescht: count ?? null, error: error?.message || null })
   }
 
+  // Spam lernen: Absender/Domain zur Spam-Liste (user_data 'mail-spam-v1') hinzufügen.
+  if (req.query.spamadd) {
+    const addr = String(req.query.spamadd).toLowerCase().trim()
+    if (!addr) return res.status(400).json({ error: 'spamadd leer' })
+    const { data: cur } = await sb.from('user_data').select('value').eq('key', 'mail-spam-v1').limit(1).single()
+    const liste = Array.isArray(cur?.value) ? cur.value.slice() : []
+    if (!liste.map(x => String(x).toLowerCase()).includes(addr)) liste.push(addr)
+    // user_id von der bestehenden Mandanten-Zeile übernehmen (Single-User-Setup)
+    const { data: base } = await sb.from('user_data').select('user_id').eq('key', 'spielbuch-data-v2').limit(1).single()
+    const userId = base?.user_id
+    if (!userId) return res.status(500).json({ error: 'user_id nicht ermittelbar' })
+    const { error } = await sb.from('user_data').upsert({ user_id: userId, key: 'mail-spam-v1', value: liste }, { onConflict: 'user_id,key' })
+    return res.status(200).json({ spamadd: addr, anzahl: liste.length, error: error?.message || null })
+  }
+
   const account = req.query.account || 'strato'
   const days    = parseInt(req.query.days  || '5')
   const limit   = parseInt(req.query.limit || '15')
@@ -147,6 +170,7 @@ export default async function handler(req, res) {
   if (!cfg.user || !cfg.pass) return res.status(500).json({ error: `IMAP-Zugangsdaten für ${account} fehlen (Vercel Env)` })
 
   const clients = await loadClients()
+  const spamSet = await loadSpamList()
   const clientListStr = clients.length
     ? clients.map(c => `- ${c.name} (ID: ${c.id}, Nr: ${c.mandantennummer}${c.emails.length ? ', Mails: ' + c.emails.join(';') : ''})`).join('\n')
     : '(keine Mandanten)'
@@ -173,6 +197,11 @@ export default async function handler(req, res) {
           const { data: exists } = await sb.from('bot_inbox').select('id').eq('telegram_message_id', dedupeKey).limit(1)
           if (exists && exists.length) { ergebnis.uebersprungen_dublette++; continue }
         }
+
+        // Gelernter Spam: bekannter Absender/Domain → überspringen (spart auch KI-Tokens)
+        const sender0 = (env.from?.[0]?.address || '').toLowerCase()
+        const dom0 = sender0.split('@')[1] || ''
+        if (spamSet.has(sender0) || (dom0 && spamSet.has(dom0))) { ergebnis.spam++; continue }
 
         const parsed = await simpleParser(msg.source)
         const sender = env.from?.[0]?.address || ''
