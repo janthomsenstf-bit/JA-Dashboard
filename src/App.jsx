@@ -7,6 +7,7 @@ import AlertBanner from './components/AlertBanner.jsx'
 import ClientTable from './components/ClientTable.jsx'
 import DetailView, { TAB } from './components/detail/DetailView.jsx'
 import NewClientModal from './components/NewClientModal.jsx'
+import StotaxImportModal from './components/StotaxImportModal.jsx'
 import ArchiveModal from './components/ArchiveModal.jsx'
 import ChecklistenEditor from './components/ChecklistenEditor.jsx'
 import KalenderSection from './components/KalenderSection.jsx'
@@ -257,6 +258,17 @@ function migrateClient(c) {
     ibans:                       Array.isArray(c.ibans)             ? c.ibans             : [],
     anschriften:                 Array.isArray(c.anschriften)       ? c.anschriften       : [],
     typischeAbsender:            Array.isArray(c.typischeAbsender)  ? c.typischeAbsender  : [],
+    // Stotax-Stammdaten (additiv – Import-Abgleich)
+    finanzamt:                   c.finanzamt                     ?? '',
+    steuerIdNr:                  c.steuerIdNr                    ?? '',
+    land:                        c.land                          ?? '',
+    laenderkuerzel:              c.laenderkuerzel                ?? '',
+    gemeinde:                    c.gemeinde                      ?? '',
+    bundeslandFa:                c.bundeslandFa                  ?? '',
+    telefon:                     c.telefon                       ?? '',
+    mobil:                       c.mobil                         ?? '',
+    bank:                        c.bank                          ?? '',
+    hauptverantwMitarbeiter:     c.hauptverantwMitarbeiter       ?? '',
     gesellschafter:              Array.isArray(c.gesellschafter)  ? c.gesellschafter : [],
     geschaeftsfuehrer:           Array.isArray(c.geschaeftsfuehrer) ? c.geschaeftsfuehrer : [],
   }
@@ -350,6 +362,7 @@ export default function App() {
   const [sortCol, setSortCol]             = useState('mandantennummer')
   const [sortDir, setSortDir]             = useState('asc')
   const [showNewModal, setShowNewModal]   = useState(false)
+  const [showStotaxImport, setShowStotaxImport] = useState(false)
   const [archiveTarget, setArchiveTarget] = useState(null)
   const [importMsg, setImportMsg]         = useState('')
   const [sidebarOpen, setSidebarOpen]     = useState(true)
@@ -1396,6 +1409,15 @@ export default function App() {
             ⌘K
           </button>
 
+          {/* Stotax-Stammdaten-Import */}
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={() => setShowStotaxImport(true)}
+            title="Stotax-Stammdaten importieren / abgleichen"
+          >
+            📥 Stotax
+          </button>
+
           {/* Primäre Aktion */}
           <button className="btn btn-primary btn-sm" onClick={() => setShowNewModal(true)}>
             + Neuer Fall
@@ -1953,6 +1975,9 @@ export default function App() {
 
       {showNewModal && (
         <NewClientModal onClose={() => setShowNewModal(false)} onSubmit={addClient} />
+      )}
+      {showStotaxImport && (
+        <StotaxImportModal clients={clients} onClose={() => setShowStotaxImport(false)} />
       )}
       {archiveTarget && (
         <ArchiveModal
