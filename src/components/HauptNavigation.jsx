@@ -11,7 +11,6 @@
 
 export const HAUPTBEREICHE = [
   { key: 'agent',        label: 'Co-Trainer',    icon: '🧭', farbe: '#0d9488', beschreibung: 'Dein sprechender Assistent – frag das Spielbuch per Text oder Sprache und lege eigene Skills an.' },
-  { key: 'homepages',    label: 'Homepages',     icon: '🌐', farbe: '#3b82f6', beschreibung: 'Websites, Inhalte und Anfragen aus dem Netz.' },
   { key: 'kommunikation',label: 'Kommunikation', icon: '✉️', farbe: '#16a34a', beschreibung: 'E-Mails, Vorlagen und der gesamte Schriftverkehr.' },
   { key: 'personen',     label: 'Personen',      icon: '👥', farbe: '#0891b2', beschreibung: 'Mandanten, Ansprechpartner und Kontakte.' },
   { key: 'easyb2b',      label: 'Easy-B2B',      icon: '🤝', farbe: '#f97316', beschreibung: 'Marktplatz, Suchanzeigen und Partnervermittlung.' },
@@ -20,8 +19,6 @@ export const HAUPTBEREICHE = [
   { key: 'prozesse',     label: 'Prozesse',      icon: '⚙️', farbe: '#0f766e', beschreibung: 'Abläufe, Checklisten und wiederkehrende Aufgaben.' },
   { key: 'checklisten',  label: 'Checklisten',   icon: '✅', farbe: '#059669', beschreibung: 'Jahresabschluss-Checklisten – Übersicht, Bearbeitung und Mandanten-Zuordnung.' },
   { key: 'dokumente',    label: 'Dokumente',     icon: '📁', farbe: '#dc2626', beschreibung: 'Dateien, Ablage und Vorlagen.' },
-  { key: 'lernplattform',label: 'Lernplattform', icon: '🎓', farbe: '#ca8a04', beschreibung: 'Wissen, Schulungen und Nachschlagewerke.' },
-  { key: 'intern',       label: 'Intern',        icon: '🔒', farbe: '#64748b', beschreibung: 'Einstellungen, Verwaltung und interne Notizen.' },
 ]
 
 export function bereichCfg(key) {

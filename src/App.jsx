@@ -33,12 +33,10 @@ import BereichPlatzhalter from './components/BereichPlatzhalter.jsx'
 import PersonenBereich from './components/PersonenBereich.jsx'
 import KommunikationBereich from './components/KommunikationBereich.jsx'
 import DokumenteBereich from './components/DokumenteBereich.jsx'
-import HomepagesBereich from './components/HomepagesBereich.jsx'
 import UebersichtenBereich from './components/UebersichtenBereich.jsx'
 import ProzesseBereich from './components/ProzesseBereich.jsx'
 import ChecklistenBereich from './components/ChecklistenBereich.jsx'
 import { loadChecklistenUebersicht } from './utils/checklistenUebersichtStorage.js'
-import InternBereich from './components/InternBereich.jsx'
 import AgentBereich from './components/agent/AgentBereich.jsx'
 import { loadSkills, mergeWithDefaults } from './utils/skillsStorage.js'
 // Easy-B2B ist ein eigenständiges Modul mit rund 9.400 Zeilen. Es wird erst
@@ -1660,7 +1658,7 @@ export default function App() {
         const klientOffen = hauptbereich === 'personen' && !!selectedId && clients.some(c => c.id === selectedId)
         const zeigeUebersicht = hauptbereich === 'personen' && !klientOffen
         const zeigeArbeitsbereich = klientOffen
-        const eigeneBereiche = ['agent', 'personen', 'kommunikation', 'dokumente', 'homepages', 'uebersichten', 'prozesse', 'checklisten', 'intern', 'easyb2b', 'ustreg']
+        const eigeneBereiche = ['agent', 'personen', 'kommunikation', 'dokumente', 'uebersichten', 'prozesse', 'checklisten', 'easyb2b', 'ustreg']
         const zeigePlatzhalter = !eigeneBereiche.includes(hauptbereich)
         const offenerKlient = klientOffen ? clients.find(c => c.id === selectedId) : null
 
@@ -1705,9 +1703,6 @@ export default function App() {
                 }}
               />
             )}
-
-            {/* Bereich „Intern" – Innovations- und Agentenzentrale (rein lesend) */}
-            {hauptbereich === 'intern' && <InternBereich />}
 
             {/* Bereich „Co-Trainer" – Agenten-Startseite (rein lesend + Mail-Entwurf) */}
             {hauptbereich === 'agent' && (
@@ -1788,15 +1783,6 @@ export default function App() {
                 slotAufgaben={aufgabenEl}
                 slotKalender={kalenderEl}
                 slotHonorare={honorareEl}
-              />
-            )}
-
-            {/* Bereich „Homepages" – liest Website-Anfragen, ändert nichts */}
-            {hauptbereich === 'homepages' && (
-              <HomepagesBereich
-                onOeffneAnfragen={() => {
-                  wechselBereich('kommunikation')
-                }}
               />
             )}
 
