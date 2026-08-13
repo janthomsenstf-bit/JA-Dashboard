@@ -4,6 +4,9 @@ import EmailSignaturenModal from '../EmailSignaturenModal.jsx'
 import { sendMailGraph, openAuthPopup, callApi, getMandantPath } from '../../utils/onedriveClient.js'
 import OneDriveFolderPickerModal from '../shared/OneDriveFolderPickerModal.jsx'
 import { callAI, hasAiKey } from '../../utils/aiClient.js'
+import AuftragZuordnenDialog from './AuftragZuordnenDialog.jsx'
+import { mkAuftrag } from './AuftraegeTab.jsx'
+import { mkVerknuepfung, verknuepfungAnhaengen } from '../../utils/verknuepfung.js'
 
 // ── Signatur-Helfer ───────────────────────────────────────────────────────────
 const SIG_SEP = '\n\n--\n'
@@ -410,6 +413,7 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
   const [detailEntry, setDetailEntry] = useState(null)   // E-Mail-Panel
   const [actionForm,  setActionForm]  = useState(null)   // 'aufgabe'|'erinnerung'|null
   const [showAbsenderModal, setShowAbsenderModal] = useState(false)
+  const [mailZuordnenEntry, setMailZuordnenEntry] = useState(null)  // Mail, die per Dialog an einen Auftrag gehaengt wird
 
   // Inhalt-Loading State (keyed by event.id)
   const [contentLoading, setContentLoading] = useState({})
@@ -489,6 +493,39 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
 
   function saveKomm(patch) {
     onUpdate({ kommunikation: { ...komm, ...patch } })
+  }
+
+  // Mail einem Auftrag zuordnen (einheitlicher Dialog: bestehend/neu + optionale eigene Frist).
+  // Schreibt additiv: verknuepfung (art 'mail') am Auftrag UND event.auftragId auf der Mail – in EINEM Patch.
+  function handleMailZuordnen({ zielId, neuTyp, neuBez, neuJahr, frist }) {
+    const mail = mailZuordnenEntry
+    if (!mail) return
+    const eintrag = mkVerknuepfung({
+      art:      'mail',
+      eventId:  mail.id,
+      betreff:  mail.betreff ?? '',
+      absender: mail.absender ?? '',
+      datum:    mail.erstelltAm ?? mail.gesendetAm ?? null,
+      frist:    frist || '',
+    })
+    const { auftraege, auftragId } = verknuepfungAnhaengen({
+      auftraege: client.auftraege,
+      zielId,
+      macheNeu: () => {
+        const a = mkAuftrag(neuTyp)
+        a.bezeichnung = neuBez || mail.betreff || 'Neuer Auftrag'
+        a.jahr = neuJahr
+        if (frist) a.frist = frist
+        return a
+      },
+      eintrag,
+    })
+    if (auftragId) {
+      const updatedEvents = events.map(e => e.id === mail.id ? { ...e, auftragId } : e)
+      onUpdate({ auftraege, kommunikation: { ...komm, events: updatedEvents } })
+      showToast('✓ E-Mail einem Auftrag zugeordnet')
+    }
+    setMailZuordnenEntry(null)
   }
 
   // Signatur in Text anwenden
@@ -1893,6 +1930,18 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
         />
       )}
 
+      {/* Mail → Auftrag zuordnen (einheitlicher Dialog) */}
+      {mailZuordnenEntry && (
+        <AuftragZuordnenDialog
+          auftraege={client.auftraege ?? []}
+          quelleLabel={`📧 E-Mail von ${mailZuordnenEntry.absender ?? '–'}${mailZuordnenEntry.betreff ? ` — ${mailZuordnenEntry.betreff}` : ''}`}
+          neuBezDefault={mailZuordnenEntry.betreff ?? ''}
+          mitFrist
+          onConfirm={handleMailZuordnen}
+          onCancel={() => setMailZuordnenEntry(null)}
+        />
+      )}
+
       {/* ── Posteingang abrufen ── */}
       <div style={{ marginBottom: '20px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
@@ -3279,6 +3328,14 @@ function EmailDetailPanel({
                     </div>
                   )
                 })()}
+
+                {/* Einheitlicher Zuordnungs-Dialog: immer verfügbar (auch ohne bestehende Aufträge) */}
+                <button onClick={() => setMailZuordnenEntry(entry)}
+                  style={{ width: '100%', fontSize: '11px', padding: '6px 8px', borderRadius: '7px',
+                           border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', cursor: 'pointer', fontWeight: 600 }}
+                  title="Einheitlicher Zuordnungs-Dialog: bestehenden Auftrag wählen oder neuen anlegen, optional mit eigener Frist">
+                  📋 Einem Auftrag zuordnen…
+                </button>
 
                 <div style={{ borderTop: '1px solid var(--border)', margin: '6px 0' }} />
 
