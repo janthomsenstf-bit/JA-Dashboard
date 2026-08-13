@@ -1222,15 +1222,16 @@ export default function BotInbox({ clients, onUpdateClient, onNavigateToClient, 
                   </div>
                 )}
 
-                {/* Wenn noch keine Aktion gewählt: Schnell-Archivieren */}
-                {!hasClient && (
+                {/* Ohne laufende Aktion: direkt als erledigt markieren (nach „Verarbeitet") */}
+                {!currentAction && (
                   <div style={{ display: 'flex', gap: '8px' }}>
-                    <button onClick={() => handleArchive(item)} style={{
-                      padding: '7px 14px', borderRadius: '8px', border: '1px solid var(--border)',
-                      background: 'transparent', cursor: 'pointer',
-                      color: 'var(--text-muted)', fontSize: '12px',
+                    <button onClick={() => handleArchive(item)}
+                      title="Als erledigt markieren – verschiebt den Eintrag nach Verarbeitet" style={{
+                      padding: '7px 14px', borderRadius: '8px', border: '1px solid rgba(22,163,74,0.3)',
+                      background: 'rgba(22,163,74,0.08)', cursor: 'pointer',
+                      color: '#16a34a', fontWeight: 600, fontSize: '12px',
                     }}>
-                      📦 Ignorieren / Archivieren
+                      ✓ Als erledigt markieren
                     </button>
                   </div>
                 )}
@@ -1249,12 +1250,13 @@ export default function BotInbox({ clients, onUpdateClient, onNavigateToClient, 
                 }}>
                   Bearbeiten →
                 </button>
-                <button onClick={() => handleArchive(item)} style={{
-                  padding: '6px 14px', borderRadius: '8px', border: '1px solid var(--border)',
-                  background: 'transparent', cursor: 'pointer',
-                  color: 'var(--text-muted)', fontSize: '11px',
+                <button onClick={() => handleArchive(item)}
+                  title="Als erledigt markieren – verschiebt den Eintrag nach Verarbeitet" style={{
+                  padding: '6px 14px', borderRadius: '8px', border: '1px solid rgba(22,163,74,0.3)',
+                  background: 'rgba(22,163,74,0.08)', cursor: 'pointer',
+                  color: '#16a34a', fontWeight: 600, fontSize: '12px',
                 }}>
-                  📦
+                  ✓ Erledigt
                 </button>
               </div>
             )}
