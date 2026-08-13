@@ -17,6 +17,7 @@ export const HAUPTBEREICHE = [
   { key: 'uebersichten', label: 'Übersichten',   icon: '📈', farbe: '#7c3aed', beschreibung: 'Auswertungen, Kennzahlen und Berichte.' },
   { key: 'prozesse',     label: 'Prozesse',      icon: '⚙️', farbe: '#0f766e', beschreibung: 'Abläufe, Checklisten und wiederkehrende Aufgaben.' },
   { key: 'checklisten',  label: 'Checklisten',   icon: '✅', farbe: '#059669', beschreibung: 'Jahresabschluss-Checklisten – Übersicht, Bearbeitung und Mandanten-Zuordnung.' },
+  { key: 'leistungspool',label: 'Leistungspool', icon: '🗂', farbe: '#9333ea', beschreibung: 'Katalog der Auftrags- und Leistungsarten – eigene anlegen, Vorschläge, Nutzungs-Überblick.' },
   { key: 'dokumente',    label: 'Dokumente',     icon: '📁', farbe: '#dc2626', beschreibung: 'Dateien, Ablage und Vorlagen.' },
 ]
 

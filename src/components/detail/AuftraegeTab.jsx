@@ -29,6 +29,25 @@ export const AUFTRAGS_TYP_CFG = {
   freitext:        { label: 'Eigener Auftrag',   icon: '📝', color: '#64748b', bg: 'rgba(100,116,139,0.08)', border: 'rgba(100,116,139,0.25)' },
 }
 
+// Merge aus eingebauten Auftragsarten + eigenem Leistungskatalog (Phase 4).
+// Eigene Typen tragen KEIN gruppe/WORKFLOW_CONFIGS → verhalten sich automatisch
+// wie 'freitext' (generisch, kein JA-/Lohn-/Etablering-Spezialworkflow).
+export function buildTypCfg(katalog = []) {
+  const custom = {}
+  for (const k of (katalog ?? [])) {
+    if (!k || !k.key || AUFTRAGS_TYP_CFG[k.key]) continue   // eingebaute nie ueberschreiben
+    custom[k.key] = {
+      label:  k.label  || k.key,
+      icon:   k.icon   || '📝',
+      color:  k.color  || '#64748b',
+      bg:     k.bg     || 'rgba(100,116,139,0.08)',
+      border: k.border || 'rgba(100,116,139,0.25)',
+      eigen:  true,
+    }
+  }
+  return { ...AUFTRAGS_TYP_CFG, ...custom }
+}
+
 export const AUFTRAGS_STATUS_CFG = {
   offen:          { label: 'Offen',          icon: '○', color: '#64748b', bg: 'rgba(100,116,139,0.08)', border: 'rgba(100,116,139,0.3)' },
   in_bearbeitung: { label: 'In Bearbeitung', icon: '◑', color: '#2563eb', bg: 'rgba(37,99,235,0.09)',  border: 'rgba(37,99,235,0.3)' },

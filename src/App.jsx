@@ -36,6 +36,7 @@ import DokumenteBereich from './components/DokumenteBereich.jsx'
 import UebersichtenBereich from './components/UebersichtenBereich.jsx'
 import ProzesseBereich from './components/ProzesseBereich.jsx'
 import ChecklistenBereich from './components/ChecklistenBereich.jsx'
+import LeistungspoolBereich from './components/LeistungspoolBereich.jsx'
 import { loadChecklistenUebersicht } from './utils/checklistenUebersichtStorage.js'
 import AgentBereich from './components/agent/AgentBereich.jsx'
 import { loadSkills, mergeWithDefaults } from './utils/skillsStorage.js'
@@ -417,6 +418,9 @@ export default function App() {
   const [emailVorlagen,   setEmailVorlagen]   = useState([])
   const [emailSignaturen, setEmailSignaturen] = useState([])
 
+  // ── Leistungskatalog (eigene Auftrags-/Leistungsarten, global) ───────────────
+  const [leistungskatalog, setLeistungskatalog] = useState([])
+
   // ── Formular-Templates ────────────────────────────────────────────────────────
   const [formVorlagen, setFormVorlagen] = useState([])
 
@@ -497,6 +501,7 @@ export default function App() {
         if (Array.isArray(cloudData['unbekannte-emails'])) setUnbekannteEmails(cloudData['unbekannte-emails'])
         if (Array.isArray(cloudData['email-vorlagen-v1']))    setEmailVorlagen(cloudData['email-vorlagen-v1'])
         if (Array.isArray(cloudData['email-signaturen-v1'])) setEmailSignaturen(cloudData['email-signaturen-v1'])
+        if (Array.isArray(cloudData['leistungskatalog-v1'])) setLeistungskatalog(cloudData['leistungskatalog-v1'])
         if (cloudData['onedrive-tokens-v1'])                 setOnedriveTokens(cloudData['onedrive-tokens-v1'])
         if (Array.isArray(cloudData['form-vorlagen-v1']))    setFormVorlagen(cloudData['form-vorlagen-v1'])
         if (cloudData['claude-api-key-v1']) {
@@ -616,6 +621,10 @@ export default function App() {
     if (!authUser || dataLoading) return
     cloudSave('email-signaturen-v1', emailSignaturen)
   }, [emailSignaturen])
+  useEffect(() => {
+    if (!authUser || dataLoading) return
+    cloudSave('leistungskatalog-v1', leistungskatalog)
+  }, [leistungskatalog])
   useEffect(() => {
     if (!authUser || dataLoading || !onedriveTokens) return
     cloudSaveNow('onedrive-tokens-v1', onedriveTokens).catch(() => {})
@@ -1645,7 +1654,7 @@ export default function App() {
         const klientOffen = hauptbereich === 'personen' && !!selectedId && clients.some(c => c.id === selectedId)
         const zeigeUebersicht = hauptbereich === 'personen' && !klientOffen
         const zeigeArbeitsbereich = klientOffen
-        const eigeneBereiche = ['agent', 'personen', 'kommunikation', 'dokumente', 'uebersichten', 'prozesse', 'checklisten', 'ustreg']
+        const eigeneBereiche = ['agent', 'personen', 'kommunikation', 'dokumente', 'uebersichten', 'prozesse', 'checklisten', 'leistungspool', 'ustreg']
         const zeigePlatzhalter = !eigeneBereiche.includes(hauptbereich)
         const offenerKlient = klientOffen ? clients.find(c => c.id === selectedId) : null
 
@@ -1736,6 +1745,15 @@ export default function App() {
                 clients={clients}
                 checklisten={checklisten}
                 onUpdate={setChecklisten}
+              />
+            )}
+
+            {/* Bereich „Leistungspool" – Katalog der Auftrags-/Leistungsarten (Phase 4) */}
+            {hauptbereich === 'leistungspool' && (
+              <LeistungspoolBereich
+                katalog={leistungskatalog}
+                onUpdate={setLeistungskatalog}
+                clients={clients}
               />
             )}
 
