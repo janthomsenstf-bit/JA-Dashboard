@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { supabase } from '../utils/supabaseClient.js'
 import { callApi } from '../utils/onedriveClient.js'
+import { mkAuftrag } from './detail/AuftraegeTab.jsx'
+import { mkVerknuepfung, verknuepfungAnhaengen } from '../utils/verknuepfung.js'
 
 // ── Konstanten ───────────────────────────────────────────────────────────────────
 const POLL_INTERVAL = 30_000
@@ -472,9 +474,31 @@ function ActionSelector({ selectedAction, onSelect }) {
 }
 
 // ── ActionForm: Aufgabe erstellen ────────────────────────────────────────────────
-function AufgabeForm({ draft, onChange }) {
+function AufgabeForm({ draft, onChange, auftraege = [] }) {
+  const offeneAuftraege = (auftraege ?? []).filter(a => a && a.status !== 'erledigt')
+  const anBestehenden = !!draft.zielAuftragId
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+      {/* Ziel: neuen Auftrag anlegen ODER an bestehenden haengen (einheitliche Logik) */}
+      {offeneAuftraege.length > 0 && (
+        <>
+          <label style={labelStyle}>Ziel</label>
+          <select className="input" value={draft.zielAuftragId || ''}
+            onChange={e => onChange({ ...draft, zielAuftragId: e.target.value || undefined })} style={inputStyle}>
+            <option value="">➕ Neuen Auftrag anlegen</option>
+            <optgroup label="An bestehenden Auftrag hängen">
+              {offeneAuftraege.map(a => (
+                <option key={a.id} value={a.id}>{(a.bezeichnung || a.typ) + (a.jahr ? ` (${a.jahr})` : '')}</option>
+              ))}
+            </optgroup>
+          </select>
+        </>
+      )}
+      {anBestehenden ? (
+        <div style={{ fontSize: '11px', color: 'var(--text-muted)', padding: '6px 8px', background: 'var(--bg)', borderRadius: '6px', border: '1px solid var(--border)' }}>
+          Wird als Verknüpfung an den gewählten Auftrag gehängt. Titel &amp; Notiz unten werden als Beschreibung übernommen.
+        </div>
+      ) : null}
       <label style={labelStyle}>Bezeichnung</label>
       <input className="input" value={draft.bezeichnung || ''} onChange={e => onChange({ ...draft, bezeichnung: e.target.value })}
         placeholder="z.B. Jahresabschluss 2025 erstellen" style={inputStyle} />
@@ -686,23 +710,38 @@ export default function BotInbox({ clients, onUpdateClient, onNavigateToClient, 
     try {
       switch (action) {
         case 'aufgabe': {
-          const newAuftrag = {
-            id: 'a' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
-            typ: draft.typ || 'freitext',
-            bezeichnung: draft.bezeichnung || 'Neuer Auftrag (Bot)',
-            jahr: draft.jahr || null,
-            monat: draft.monat || null,
-            frist: draft.frist || null,
-            status: 'offen',
-            istSerie: false,
-            notiz: draft.notiz || '',
-            hinweise: [],
-            erstelltAm: new Date().toISOString(),
+          const auftraege0 = client.auftraege ?? []
+          if (draft.zielAuftragId) {
+            // An bestehenden Auftrag hängen (einheitliche Verknüpfungs-Logik)
+            const eintrag = mkVerknuepfung({
+              art:     'notiz',
+              name:    draft.bezeichnung || item.betreff || 'Bot-Eintrag',
+              betreff: draft.bezeichnung || '',
+              text:    draft.notiz || item.raw_text || '',
+              datum:   new Date().toISOString(),
+              frist:   draft.frist || '',
+            })
+            const { auftraege, auftragId } = verknuepfungAnhaengen({
+              auftraege: auftraege0, zielId: draft.zielAuftragId,
+              macheNeu: () => mkAuftrag('freitext'), eintrag,
+            })
+            if (auftragId) {
+              onUpdateClient(clientId, { auftraege })
+              showToast('✓ An bestehenden Auftrag gehängt')
+            } else {
+              showToast('Auftrag nicht gefunden')
+            }
+          } else {
+            // Neuen Auftrag anlegen – über dieselbe Factory wie überall (inkl. verknuepfungen-Feld)
+            const newAuftrag = mkAuftrag(draft.typ || 'freitext')
+            newAuftrag.bezeichnung = draft.bezeichnung || 'Neuer Auftrag (Bot)'
+            if (draft.jahr) newAuftrag.jahr = draft.jahr
+            newAuftrag.monat = draft.monat || null
+            newAuftrag.frist = draft.frist || ''
+            newAuftrag.notiz = draft.notiz || ''
+            onUpdateClient(clientId, { auftraege: [...auftraege0, newAuftrag] })
+            showToast(`✓ Aufgabe "${draft.bezeichnung || 'Neuer Auftrag'}" erstellt`)
           }
-          onUpdateClient(clientId, {
-            auftraege: [...(client.auftraege ?? []), newAuftrag],
-          })
-          showToast(`✓ Aufgabe "${draft.bezeichnung || 'Neuer Auftrag'}" erstellt`)
           break
         }
         case 'notiz': {
@@ -1124,7 +1163,8 @@ export default function BotInbox({ clients, onUpdateClient, onNavigateToClient, 
                       ③ Details bearbeiten
                     </div>
                     {currentAction === 'aufgabe' && (
-                      <AufgabeForm draft={currentDraft} onChange={d => setActionDrafts(prev => ({ ...prev, [item.id]: d }))} />
+                      <AufgabeForm draft={currentDraft} onChange={d => setActionDrafts(prev => ({ ...prev, [item.id]: d }))}
+                        auftraege={clients.find(c => c.id === (assignedClients[item.id] || item.client_id))?.auftraege ?? []} />
                     )}
                     {currentAction === 'notiz' && (
                       <NotizForm draft={currentDraft} onChange={d => setActionDrafts(prev => ({ ...prev, [item.id]: d }))} />
