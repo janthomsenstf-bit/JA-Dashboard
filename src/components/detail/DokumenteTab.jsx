@@ -1,6 +1,9 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import { openAuthPopup, callApi, getMandantPath, fmtFileSize } from '../../utils/onedriveClient.js'
 import OneDriveFolderPickerModal from '../shared/OneDriveFolderPickerModal.jsx'
+import AuftragZuordnenDialog from './AuftragZuordnenDialog.jsx'
+import { mkAuftrag } from './AuftraegeTab.jsx'
+import { mkVerknuepfung, verknuepfungAnhaengen } from '../../utils/verknuepfung.js'
 
 function fmtDatum(iso) {
   if (!iso) return '–'
@@ -272,6 +275,9 @@ export function OneDriveSection({ client, tokens, onUpdateTokens, onSendAsAttach
   const [renamingId, setRenamingId]         = useState(null)
   const [renameValue, setRenameValue]       = useState('')
   const [renameLoading, setRenameLoading]   = useState(false)
+  // Beleg → Auftrag verknuepfen (einheitlicher Dialog)
+  const [zuordnenItem, setZuordnenItem]     = useState(null)   // die Datei, die zugeordnet wird
+  const [zuordnenMsg, setZuordnenMsg]       = useState('')
 
   // Pfad-Einstellungen
   const [showPathSettings, setShowPathSettings]   = useState(false)
@@ -299,6 +305,37 @@ export function OneDriveSection({ client, tokens, onUpdateTokens, onSendAsAttach
       setItems(null)
     }
   }, [folderPath, folderName])
+
+  // Beleg einem Auftrag zuordnen (bestehend oder neu) – schreibt additiv in auftrag.verknuepfungen
+  function handleZuordnenConfirm({ zielId, neuTyp, neuBez, neuJahr, frist }) {
+    if (!zuordnenItem) return
+    const docPath = `${currentPath}/${zuordnenItem.name}`
+    const eintrag = mkVerknuepfung({
+      art:   'beleg',
+      name:  zuordnenItem.name,
+      docPath,
+      datum: zuordnenItem.lastModifiedDateTime ?? null,
+      frist: frist || '',
+    })
+    const { auftraege, auftragId } = verknuepfungAnhaengen({
+      auftraege: client.auftraege,
+      zielId,
+      macheNeu: () => {
+        const a = mkAuftrag(neuTyp)
+        a.bezeichnung = neuBez || zuordnenItem.name
+        a.jahr = neuJahr
+        if (frist) a.frist = frist
+        return a
+      },
+      eintrag,
+    })
+    if (auftragId) {
+      onUpdate?.({ auftraege })
+      setZuordnenMsg(`✓ „${zuordnenItem.name}" einem Auftrag zugeordnet`)
+      setTimeout(() => setZuordnenMsg(''), 4000)
+    }
+    setZuordnenItem(null)
+  }
 
   // Neuer Ordner
   const [creatingFolder, setCreatingFolder]           = useState(false)
@@ -881,7 +918,7 @@ export function OneDriveSection({ client, tokens, onUpdateTokens, onSendAsAttach
               <div
                 key={item.id}
                 style={{
-                  display: 'grid', gridTemplateColumns: '22px 22px 28px 1fr 60px 100px 80px 128px',
+                  display: 'grid', gridTemplateColumns: '22px 22px 28px 1fr 60px 100px 80px 156px',
                   gap: '6px', padding: '6px 8px', alignItems: 'center',
                   background: isSelected ? 'rgba(8,145,178,0.07)' : 'var(--surface)',
                   border: `1px solid ${isSelected ? 'rgba(8,145,178,0.4)' : 'var(--border)'}`,
@@ -971,6 +1008,7 @@ export function OneDriveSection({ client, tokens, onUpdateTokens, onSendAsAttach
                     <>
                       <button className="btn btn-ghost btn-sm" onClick={() => handlePreview(item)} title="Vorschau" style={{ fontSize: '10px', padding: '2px 5px' }}>👁</button>
                       <button className="btn btn-ghost btn-sm" onClick={() => handleDownload(item)} title="Herunterladen" style={{ fontSize: '10px', padding: '2px 5px' }}>⬇️</button>
+                      <button className="btn btn-ghost btn-sm" onClick={() => setZuordnenItem(item)} title="Einem Auftrag zuordnen" style={{ fontSize: '10px', padding: '2px 5px' }}>📋</button>
                     </>
                   )}
                   {/* Umbenennen – für Dateien und Ordner */}
@@ -1023,6 +1061,24 @@ export function OneDriveSection({ client, tokens, onUpdateTokens, onSendAsAttach
           error={previewError}
           onClose={closePreview}
         />
+      )}
+
+      {/* ── Beleg → Auftrag zuordnen (einheitlicher Dialog) ── */}
+      {zuordnenItem && (
+        <AuftragZuordnenDialog
+          auftraege={client.auftraege ?? []}
+          quelleLabel={`📄 Beleg: ${zuordnenItem.name}`}
+          neuBezDefault={zuordnenItem.name}
+          onConfirm={handleZuordnenConfirm}
+          onCancel={() => setZuordnenItem(null)}
+        />
+      )}
+      {zuordnenMsg && (
+        <div style={{ position: 'fixed', bottom: '24px', left: '50%', transform: 'translateX(-50%)',
+                      background: '#16a34a', color: '#fff', padding: '8px 16px', borderRadius: '10px',
+                      fontSize: '12px', fontWeight: 600, zIndex: 1100, boxShadow: '0 8px 24px rgba(0,0,0,0.25)' }}>
+          {zuordnenMsg}
+        </div>
       )}
     </div>
   )

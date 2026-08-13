@@ -661,7 +661,7 @@ export function intervallLabel(serie) {
 }
 
 // ── Factories ─────────────────────────────────────────────────────────────────
-function mkAuftrag(typ = 'freitext') {
+export function mkAuftrag(typ = 'freitext') {
   const base = {
     id:          'au_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
     typ,
@@ -673,6 +673,7 @@ function mkAuftrag(typ = 'freitext') {
     notiz:       '',
     hinweise:    [],
     verlauf:     [],
+    verknuepfungen: [],   // Belege/Mails/Notizen, die an diesem Auftrag haengen (art: 'beleg'|'mail'|'notiz')
     erstelltAm:  new Date().toISOString(),
     erledigtAm:  null,
   }
@@ -3936,6 +3937,32 @@ function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete, client, onOpe
                 📧 Quelle: E-Mail von <b>{au.emailRef.absender}</b>
                 {au.emailRef.betreff && <> — {au.emailRef.betreff}</>}
               </span>
+            </div>
+          )}
+
+          {/* Verknüpfte Belege / Mails / Notizen (auftrag.verknuepfungen) */}
+          {Array.isArray(au.verknuepfungen) && au.verknuepfungen.length > 0 && (
+            <div style={{ marginBottom: '14px' }}>
+              <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '8px' }}>
+                🔗 Verknüpft ({au.verknuepfungen.length})
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                {au.verknuepfungen.map(v => (
+                  <div key={v.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 10px', borderRadius: '6px', background: 'var(--surface2)', border: '1px solid var(--border)', fontSize: '11px' }}>
+                    <span>{v.art === 'beleg' ? '📄' : v.art === 'mail' ? '📧' : '📝'}</span>
+                    <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                      title={v.docPath || v.name || v.betreff || ''}>
+                      {v.name || v.betreff || v.docPath || 'Verknüpfung'}
+                    </span>
+                    {v.frist && <span style={{ fontSize: '10px', color: '#dc2626', fontWeight: 700, whiteSpace: 'nowrap' }}>⏰ {v.frist}</span>}
+                    <button onClick={() => onUpdate({ verknuepfungen: au.verknuepfungen.filter(x => x.id !== v.id) })}
+                      title="Verknüpfung entfernen (Datei/Mail bleibt erhalten)"
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '11px', flexShrink: 0 }}>
+                      🗑
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
