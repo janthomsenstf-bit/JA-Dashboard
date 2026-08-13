@@ -1,4 +1,19 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
+
+// Query-String für /api/get-email-content (identisch zum Mandanten-Reiter):
+// UID + Konto immer, plus Message-ID/Betreff/Absender/Datum als Fallback-Suche.
+function buildContentQuery(entry) {
+  const p = new URLSearchParams()
+  p.set('uid', entry.sourceUid ?? '')
+  p.set('account', entry.sourceAccount ?? '')
+  if (entry.messageId) p.set('messageId', entry.messageId)
+  if (entry.betreff)   p.set('subject', entry.betreff)
+  const abs = entry.absender || entry.von || ''
+  if (abs) p.set('from', abs)
+  const dt = entry.gesendetAm || entry.erstelltAm || entry.datum || ''
+  if (dt) p.set('date', dt)
+  return p.toString()
+}
 
 /**
  * Bereich „Kommunikation" – zentrale Kommunikationszentrale.
@@ -116,6 +131,10 @@ export default function KommunikationBereich({
   const [ordner, setOrdner]   = useState('uebersicht')
   const [suche, setSuche]     = useState('')
   const [offen, setOffen]     = useState(null)
+  // On-demand nachgeladener Volltext (lokaler Cache – schreibt NICHT in Mandantendaten)
+  const [mailText,    setMailText]    = useState({})   // eventId -> Text
+  const [mailLoading, setMailLoading] = useState({})   // eventId -> bool
+  const [mailError,   setMailError]   = useState({})   // eventId -> Fehlertext
 
   const nachrichten = useMemo(() => alleNachrichten(clients), [clients])
 
@@ -164,6 +183,26 @@ export default function KommunikationBereich({
   }
 
   const gewaehlt = liste.find(n => n.id === offen) ?? null
+
+  // Volltext der gewählten Mail on-demand laden (wie im Mandanten-Reiter, aber
+  // nur lesend im lokalen Cache). Braucht sourceUid + sourceAccount am Event.
+  useEffect(() => {
+    const g = gewaehlt
+    if (!g || g.text || mailText[g.id] || mailLoading[g.id] || mailError[g.id]) return
+    if (!g.sourceUid || !g.sourceAccount) return
+    let abbruch = false
+    setMailLoading(prev => ({ ...prev, [g.id]: true }))
+    fetch(`/api/get-email-content?${buildContentQuery(g)}`)
+      .then(r => r.json().then(d => ({ ok: r.ok, d })))
+      .then(({ ok, d }) => {
+        if (abbruch) return
+        if (!ok || d.error) setMailError(prev => ({ ...prev, [g.id]: d.error || 'Fehler beim Laden' }))
+        else setMailText(prev => ({ ...prev, [g.id]: d.text || '(kein Textinhalt)' }))
+      })
+      .catch(e => { if (!abbruch) setMailError(prev => ({ ...prev, [g.id]: e.message })) })
+      .finally(() => { if (!abbruch) setMailLoading(prev => ({ ...prev, [g.id]: false })) })
+    return () => { abbruch = true }
+  }, [offen])
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--bg)' }}>
@@ -440,17 +479,20 @@ export default function KommunikationBereich({
                         )}
                       </div>
 
-                      {/* Inhalt */}
-                      <div style={{ fontSize: '13.5px', lineHeight: 1.75, color: 'var(--text)', whiteSpace: 'pre-wrap' }}>
-                        {gewaehlt.text
-                          ? gewaehlt.text
-                          : (
+                      {/* Inhalt – Volltext (ggf. on-demand nachgeladen) */}
+                      <div style={{ fontSize: '13.5px', lineHeight: 1.75, color: 'var(--text)', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                        {(() => {
+                          const txt = gewaehlt.text || mailText[gewaehlt.id]
+                          if (txt) return txt
+                          if (mailLoading[gewaehlt.id]) return <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>⏳ Nachricht wird geladen…</span>
+                          if (mailError[gewaehlt.id]) return <span style={{ color: '#dc2626', fontStyle: 'italic' }}>Konnte nicht geladen werden ({mailError[gewaehlt.id]}). Über „Beim Mandanten öffnen" ansehen.</span>
+                          if (!gewaehlt.sourceUid || !gewaehlt.sourceAccount) return (
                             <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                              Der Nachrichtentext ist hier nicht zwischengespeichert.
-                              Über „Beim Mandanten öffnen" siehst du die vollständige
-                              Nachricht in der bestehenden Kommunikationsansicht.
+                              Für diese Nachricht ist kein Direktabruf hinterlegt. Über „Beim Mandanten öffnen" siehst du sie in der Mandanten-Ansicht.
                             </span>
-                          )}
+                          )
+                          return <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>⏳ …</span>
+                        })()}
                       </div>
                     </div>
                   </div>
