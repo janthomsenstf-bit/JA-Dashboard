@@ -110,7 +110,12 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*')
   if (req.method === 'OPTIONS') return res.status(200).end()
 
-  if (process.env.MAIL_POLL_SECRET && req.query.secret !== process.env.MAIL_POLL_SECRET) {
+  // Schutz: sobald MAIL_POLL_SECRET gesetzt ist, brauchen die teuren/gefaehrlichen Modi
+  // (Abruf, ?reset=, ?rawtest=) das Secret. Ausgenommen nur die ungefaehrlichen Modi
+  // ?ping (Versions-Ping) und ?spamadd (Spam-Lernen; wird vom eingeloggten Frontend aufgerufen,
+  // das das Secret nicht sicher halten kann – spamadd fuegt nur der Spam-Liste hinzu).
+  const oeffentlicherModus = req.query.ping || req.query.spamadd
+  if (process.env.MAIL_POLL_SECRET && !oeffentlicherModus && req.query.secret !== process.env.MAIL_POLL_SECRET) {
     return res.status(403).json({ error: 'Forbidden' })
   }
 
