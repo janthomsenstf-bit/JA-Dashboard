@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { searchAll, filterByCategory, SEARCH_CATEGORIES, fmtDate } from '../../utils/search.js'
 import { callApi, fmtFileSize } from '../../utils/onedriveClient.js'
-import { ladeEasyB2BSuchdaten, durchsucheEasyB2B } from '../../easyb2b/lib/suche.js'
 
 function truncate(str, max) {
   const s = String(str ?? '')
@@ -25,12 +24,6 @@ function ResultRow({ result, isActive, onAction }) {
     subtitle = d.pfad ? `☁️ ${d.pfad}` : '☁️ OneDrive'
     meta     = [d.size ? fmtFileSize(d.size) : '', d.geaendert ? fmtDate(d.geaendert) : ''].filter(Boolean).join(' · ')
     actionLabel = '→ Datei öffnen'
-  } else if (result.category === 'easyb2b') {
-    const e = result.eb
-    title    = e.titel
-    subtitle = e.treffer ? `${e.typ} · ${e.treffer.label}: ${truncate(e.treffer.value, 40)}` : `Easy-B2B · ${e.typ}`
-    meta     = ''
-    actionLabel = '→ In Easy-B2B öffnen'
   } else if (result.category === 'personen') {
     title    = result.person?.name ?? ''
     subtitle = result.person?.rolle ? `${result.person.rolle} bei ${client.name}` : `Kontakt bei ${client.name}`
@@ -159,7 +152,7 @@ function CatTab({ cat, label, icon, count, active, onClick }) {
 }
 
 // ── Haupt-Komponente ──────────────────────────────────────────────────────────
-export default function GlobalSearch({ clients, onSelect, onSelectWithTab, onOpenEmail, onedriveTokens, onUpdateOnedriveTokens, onOpenEasyB2B }) {
+export default function GlobalSearch({ clients, onSelect, onSelectWithTab, onOpenEmail, onedriveTokens, onUpdateOnedriveTokens }) {
   const [query,       setQuery]       = useState('')
   const [open,        setOpen]        = useState(false)
   const [activeIndex, setActiveIndex] = useState(-1)
@@ -203,28 +196,7 @@ export default function GlobalSearch({ clients, onSelect, onSelectWithTab, onOpe
     return () => { abgebrochen = true }
   }, [debouncedQ, onedriveTokens, onUpdateOnedriveTokens])
 
-  // ── Easy-B2B-Suche (einmal geladen, lokal gefiltert) ──
-  // Anfragen/Interessenten aus Neon (mit Beispieldaten-Rückfall), dazu
-  // Unternehmen und Kontakte. Die Daten liegen sonst nur im Easy-B2B-Store.
-  const [eb2bDaten,  setEb2bDaten]  = useState(null)
-  const [eb2bFehler, setEb2bFehler] = useState('')
-
-  useEffect(() => {
-    // Erst laden, wenn tatsächlich gesucht wird – nicht beim App-Start.
-    if (debouncedQ.trim().length < 2 || eb2bDaten) return
-    let abgebrochen = false
-    ladeEasyB2BSuchdaten()
-      .then(d => { if (!abgebrochen) setEb2bDaten(d) })
-      .catch(() => { if (!abgebrochen) setEb2bFehler('Easy-B2B-Daten konnten nicht geladen werden') })
-    return () => { abgebrochen = true }
-  }, [debouncedQ, eb2bDaten])
-
-  const eb2bTreffer = useMemo(
-    () => durchsucheEasyB2B(eb2bDaten, debouncedQ),
-    [eb2bDaten, debouncedQ],
-  )
-
-  // Lokale, OneDrive- und Easy-B2B-Ergebnisse zu EINER Trefferliste zusammenführen
+  // Lokale und OneDrive-Ergebnisse zu EINER Trefferliste zusammenführen
   const searchResult = useMemo(() => {
     const driveResults = driveTreffer.map(d => ({
       category: 'onedrive',
@@ -234,15 +206,14 @@ export default function GlobalSearch({ clients, onSelect, onSelectWithTab, onOpe
       weight: 90,
       action: { type: 'openFile', webUrl: d.webUrl },
     }))
-    const results = [...lokal.results, ...driveResults, ...eb2bTreffer].sort((a, b) => b.weight - a.weight)
+    const results = [...lokal.results, ...driveResults].sort((a, b) => b.weight - a.weight)
     const categories = { ...lokal.categories }
     if (driveResults.length) categories.onedrive = driveResults.length
-    if (eb2bTreffer.length)  categories.easyb2b  = eb2bTreffer.length
     return {
       results, categories,
-      total: (lokal.total ?? lokal.results.length) + driveResults.length + eb2bTreffer.length,
+      total: (lokal.total ?? lokal.results.length) + driveResults.length,
     }
-  }, [lokal, driveTreffer, eb2bTreffer])
+  }, [lokal, driveTreffer])
 
   const filteredResults = useMemo(() =>
     filterByCategory(searchResult.results, activeCat),
@@ -308,12 +279,6 @@ export default function GlobalSearch({ clients, onSelect, onSelectWithTab, onOpe
       setOpen(false); setQuery('')
       return
     }
-    if (action.type === 'openEasyB2B') {
-      // In den Easy-B2B-Bereich wechseln, passenden Unterbereich vorwählen
-      onOpenEasyB2B?.(action.bereich)
-      setOpen(false); setQuery('')
-      return
-    }
     if (action.type === 'openEmail') {
       if (onOpenEmail) onOpenEmail(action.clientId, action.emailId)
       else if (onSelectWithTab) onSelectWithTab(action.clientId, 6)
@@ -326,7 +291,7 @@ export default function GlobalSearch({ clients, onSelect, onSelectWithTab, onOpe
   }
 
   // Kategorie-Tabs
-  const catOrder = ['onedrive', 'easyb2b', 'personen', 'mandanten', 'nachrichten', 'dokumente', 'auftraege', 'aufgaben', 'notizen']
+  const catOrder = ['onedrive', 'personen', 'mandanten', 'nachrichten', 'dokumente', 'auftraege', 'aufgaben', 'notizen']
   const activeCats = catOrder.filter(c => (searchResult.categories[c] ?? 0) > 0)
 
   return (

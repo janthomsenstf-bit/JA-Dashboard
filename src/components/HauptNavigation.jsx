@@ -13,7 +13,6 @@ export const HAUPTBEREICHE = [
   { key: 'agent',        label: 'Co-Trainer',    icon: '🧭', farbe: '#0d9488', beschreibung: 'Dein sprechender Assistent – frag das Spielbuch per Text oder Sprache und lege eigene Skills an.' },
   { key: 'kommunikation',label: 'Kommunikation', icon: '✉️', farbe: '#16a34a', beschreibung: 'E-Mails, Vorlagen und der gesamte Schriftverkehr.' },
   { key: 'personen',     label: 'Personen',      icon: '👥', farbe: '#0891b2', beschreibung: 'Mandanten, Ansprechpartner und Kontakte.' },
-  { key: 'easyb2b',      label: 'Easy-B2B',      icon: '🤝', farbe: '#f97316', beschreibung: 'Marktplatz, Suchanzeigen und Partnervermittlung.' },
   { key: 'ustreg',       label: 'USt-Registrierung', icon: '🏛', farbe: '#4338ca', beschreibung: 'Umsatzsteuerliche Registrierung ausländischer Unternehmen – Fälle, Formulare, Wissensdatenbank.' },
   { key: 'uebersichten', label: 'Übersichten',   icon: '📈', farbe: '#7c3aed', beschreibung: 'Auswertungen, Kennzahlen und Berichte.' },
   { key: 'prozesse',     label: 'Prozesse',      icon: '⚙️', farbe: '#0f766e', beschreibung: 'Abläufe, Checklisten und wiederkehrende Aufgaben.' },

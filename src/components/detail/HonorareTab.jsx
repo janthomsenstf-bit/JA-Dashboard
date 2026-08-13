@@ -76,6 +76,7 @@ function mkHonorar() {
     leistungsjahr: null,   // Jahreszuordnung, besonders für einmalig/aufwand
     aktiv:         true,
     notiz:         '',
+    auftragId:     null,   // optionale Kopplung an einen Auftrag (Phase 2)
     erstelltAm:    new Date().toISOString(),
   }
 }
@@ -402,7 +403,7 @@ function todayISO()      { return new Date().toISOString().slice(0, 10) }
 function deDateShort(s)  { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s || '')); return m ? `${m[3]}.${m[2]}.${m[1]}` : String(s || '') }
 function fmtStunden(min) { return ((min || 0) / 60).toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) }
 function mkZeit() {
-  return { id: 'z' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), datum: todayISO(), art: 'stunden', dauerMin: 0, pauschalBetrag: 0, beschreibung: '', status: 'offen', erstelltAm: new Date().toISOString() }
+  return { id: 'z' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), datum: todayISO(), art: 'stunden', dauerMin: 0, pauschalBetrag: 0, beschreibung: '', status: 'offen', auftragId: null, erstelltAm: new Date().toISOString() }
 }
 function eintragBetrag(z, satz) {
   return z.art === 'pauschale' ? (z.pauschalBetrag || 0) : ((z.dauerMin || 0) / 60) * (satz || 0)
@@ -536,12 +537,14 @@ function ZeitVoiceBlock({ onParsed }) {
 }
 
 // ── Manuelles Formular ────────────────────────────────────────────────────────────
-function ZeitForm({ initial, onSave, onCancel }) {
+function ZeitForm({ initial, onSave, onCancel, auftraege = [] }) {
   const [datum, setDatum] = useState(initial.datum || todayISO())
   const [art, setArt] = useState(initial.art || 'stunden')
   const [stdVal, setStdVal] = useState(initial.dauerMin ? String(initial.dauerMin / 60).replace('.', ',') : '')
   const [pausVal, setPausVal] = useState(initial.pauschalBetrag ? String(initial.pauschalBetrag).replace('.', ',') : '')
   const [besch, setBesch] = useState(initial.beschreibung || '')
+  const [zuAuftrag, setZuAuftrag] = useState(initial.auftragId || '')
+  const offeneAuftraege = (auftraege ?? []).filter(a => a && a.status !== 'erledigt')
   const dauerMin = Math.round((parseFloat(String(stdVal).replace(',', '.')) || 0) * 60)
   const pauschalBetrag = Math.max(0, parseFloat(String(pausVal).replace(',', '.')) || 0)
   const canSave = !!besch.trim() && (art === 'pauschale' ? pauschalBetrag > 0 : dauerMin > 0)
@@ -563,11 +566,22 @@ function ZeitForm({ initial, onSave, onCancel }) {
           : <div><FieldLabel>Dauer (Std.) *</FieldLabel><input type="text" inputMode="decimal" value={stdVal} onChange={e => setStdVal(e.target.value)} placeholder="z. B. 1,5" style={inputBase} /></div>}
       </div>
       <div><FieldLabel>Tätigkeit *</FieldLabel><input value={besch} onChange={e => setBesch(e.target.value)} placeholder="z. B. Anlage Firma und Mitarbeiter" style={inputBase} /></div>
+      {offeneAuftraege.length > 0 && (
+        <div>
+          <FieldLabel>Zu Auftrag (optional)</FieldLabel>
+          <select value={zuAuftrag} onChange={e => setZuAuftrag(e.target.value)} style={selectBase}>
+            <option value="">— kein Auftrag —</option>
+            {offeneAuftraege.map(a => (
+              <option key={a.id} value={a.id}>{(a.bezeichnung || a.typ) + (a.jahr ? ` (${a.jahr})` : '')}</option>
+            ))}
+          </select>
+        </div>
+      )}
       {art === 'stunden' && dauerMin > 0 && <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>= {fmtStunden(dauerMin)} Std</div>}
       {art === 'pauschale' && pauschalBetrag > 0 && <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>= {fmtEuro(pauschalBetrag, 2)} pauschal</div>}
       <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
         <button onClick={onCancel} style={btnGhost}>Abbrechen</button>
-        <button onClick={() => canSave && onSave({ datum, art, dauerMin: art === 'stunden' ? dauerMin : 0, pauschalBetrag: art === 'pauschale' ? pauschalBetrag : 0, beschreibung: besch.trim() })} disabled={!canSave}
+        <button onClick={() => canSave && onSave({ datum, art, dauerMin: art === 'stunden' ? dauerMin : 0, pauschalBetrag: art === 'pauschale' ? pauschalBetrag : 0, beschreibung: besch.trim(), auftragId: zuAuftrag || null })} disabled={!canSave}
           style={{ ...btnPrimary, padding: '6px 18px', fontSize: '12px', opacity: canSave ? 1 : 0.5, cursor: canSave ? 'pointer' : 'not-allowed' }}>Speichern</button>
       </div>
     </div>
@@ -680,7 +694,7 @@ function ZeiterfassungBlock({ client, onUpdate }) {
         </div>
 
         {!showForm && <ZeitVoiceBlock onParsed={onParsed} />}
-        {showForm && <ZeitForm initial={formInit} onSave={saveEntry} onCancel={() => { setShowForm(false); setFormInit(null); setEditId(null) }} />}
+        {showForm && <ZeitForm initial={formInit} onSave={saveEntry} onCancel={() => { setShowForm(false); setFormInit(null); setEditId(null) }} auftraege={client.auftraege ?? []} />}
 
         {eintraege.length === 0 && !showForm && (
           <div style={{ textAlign: 'center', padding: '14px', color: 'var(--text-muted)', fontSize: '12px' }}>

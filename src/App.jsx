@@ -39,10 +39,6 @@ import ChecklistenBereich from './components/ChecklistenBereich.jsx'
 import { loadChecklistenUebersicht } from './utils/checklistenUebersichtStorage.js'
 import AgentBereich from './components/agent/AgentBereich.jsx'
 import { loadSkills, mergeWithDefaults } from './utils/skillsStorage.js'
-// Easy-B2B ist ein eigenständiges Modul mit rund 9.400 Zeilen. Es wird erst
-// geladen, wenn der Bereich geöffnet wird – so bleibt der Start des Spielbuchs
-// schnell und das Haupt-Bundle klein genug für die Offline-Ablage der PWA.
-const EasyB2BBereich = lazy(() => import('./components/EasyB2BBereich.jsx'))
 // USt-Registrierung – eigenständiges Modul, lazy geladen (Vorschau mit Beispieldaten)
 const UstRegistrierungBereich = lazy(() => import('./components/UstRegistrierungBereich.jsx'))
 
@@ -387,14 +383,6 @@ export default function App() {
   const wechselBereich = (key) => {
     setHauptbereich(key)
     try { localStorage.setItem('spielbuch-hauptbereich', key) } catch {}
-  }
-
-  // Aus der globalen Suche vorgewählter Easy-B2B-Unterbereich (einmalig,
-  // wird nach dem Öffnen wieder zurückgesetzt).
-  const [easyb2bInitial, setEasyb2bInitial] = useState(null)
-  const oeffneEasyB2B = (bereich) => {
-    setEasyb2bInitial(bereich ?? null)
-    wechselBereich('easyb2b')
   }
 
   const [authUser,      setAuthUser]      = useState(undefined)  // undefined=laden, null=abgemeldet, obj=eingeloggt
@@ -1420,7 +1408,6 @@ export default function App() {
             setDetailInitialTab(TAB.nachrichten)
             setSelectedId(id)
           }}
-          onOpenEasyB2B={oeffneEasyB2B}
         />
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -1658,7 +1645,7 @@ export default function App() {
         const klientOffen = hauptbereich === 'personen' && !!selectedId && clients.some(c => c.id === selectedId)
         const zeigeUebersicht = hauptbereich === 'personen' && !klientOffen
         const zeigeArbeitsbereich = klientOffen
-        const eigeneBereiche = ['agent', 'personen', 'kommunikation', 'dokumente', 'uebersichten', 'prozesse', 'checklisten', 'easyb2b', 'ustreg']
+        const eigeneBereiche = ['agent', 'personen', 'kommunikation', 'dokumente', 'uebersichten', 'prozesse', 'checklisten', 'ustreg']
         const zeigePlatzhalter = !eigeneBereiche.includes(hauptbereich)
         const offenerKlient = klientOffen ? clients.find(c => c.id === selectedId) : null
 
@@ -1718,24 +1705,6 @@ export default function App() {
                   wechselBereich('personen')
                 }}
               />
-            )}
-
-            {/* Bereich „Easy-B2B" – Modul-Gerüst, Übernahme des bestehenden
-                Easy-B2B-Dashboards erfolgt seitenweise (Phase 1: nur Struktur) */}
-            {hauptbereich === 'easyb2b' && (
-              <Suspense fallback={
-                <div style={{
-                  flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  color: 'var(--text-muted)', fontSize: '13px', background: 'var(--bg)',
-                }}>
-                  Easy-B2B wird geladen …
-                </div>
-              }>
-                <EasyB2BBereich
-                  initialBereich={easyb2bInitial}
-                  onInitialVerbraucht={() => setEasyb2bInitial(null)}
-                />
-              </Suspense>
             )}
 
             {/* Bereich „USt-Registrierung" – Modul (Vorschau mit Beispieldaten) */}

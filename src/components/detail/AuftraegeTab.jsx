@@ -25,7 +25,6 @@ export const AUFTRAGS_TYP_CFG = {
   gmbh_gruendung:  { label: 'GmbH-Gründung',      icon: '🏛', color: '#2563eb', bg: 'rgba(37,99,235,0.08)',   border: 'rgba(37,99,235,0.25)', gruppe: 'etablering' },
   vorratsgesell:   { label: 'Vorratsgesellschaft', icon: '📦', color: '#d97706', bg: 'rgba(217,119,6,0.08)',  border: 'rgba(217,119,6,0.25)', gruppe: 'etablering' },
   geschaeftsadresse:{ label: 'Geschäftsadresse',   icon: '📍', color: '#0f766e', bg: 'rgba(15,118,110,0.08)', border: 'rgba(15,118,110,0.25)', gruppe: 'etablering' },
-  easy_b2b:        { label: 'Easy-B2B',            icon: '🤝', color: '#16a34a', bg: 'rgba(22,163,74,0.08)',  border: 'rgba(22,163,74,0.25)', gruppe: 'etablering' },
   liquidation:     { label: 'Liquidation',         icon: '🔚', color: '#ef4444', bg: 'rgba(239,68,68,0.08)',  border: 'rgba(239,68,68,0.25)', gruppe: 'etablering' },
   freitext:        { label: 'Eigener Auftrag',   icon: '📝', color: '#64748b', bg: 'rgba(100,116,139,0.08)', border: 'rgba(100,116,139,0.25)' },
 }
@@ -1934,16 +1933,6 @@ export const WORKFLOW_CONFIGS = {
       { key: 'vertrag_unterzeichnet',label: 'Vertrag unterzeichnet',       icon: '✍️', ...WF_COLORS.amber },
       { key: 'adresse_aktiv',        label: 'Adresse aktiv',               icon: '📍', ...WF_COLORS.green },
       { key: 'abgeschlossen',        label: 'Abgeschlossen / Gekündigt',  icon: '✅', ...WF_COLORS.green },
-    ],
-  },
-  easy_b2b: {
-    label: 'Easy-B2B-Anfrage',
-    steps: [
-      { key: 'anfrage',              label: 'Anfrage eingegangen',          icon: '📨', ...WF_COLORS.gray },
-      { key: 'kontakt_aufgenommen',  label: 'Kontakt aufgenommen',         icon: '📞', ...WF_COLORS.blue },
-      { key: 'angebot_gesendet',     label: 'Angebot gesendet',            icon: '📤', ...WF_COLORS.purple },
-      { key: 'in_umsetzung',         label: 'In Umsetzung',               icon: '🔧', ...WF_COLORS.cyan },
-      { key: 'abgeschlossen',        label: 'Abgeschlossen',              icon: '✅', ...WF_COLORS.green },
     ],
   },
   liquidation: {
@@ -3965,6 +3954,55 @@ function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete, client, onOpe
               </div>
             </div>
           )}
+
+          {/* Gekoppelte Zeiten & Honorare (Phase 2) – additiv, entkoppeln loescht NIE den Eintrag */}
+          {(() => {
+            const satz = client.stundensatz ?? 90
+            const zeiten   = (client.zeiteintraege ?? []).filter(z => z && z.auftragId === au.id)
+            const honorare = (client.honorare ?? []).filter(h => h && h.auftragId === au.id)
+            if (!zeiten.length && !honorare.length) return null
+            const eb = z => z.art === 'pauschale' ? (z.pauschalBetrag || 0) : ((z.dauerMin || 0) / 60) * satz
+            const stundenMin    = zeiten.filter(z => z.art !== 'pauschale').reduce((s, z) => s + (z.dauerMin || 0), 0)
+            const zeitBetrag    = zeiten.reduce((s, z) => s + eb(z), 0)
+            const honorarBetrag = honorare.reduce((s, h) => s + (Number(h.betrag) || 0), 0)
+            const eur = n => n.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'
+            const std = m => (m / 60).toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 2 })
+            const deDat = s => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(s || '')); return m ? `${m[3]}.${m[2]}.${m[1]}` : (s || '') }
+            const clearZeit = id => onUpdateClient({ zeiteintraege: (client.zeiteintraege ?? []).map(z => z.id === id ? { ...z, auftragId: null } : z) })
+            const clearHon  = id => onUpdateClient({ honorare:      (client.honorare ?? []).map(h => h.id === id ? { ...h, auftragId: null } : h) })
+            return (
+              <div style={{ marginBottom: '14px' }}>
+                <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '8px' }}>
+                  ⏱ Zeiten &amp; Honorare
+                </div>
+                <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', marginBottom: '8px' }}>
+                  {zeiten.length > 0   && <span style={{ fontSize: '12px', fontWeight: 700, color: '#0891b2' }}>{std(stundenMin)} Std · {eur(zeitBetrag)}</span>}
+                  {honorare.length > 0 && <span style={{ fontSize: '12px', fontWeight: 700, color: '#16a34a' }}>Honorar: {eur(honorarBetrag)}</span>}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  {zeiten.map(z => (
+                    <div key={z.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '5px 10px', borderRadius: '6px', background: 'var(--surface2)', border: '1px solid var(--border)', fontSize: '11px' }}>
+                      <span style={{ color: 'var(--text-muted)', width: '58px', flexShrink: 0 }}>{deDat(z.datum)}</span>
+                      <span style={{ flexShrink: 0, fontWeight: 700, color: '#0891b2', width: '58px' }}>{z.art === 'pauschale' ? 'Pausch.' : `${std(z.dauerMin || 0)} Std`}</span>
+                      <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{z.beschreibung}</span>
+                      <span style={{ color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{eur(eb(z))}</span>
+                      <button onClick={() => clearZeit(z.id)} title="Vom Auftrag lösen (Eintrag bleibt erhalten)"
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '11px', flexShrink: 0 }}>✕</button>
+                    </div>
+                  ))}
+                  {honorare.map(h => (
+                    <div key={h.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '5px 10px', borderRadius: '6px', background: 'var(--surface2)', border: '1px solid var(--border)', fontSize: '11px' }}>
+                      <span style={{ flexShrink: 0 }}>💶</span>
+                      <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{h.bezeichnung || h.leistungsart}</span>
+                      <span style={{ color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{eur(Number(h.betrag) || 0)}</span>
+                      <button onClick={() => clearHon(h.id)} title="Vom Auftrag lösen (Eintrag bleibt erhalten)"
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '11px', flexShrink: 0 }}>✕</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )
+          })()}
 
           {(!isJA || jaSubView === 'kommunikation') && (
           <div style={{ borderTop: '1px solid var(--border)', paddingTop: '12px' }}>
