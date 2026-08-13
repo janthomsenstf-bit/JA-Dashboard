@@ -57,6 +57,21 @@ function draftPreview(intent, draft) {
 }
 
 // ── E-Mail-Inhalt (Zusammenfassung oben, Original ausklappbar) ────────────────────
+// Macht bereits geplaetteten Alt-Text (Altbestand ohne Zeilenumbrueche) wieder lesbar:
+// setzt Header-Labels, Weiterleitungs-Trenner und Zitat-Ebenen auf neue Zeilen.
+// Neue Mails (mit echten Umbruechen) werden unveraendert durchgereicht.
+function formatOriginal(text) {
+  const t = String(text || '')
+  const zeilen = (t.match(/\n/g) || []).length
+  if (t.length < 400 || zeilen >= t.length / 180) return t   // schon formatiert -> so lassen
+  return t
+    .replace(/\s*(-{3,}\s*(?:Forwarded message|Videresendt besked|Urspr[üu]ngliche Nachricht|Original Message)\s*-{3,})\s*/gi, '\n\n$1\n')
+    .replace(/\s+(Von|From|Fra|Gesendet|Sent|Dato|Date|An|To|Til|Betreff|Subject|Emne|Cc|Bcc):\s/g, '\n$1: ')
+    .replace(/\s+(>+)\s?/g, '\n$1 ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
 function EmailContent({ item, expanded, onedriveTokens, onTokenRefresh, onSpam }) {
   const e = item.draft?._email || {}
   const [showOrig, setShowOrig] = useState(false)
@@ -146,8 +161,8 @@ function EmailContent({ item, expanded, onedriveTokens, onTokenRefresh, onSpam }
         )}
       </div>
       {showOrig && (
-        <div style={{ marginTop: '6px', fontSize: '12px', color: 'var(--text-muted)', whiteSpace: 'pre-wrap', maxHeight: '240px', overflowY: 'auto', padding: '8px 12px', borderRadius: '8px', background: 'rgba(0,0,0,0.03)', border: '1px solid var(--border)' }}>
-          {item.raw_text}
+        <div style={{ marginTop: '6px', fontSize: '12px', color: 'var(--text-muted)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: 'var(--font-mono, monospace)', lineHeight: 1.5, maxHeight: '320px', overflowY: 'auto', padding: '10px 12px', borderRadius: '8px', background: 'rgba(0,0,0,0.03)', border: '1px solid var(--border)' }}>
+          {formatOriginal(item.raw_text)}
         </div>
       )}
     </div>

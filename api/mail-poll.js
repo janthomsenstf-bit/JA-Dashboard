@@ -213,6 +213,10 @@ export default async function handler(req, res) {
         const betreff = env.subject || '(kein Betreff)'
         const datum = env.date?.toISOString() || new Date().toISOString()
         const body = (parsed.text || parsed.subject || '').replace(/\s+/g, ' ').trim().slice(0, 2500)
+        // Fuer die Anzeige: Original mit ERHALTENEN Zeilenumbruechen (nur CRLF normalisieren,
+        // Zeilenend-Leerzeichen und 3+ Leerzeilen zusammenfassen) – nicht plaetten.
+        const bodyOriginal = (parsed.text || parsed.subject || '')
+          .replace(/\r\n/g, '\n').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim().slice(0, 6000)
         // Echte Dokument-Anhänge (keine Inline-Signaturbildchen): Name/Größe für die Anzeige + spätere Übergabe.
         const anhaenge = (parsed.attachments || [])
           .filter(a => a.filename && !a.related && (a.size || 0) > 8000)
@@ -271,7 +275,7 @@ export default async function handler(req, res) {
           },
         }
         const { error: insErr } = await sb.from('bot_inbox').insert({
-          raw_text: body.slice(0, 4000),
+          raw_text: bodyOriginal,
           intent: cl.intent || 'unknown',
           client_id: clientId,
           client_name: clientName,
