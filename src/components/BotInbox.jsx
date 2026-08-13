@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { supabase } from '../utils/supabaseClient.js'
+import { callApi } from '../utils/onedriveClient.js'
 
 // ── Konstanten ───────────────────────────────────────────────────────────────────
 const POLL_INTERVAL = 30_000
@@ -159,11 +160,24 @@ function kategorieVon(d) {
   return d.typ || 'Sonstiges'
 }
 
-function DokumentBundle({ item, onFreigabe }) {
+function DokumentBundle({ item, onFreigabe, onedriveTokens, onTokenRefresh }) {
   const b = item.draft || {}
   const docs = Array.isArray(b.dokumente) ? b.dokumente : []
   const stand = b.stand || 'vorgeschlagen'
   const [busy, setBusy] = useState(false)
+  const [oeffneFehler, setOeffneFehler] = useState('')
+
+  async function oeffnen(doc) {
+    setOeffneFehler('')
+    if (!onedriveTokens?.accessToken) { setOeffneFehler('OneDrive nicht verbunden – bitte im Dashboard verbinden.'); return }
+    const rel = doc.freigabe === 'erledigt' && doc.zielRel ? `${doc.zielRel}/${doc.neuerName}` : doc.quelleRel
+    try {
+      const data = await callApi('downloadUrl', { filePath: rel }, onedriveTokens, onTokenRefresh)
+      const url = data.item?.webUrl || data.downloadUrl
+      if (url) window.open(url, '_blank', 'noopener')
+      else setOeffneFehler('Kein Link erhalten.')
+    } catch (e) { setOeffneFehler(e.message || 'Öffnen fehlgeschlagen') }
+  }
 
   const gruppen = {}
   docs.forEach(d => { const k = kategorieVon(d); (gruppen[k] = gruppen[k] || []).push(d) })
@@ -200,7 +214,13 @@ function DokumentBundle({ item, onFreigabe }) {
             <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--text-muted)', marginBottom: '4px' }}>{k}</div>
             {gruppen[k].map((d, i) => (
               <div key={i} style={{ fontSize: '12.5px', padding: '5px 0', borderBottom: '1px solid var(--border)' }}>
-                <div style={{ fontWeight: 600, color: 'var(--text)' }}>{d.neuerName}</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div style={{ fontWeight: 600, color: 'var(--text)', flex: 1, minWidth: 0, wordBreak: 'break-word' }}>{d.neuerName}</div>
+                  <button onClick={() => oeffnen(d)} title="Dokument öffnen"
+                    style={{ flexShrink: 0, fontSize: '11px', padding: '3px 9px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--surface2)', cursor: 'pointer', color: 'var(--accent)' }}>
+                    📄 Öffnen
+                  </button>
+                </div>
                 <div style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>{d.erkannt}{d.zielRel ? ` · → ${d.zielRel}` : ''}</div>
               </div>
             ))}
@@ -214,7 +234,7 @@ function DokumentBundle({ item, onFreigabe }) {
           <>
             <button onClick={() => freigeben('freigegeben')} disabled={busy}
               style={{ fontSize: '13px', fontWeight: 700, padding: '8px 16px', borderRadius: '10px', border: 'none', cursor: busy ? 'default' : 'pointer', background: 'rgba(22,163,74,0.12)', color: '#16a34a' }}>
-              {busy ? '…' : '📁 Alle ablegen freigeben'}
+              {busy ? '…' : '✅ Bestätigen & ablegen'}
             </button>
             <button onClick={() => freigeben('verworfen')} disabled={busy}
               style={{ fontSize: '12px', padding: '8px 14px', borderRadius: '10px', border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', color: 'var(--text-muted)' }}>
@@ -224,11 +244,12 @@ function DokumentBundle({ item, onFreigabe }) {
           </>
         )}
         {stand === 'freigegeben' && (
-          <span style={{ fontSize: '12.5px', color: '#16a34a', fontWeight: 600 }}>✅ Freigegeben — Claude Code führt die Ablage beim nächsten Lauf aus.</span>
+          <span style={{ fontSize: '12.5px', color: '#16a34a', fontWeight: 600 }}>✅ Bestätigt — wird abgelegt (Claude Code führt die Ablage aus).</span>
         )}
         {stand === 'verworfen' && (
           <span style={{ fontSize: '12.5px', color: 'var(--text-muted)' }}>🗑 Verworfen.</span>
         )}
+        {oeffneFehler && <span style={{ fontSize: '11.5px', color: 'var(--red)' }}>{oeffneFehler}</span>}
       </div>
     </div>
   )
@@ -832,16 +853,17 @@ export default function BotInbox({ clients, onUpdateClient, onNavigateToClient, 
     const neuDraft = { ...(item.draft || {}), stand: neuStand, dokumente }
     const patch = { draft: neuDraft }
     if (neuStand === 'verworfen') patch.status = 'archiviert'
+    else if (neuStand === 'freigegeben') patch.status = 'zugeordnet'  // raus aus „Neu"
     const { error } = await supabase.from('bot_inbox').update(patch).eq('id', item.id)
     if (error) { showToast('Fehler: ' + error.message); return }
-    if (neuStand === 'verworfen') {
-      setItems(prev => prev.filter(i => i.id !== item.id))
-      setCounts(prev => ({ ...prev, neu: Math.max(0, prev.neu - 1), archiviert: prev.archiviert + 1 }))
-      showToast('🗑 Verworfen')
-    } else {
-      setItems(prev => prev.map(i => i.id === item.id ? { ...i, draft: neuDraft } : i))
-      showToast('✅ Freigegeben — Claude Code führt die Ablage aus')
-    }
+    // Karte aus der aktuellen Liste nehmen (Status hat sich geändert) + Zähler
+    setItems(prev => prev.filter(i => i.id !== item.id))
+    setCounts(prev => ({
+      ...prev,
+      [activeTab]: Math.max(0, (prev[activeTab] || 0) - 1),
+      ...(neuStand === 'verworfen' ? { archiviert: prev.archiviert + 1 } : { zugeordnet: prev.zugeordnet + 1 }),
+    }))
+    showToast(neuStand === 'verworfen' ? '🗑 Verworfen' : '✅ Bestätigt — wird abgelegt')
   }
 
   // ── Als Spam lernen (Absender künftig automatisch aussortieren) + archivieren ──
@@ -956,7 +978,7 @@ export default function BotInbox({ clients, onUpdateClient, onNavigateToClient, 
       {items.map(item => {
         // Dokument-Vorschlagskarte (gebündelt pro Mandant) – eigene Ansicht
         if (item.intent === 'dokument_ablage') {
-          return <DokumentBundle key={item.id} item={item} onFreigabe={dokumentFreigeben} />
+          return <DokumentBundle key={item.id} item={item} onFreigabe={dokumentFreigeben} onedriveTokens={onedriveTokens} onTokenRefresh={onTokenRefresh} />
         }
         const cfg = INTENT_CONFIG[item.intent] || INTENT_CONFIG.unknown
         const isExpanded = expandedId === item.id
