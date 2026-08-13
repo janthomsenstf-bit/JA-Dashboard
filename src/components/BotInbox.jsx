@@ -14,9 +14,7 @@ const INTENT_CONFIG = {
 
 const STATUS_TABS = [
   { key: 'neu',         label: 'Neu',          icon: '📩', color: '#2563eb' },
-  { key: 'zugeordnet',  label: 'Zugeordnet',   icon: '👤', color: '#f97316' },
   { key: 'verarbeitet', label: 'Verarbeitet',  icon: '✅', color: '#16a34a' },
-  { key: 'archiviert',  label: 'Archiv',       icon: '📦', color: '#64748b' },
 ]
 
 const ACTION_OPTIONS = [
@@ -604,23 +602,18 @@ export default function BotInbox({ clients, onUpdateClient, onNavigateToClient, 
 
   // ── Laden ──────────────────────────────────
   const loadItems = useCallback(async () => {
-    // Items für aktiven Tab laden
-    const { data, error } = await supabase
-      .from('bot_inbox')
-      .select('*')
-      .eq('status', activeTab)
-      .order('created_at', { ascending: false })
-      .limit(50)
-
+    // Zwei Bänder: „Neu" = status 'neu'; „Verarbeitet" = alles Erledigte (status != 'neu').
+    let q = supabase.from('bot_inbox').select('*').order('created_at', { ascending: false }).limit(50)
+    q = activeTab === 'neu' ? q.eq('status', 'neu') : q.neq('status', 'neu')
+    const { data, error } = await q
     if (!error && data) setItems(data)
     setLoading(false)
 
-    // Counts für alle Tabs
+    // Counts für beide Bänder
     for (const tab of STATUS_TABS) {
-      const { count, error: cErr } = await supabase
-        .from('bot_inbox')
-        .select('id', { count: 'exact', head: true })
-        .eq('status', tab.key)
+      let cq = supabase.from('bot_inbox').select('id', { count: 'exact', head: true })
+      cq = tab.key === 'neu' ? cq.eq('status', 'neu') : cq.neq('status', 'neu')
+      const { count, error: cErr } = await cq
       if (!cErr && typeof count === 'number') {
         setCounts(prev => ({ ...prev, [tab.key]: count }))
       }
@@ -644,15 +637,12 @@ export default function BotInbox({ clients, onUpdateClient, onNavigateToClient, 
     if (!clientId) return
     setAssignedClients(prev => ({ ...prev, [item.id]: clientId }))
 
-    // In Supabase Status auf "zugeordnet" + client_id speichern
+    // Nur Mandant speichern – Status bleibt „neu", bis die Aktion ausgeführt wird
+    // (dann → „verarbeitet"). So bleibt der Eintrag sichtbar, bis er wirklich erledigt ist.
     const client = clients.find(c => c.id === clientId)
     await supabase
       .from('bot_inbox')
-      .update({
-        status: 'zugeordnet',
-        client_id: clientId,
-        client_name: client?.name || item.client_name,
-      })
+      .update({ client_id: clientId, client_name: client?.name || item.client_name })
       .eq('id', item.id)
 
     // Setze eine Default-Aktion basierend auf dem erkannten Intent
@@ -664,23 +654,12 @@ export default function BotInbox({ clients, onUpdateClient, onNavigateToClient, 
     }[item.intent] || 'notiz'
 
     setSelectedActions(prev => ({ ...prev, [item.id]: defaultAction }))
-
-    // Default-Draft aus dem Intent-Draft übernehmen
     setActionDrafts(prev => ({ ...prev, [item.id]: { ...item.draft } }))
-
-    // Wenn wir im "neu" Tab sind: Item aktualisieren und expandieren
-    if (activeTab === 'neu') {
-      setItems(prev => prev.map(i => i.id === item.id
-        ? { ...i, status: 'zugeordnet', client_id: clientId, client_name: client?.name || i.client_name }
-        : i
-      ))
-    }
+    setItems(prev => prev.map(i => i.id === item.id
+      ? { ...i, client_id: clientId, client_name: client?.name || i.client_name }
+      : i
+    ))
     setExpandedId(item.id)
-    setCounts(prev => ({
-      ...prev,
-      neu: Math.max(0, prev.neu - (item.status === 'neu' ? 1 : 0)),
-      zugeordnet: prev.zugeordnet + (item.status === 'neu' ? 1 : 0),
-    }))
   }
 
   // ── Aktion ausführen (Status → verarbeitet) ────────────────────────
@@ -798,15 +777,15 @@ export default function BotInbox({ clients, onUpdateClient, onNavigateToClient, 
         case 'ignorieren': {
           await supabase
             .from('bot_inbox')
-            .update({ status: 'archiviert' })
+            .update({ status: 'verarbeitet' })
             .eq('id', item.id)
           setItems(prev => prev.filter(i => i.id !== item.id))
           setCounts(prev => ({
             ...prev,
-            [item.status === 'neu' ? 'neu' : 'zugeordnet']: Math.max(0, prev[item.status === 'neu' ? 'neu' : 'zugeordnet'] - 1),
-            archiviert: prev.archiviert + 1,
+            neu: Math.max(0, prev.neu - 1),
+            verarbeitet: (prev.verarbeitet || 0) + 1,
           }))
-          showToast('📦 Eintrag archiviert')
+          showToast('✅ Erledigt')
           return // skip the standard verarbeitet-update below
         }
       }
@@ -833,15 +812,15 @@ export default function BotInbox({ clients, onUpdateClient, onNavigateToClient, 
   async function handleArchive(item) {
     await supabase
       .from('bot_inbox')
-      .update({ status: 'archiviert' })
+      .update({ status: 'verarbeitet' })
       .eq('id', item.id)
     setItems(prev => prev.filter(i => i.id !== item.id))
     setCounts(prev => ({
       ...prev,
       [activeTab]: Math.max(0, prev[activeTab] - 1),
-      archiviert: prev.archiviert + 1,
+      verarbeitet: (prev.verarbeitet || 0) + 1,
     }))
-    showToast('📦 Archiviert')
+    showToast('✅ Erledigt')
   }
 
   // ── Dokument-Bündel freigeben / verwerfen (Claude Code führt danach aus) ──────
@@ -852,16 +831,15 @@ export default function BotInbox({ clients, onUpdateClient, onNavigateToClient, 
     }))
     const neuDraft = { ...(item.draft || {}), stand: neuStand, dokumente }
     const patch = { draft: neuDraft }
-    if (neuStand === 'verworfen') patch.status = 'archiviert'
-    else if (neuStand === 'freigegeben') patch.status = 'zugeordnet'  // raus aus „Neu"
+    patch.status = 'verarbeitet'   // bestätigt ODER verworfen → direkt „Verarbeitet"
     const { error } = await supabase.from('bot_inbox').update(patch).eq('id', item.id)
     if (error) { showToast('Fehler: ' + error.message); return }
-    // Karte aus der aktuellen Liste nehmen (Status hat sich geändert) + Zähler
+    // Karte aus „Neu" nehmen + Zähler
     setItems(prev => prev.filter(i => i.id !== item.id))
     setCounts(prev => ({
       ...prev,
       [activeTab]: Math.max(0, (prev[activeTab] || 0) - 1),
-      ...(neuStand === 'verworfen' ? { archiviert: prev.archiviert + 1 } : { zugeordnet: prev.zugeordnet + 1 }),
+      verarbeitet: (prev.verarbeitet || 0) + 1,
     }))
     showToast(neuStand === 'verworfen' ? '🗑 Verworfen' : '✅ Bestätigt — wird abgelegt')
   }

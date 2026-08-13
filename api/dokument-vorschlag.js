@@ -33,22 +33,23 @@ export default async function handler(req, res) {
   }
   if (req.query.ping) return res.status(200).json({ version: VERSION })
 
-  // Freigaben lesen (für Claude Code): bestätigte Karten (status 'zugeordnet', stand 'freigegeben'),
-  // die noch nicht ausgeführt (= noch nicht 'verarbeitet') sind.
+  // Freigaben lesen (für Claude Code): bestätigte Karten (stand 'freigegeben'), noch nicht ausgeführt.
   if (req.method === 'GET' && req.query.freigaben) {
     const { data, error } = await sb.from('bot_inbox').select('*')
-      .eq('intent', 'dokument_ablage').eq('status', 'zugeordnet')
-      .order('created_at', { ascending: true }).limit(50)
+      .eq('intent', 'dokument_ablage')
+      .order('created_at', { ascending: true }).limit(100)
     if (error) return res.status(500).json({ error: error.message })
     const freigegeben = (data || []).filter(r => r.draft?.stand === 'freigegeben')
     return res.status(200).json({ karten: freigegeben })
   }
 
-  // Karte als erledigt markieren (nach dem lokalen Verschieben).
+  // Karte als erledigt markieren (nach dem lokalen Verschieben): stand → 'erledigt'.
   if (req.method === 'POST' && req.query.erledigt) {
     const id = req.body?.id
     if (!id) return res.status(400).json({ error: 'id fehlt' })
-    const { error } = await sb.from('bot_inbox').update({ status: 'verarbeitet', confirmed_at: new Date().toISOString() }).eq('id', id)
+    const { data: row } = await sb.from('bot_inbox').select('draft').eq('id', id).single()
+    const neuDraft = { ...(row?.draft || {}), stand: 'erledigt' }
+    const { error } = await sb.from('bot_inbox').update({ status: 'verarbeitet', draft: neuDraft, confirmed_at: new Date().toISOString() }).eq('id', id)
     return res.status(200).json({ ok: !error, error: error?.message || null })
   }
 
