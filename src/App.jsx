@@ -412,6 +412,7 @@ export default function App() {
   const [sortDir, setSortDir]             = useState('asc')
   const [showNewModal, setShowNewModal]   = useState(false)
   const [showStotaxImport, setShowStotaxImport] = useState(false)
+  const [bestandModal, setBestandModal] = useState(null)   // Sicherung & Bestandsaufnahme (Phase 0)
   const [archiveTarget, setArchiveTarget] = useState(null)
   const [importMsg, setImportMsg]         = useState('')
   const [sidebarOpen, setSidebarOpen]     = useState(true)
@@ -1019,6 +1020,23 @@ export default function App() {
     setShowNewModal(false)
   }
 
+  // ── Phase 0: Sicherung + Bestandsaufnahme vor dem Auftrags-Umbau ──────────────
+  async function sicherungBestandsaufnahme() {
+    const cs = clientsRef.current ?? clients
+    const summe = (fn) => cs.reduce((n, c) => n + fn(c), 0)
+    const zaehler = {
+      mandanten:      cs.length,
+      auftraege:      summe(c => (c.auftraege?.length || 0)),
+      jaAuftraege:    summe(c => (c.jaAuftraege?.length || 0)),
+      zeiteintraege:  summe(c => (c.zeiteintraege?.length || 0)),
+      honorare:       summe(c => (c.honorare?.length || 0)),
+      zusatzaufgaben: summe(c => (c.zusatzaufgaben?.length || 0)),
+    }
+    let gesichert = true
+    try { await cloudSnapshot(STORAGE_KEY, slimForCloud(cs)) } catch { gesichert = false }
+    setBestandModal({ zaehler, gesichert, zeit: new Date().toLocaleString('de-DE') })
+  }
+
   // ── Stotax-Import anwenden (Snapshot -> additiver Merge) ──────────────────────
   async function applyStotaxImport({ updates, neuMandanten }) {
     // Sicherung ZUERST – falls der Merge unerwünscht ist, ist der Stand wiederherstellbar.
@@ -1472,6 +1490,15 @@ export default function App() {
             style={{ fontSize: '12px', color: 'var(--text-muted)' }}
           >
             ⌘K
+          </button>
+
+          {/* Sicherung & Bestandsaufnahme (vor Auftrags-Umbau) */}
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={sicherungBestandsaufnahme}
+            title="Sicherung (Snapshot) + Bestandsaufnahme: Anzahl Aufträge, Zeiten, Honorare"
+          >
+            🛡️ Sicherung
           </button>
 
           {/* Stotax-Stammdaten-Import */}
@@ -2043,6 +2070,39 @@ export default function App() {
       )}
       {showStotaxImport && (
         <StotaxImportModal clients={clients} onApply={applyStotaxImport} onClose={() => setShowStotaxImport(false)} />
+      )}
+      {bestandModal && (
+        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setBestandModal(null)}>
+          <div className="modal" style={{ maxWidth: 460 }}>
+            <div className="modal-title">🛡️ Sicherung & Bestandsaufnahme</div>
+            <div style={{ fontSize: 13, color: bestandModal.gesichert ? '#16a34a' : 'var(--red)', marginBottom: 12, fontWeight: 600 }}>
+              {bestandModal.gesichert ? '✓ Snapshot erstellt' : '⚠️ Snapshot fehlgeschlagen (nicht angemeldet?)'} · {bestandModal.zeit}
+            </div>
+            <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 10 }}>
+              Baseline vor dem Auftrags-Umbau. Nach jedem Migrationsschritt vergleichen — keine Zahl darf kleiner werden.
+            </div>
+            <table style={{ width: '100%', fontSize: 14, borderCollapse: 'collapse' }}>
+              <tbody>
+                {[
+                  ['Mandanten', bestandModal.zaehler.mandanten],
+                  ['Aufträge (auftraege)', bestandModal.zaehler.auftraege],
+                  ['JA-Aufträge (jaAuftraege)', bestandModal.zaehler.jaAuftraege],
+                  ['Zeiteinträge', bestandModal.zaehler.zeiteintraege],
+                  ['Honorare', bestandModal.zaehler.honorare],
+                  ['Zusatzaufgaben', bestandModal.zaehler.zusatzaufgaben],
+                ].map(([label, val]) => (
+                  <tr key={label} style={{ borderBottom: '1px solid var(--border)' }}>
+                    <td style={{ padding: '7px 0', color: 'var(--text)' }}>{label}</td>
+                    <td style={{ padding: '7px 0', textAlign: 'right', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>{val}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div style={{ marginTop: 16, textAlign: 'right' }}>
+              <button className="btn btn-primary btn-sm" onClick={() => setBestandModal(null)}>Schließen</button>
+            </div>
+          </div>
+        </div>
       )}
       {archiveTarget && (
         <ArchiveModal
