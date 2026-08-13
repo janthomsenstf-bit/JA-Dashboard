@@ -371,6 +371,64 @@ function AbsenderModal({ onClose }) {
   )
 }
 
+// ── Schnellaktion-Dropdown (kompakte, scrollbare Auswahl statt Button-Reihe) ───
+// Wird oben in der Werkzeugleiste UND im rechten Aktionen-Panel verwendet.
+function SchnellaktionMenu({ typConfig, vorlagen = [], onAction, onVorlage, variant = 'inline' }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+  useEffect(() => {
+    if (!open) return
+    function onDoc(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [open])
+  const quick = vorlagen.filter(v => v.schnellaktion)
+  const full  = variant === 'full'
+  const item = (extra = {}) => ({
+    display: 'flex', alignItems: 'center', gap: '8px', width: '100%',
+    padding: '7px 10px', borderRadius: '7px', cursor: 'pointer', textAlign: 'left',
+    background: 'none', border: 'none', color: 'var(--text)', fontSize: '12px', fontWeight: 600, ...extra,
+  })
+  return (
+    <div ref={ref} style={{ position: 'relative', display: full ? 'block' : 'inline-block', width: full ? '100%' : undefined }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="btn btn-ghost btn-sm"
+        style={{ fontSize: '12px', fontWeight: 600, width: full ? '100%' : undefined,
+          background: open ? 'rgba(37,99,235,0.08)' : undefined, borderColor: open ? 'var(--accent)' : undefined }}
+      >
+        ⚡ Schnellaktion ▾
+      </button>
+      {open && (
+        <div style={{
+          position: 'absolute', zIndex: 200, top: 'calc(100% + 4px)', left: 0,
+          minWidth: '230px', maxHeight: '320px', overflowY: 'auto',
+          background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '10px',
+          boxShadow: '0 12px 32px rgba(0,0,0,0.18)', padding: '6px',
+        }}>
+          {Object.entries(typConfig).map(([typ, cfg]) => (
+            <button key={typ} onClick={() => { onAction(typ); setOpen(false) }}
+              style={item({ color: cfg.color })}
+              onMouseEnter={e => e.currentTarget.style.background = cfg.bg}
+              onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+              <span>{cfg.icon}</span> {cfg.label}
+            </button>
+          ))}
+          {quick.length > 0 && <div style={{ borderTop: '1px solid var(--border)', margin: '6px 4px' }} />}
+          {quick.map(v => (
+            <button key={v.id} onClick={() => { onVorlage(v); setOpen(false) }} title={v.betreff}
+              style={item({ color: 'var(--accent)' })}
+              onMouseEnter={e => e.currentTarget.style.background = 'rgba(167,139,250,0.08)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+              ⚡ {v.name}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Haupt-Komponente ──────────────────────────────────────────────────────────
 export default function KommunikationTab({ client, onUpdate, emailVorlagen = [], onUpdateEmailVorlagen, emailSignaturen = [], onUpdateEmailSignaturen, onedriveTokens = null, onUpdateOnedriveTokens, pendingAttachments = null, onClearPendingAttachments, pendingOpenEmailId = null, onClearPendingOpenEmailId }) {
   const komm    = client.kommunikation ?? { events: [], standardAbsender: '' }
@@ -1410,51 +1468,42 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
   return (
     <div style={{ padding: '20px', maxWidth: '100%' }}>
 
-      {/* ── 1. Schnellaktionen ── */}
-      <div style={{ marginBottom: '20px' }}>
-        <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.08em', marginBottom: '10px', textTransform: 'uppercase' }}>
-          Schnellaktionen
-        </div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-          {Object.entries(TYP_CONFIG).map(([typ, cfg]) => (
-            <button
-              key={typ}
-              onClick={() => openQuickAction(typ)}
-              style={{
-                display: 'flex', alignItems: 'center', gap: '6px',
-                padding: '7px 14px', borderRadius: '8px', cursor: 'pointer',
-                background: cfg.bg, color: cfg.color,
-                border: `1px solid ${cfg.color}40`,
-                fontSize: '12px', fontWeight: 600,
-              }}
-            >
-              <span>{cfg.icon}</span>{cfg.label}
-            </button>
+      {/* ── Kompakte Werkzeugleiste (Schnellaktion-Dropdown + Mail-Werkzeuge in einer Reihe) ── */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center', marginBottom: '14px' }}>
+        <SchnellaktionMenu typConfig={TYP_CONFIG} vorlagen={emailVorlagen} onAction={openQuickAction} onVorlage={openWithVorlage} />
+        {!editorOpen && (
+          <>
+            <button className="btn btn-ghost btn-sm" onClick={openNewEditor} style={{ fontSize: '12px' }}>✏️ Neue E-Mail</button>
+            <button className="btn btn-ghost btn-sm" onClick={() => setShowVorlagenModal(true)} style={{ fontSize: '12px', color: 'var(--accent)' }}>📝 Vorlagen ({emailVorlagen.length})</button>
+            <button className="btn btn-ghost btn-sm" onClick={() => setShowSignaturenModal(true)} style={{ fontSize: '12px', color: 'var(--accent)' }}>✍️ Signaturen ({emailSignaturen.length})</button>
+          </>
+        )}
+        <div style={{ width: '1px', alignSelf: 'stretch', background: 'var(--border)', margin: '0 2px' }} />
+        <button className="btn btn-ghost btn-sm" onClick={handleFetchEmails} disabled={posteingangLoad} style={{ fontSize: '12px' }}>
+          {posteingangLoad ? '⏳ Wird abgerufen...' : '📥 E-Mails abrufen'}
+        </button>
+        <select className="input" value={selectedFolder} onChange={e => setSelectedFolder(e.target.value)} onFocus={loadFolders} disabled={posteingangLoad} style={{ fontSize: '11px', padding: '4px 8px', maxWidth: '200px' }}>
+          <option value="INBOX">📥 Posteingang (INBOX)</option>
+          {availFolders.map((f, i) => f.path !== 'INBOX' && (
+            <option key={i} value={f.path}>📁 {f.path} ({f.account})</option>
           ))}
-
-          {/* ── Vorlage-Schnellaktionen ── */}
-          {emailVorlagen.filter(v => v.schnellaktion).length > 0 && (
-            <>
-              <div style={{ width: '1px', background: 'var(--border)', alignSelf: 'stretch', margin: '0 4px' }} />
-              {emailVorlagen.filter(v => v.schnellaktion).map(v => (
-                <button
-                  key={v.id}
-                  onClick={() => openWithVorlage(v)}
-                  title={v.betreff}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: '6px',
-                    padding: '7px 14px', borderRadius: '8px', cursor: 'pointer',
-                    background: 'rgba(167,139,250,0.08)', color: 'var(--accent)',
-                    border: '1px solid rgba(167,139,250,0.25)',
-                    fontSize: '12px', fontWeight: 600,
-                  }}
-                >
-                  ⚡ {v.name}
-                </button>
-              ))}
-            </>
-          )}
-        </div>
+        </select>
+        <button className={`btn btn-sm ${graphSearchOpen ? 'btn-primary' : 'btn-ghost'}`}
+          onClick={() => {
+            if (!graphSearchOpen) {
+              const firstEmail = (client.kontakte ?? []).find(k => k.email)?.email ?? ''
+              setGraphSearchEmail(firstEmail)
+              setGraphSearchResults(null)
+              setGraphSearchError('')
+            }
+            setGraphSearchOpen(v => !v)
+          }}
+          style={{ fontSize: '12px' }}
+          title="Alle Outlook-Ordner nach E-Mails dieser Adresse durchsuchen">
+          🔍 Outlook-Suche
+        </button>
+        {foldersLoading && <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Ordner werden geladen…</span>}
+        {posteingangError && <span style={{ fontSize: '11px', color: '#dc2626' }}>⚠️ {posteingangError}</span>}
       </div>
 
       {/* ── 2. E-Mail-Editor ── */}
@@ -1906,21 +1955,6 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
         </div>
       )}
 
-      {/* Editor-Buttons + Vorlagen-Link */}
-      {!editorOpen && (
-        <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', flexWrap: 'wrap', alignItems: 'center' }}>
-          <button className="btn btn-ghost btn-sm" onClick={openNewEditor} style={{ fontSize: '12px' }}>
-            ✏️ Neue E-Mail verfassen
-          </button>
-          <button className="btn btn-ghost btn-sm" onClick={() => setShowVorlagenModal(true)} style={{ fontSize: '12px', color: 'var(--accent)' }}>
-            📝 Vorlagen ({emailVorlagen.length})
-          </button>
-          <button className="btn btn-ghost btn-sm" onClick={() => setShowSignaturenModal(true)} style={{ fontSize: '12px', color: 'var(--accent)' }}>
-            ✍️ Signaturen ({emailSignaturen.length})
-          </button>
-        </div>
-      )}
-
       {/* E-Mail-Vorlagen-Modal */}
       {showVorlagenModal && (
         <EmailVorlagenModal
@@ -1951,39 +1985,8 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
         />
       )}
 
-      {/* ── Posteingang abrufen ── */}
-      <div style={{ marginBottom: '20px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-          <button
-            className="btn btn-ghost btn-sm"
-            onClick={handleFetchEmails}
-            disabled={posteingangLoad}
-            style={{ fontSize: '12px' }}
-          >
-            {posteingangLoad ? '⏳ Wird abgerufen...' : '📥 E-Mails abrufen'}
-          </button>
-          {/* Ordner-Auswahl */}
-          <select
-            className="input"
-            value={selectedFolder}
-            onChange={e => setSelectedFolder(e.target.value)}
-            onFocus={loadFolders}
-            disabled={posteingangLoad}
-            style={{ fontSize: '11px', padding: '4px 8px', maxWidth: '200px' }}
-          >
-            <option value="INBOX">📥 Posteingang (INBOX)</option>
-            {availFolders.map((f, i) => f.path !== 'INBOX' && (
-              <option key={i} value={f.path}>
-                📁 {f.path} ({f.account})
-              </option>
-            ))}
-          </select>
-          {foldersLoading && <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Ordner werden geladen…</span>}
-          {posteingangError && (
-            <span style={{ fontSize: '11px', color: '#dc2626' }}>⚠️ {posteingangError}</span>
-          )}
-        </div>
-
+      {/* ── Posteingang-Liste (Abruf-Trigger + Ordnerwahl sitzen in der Werkzeugleiste oben) ── */}
+      <div style={{ marginBottom: (posteingangOpen && (posteingangEmails.length > 0 || !posteingangLoad)) ? '16px' : '0' }}>
         {posteingangOpen && posteingangEmails.length > 0 && (
           <div style={{ marginTop: '12px', border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden' }}>
             <div style={{ padding: '8px 12px', background: 'rgba(15,118,110,0.06)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -2016,33 +2019,8 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
         )}
       </div>
 
-      {/* ── Graph-Suche: Alle Outlook-Ordner durchsuchen ── */}
-      <div style={{ marginBottom: '20px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-          <button
-            className={`btn btn-sm ${graphSearchOpen ? 'btn-primary' : 'btn-ghost'}`}
-            onClick={() => {
-              if (!graphSearchOpen) {
-                // E-Mail aus Kontakten vorausfüllen
-                const firstEmail = (client.kontakte ?? []).find(k => k.email)?.email ?? ''
-                setGraphSearchEmail(firstEmail)
-                setGraphSearchResults(null)
-                setGraphSearchError('')
-              }
-              setGraphSearchOpen(v => !v)
-            }}
-            style={{ fontSize: '12px' }}
-            title="Alle Outlook-Ordner nach E-Mails dieser Adresse durchsuchen"
-          >
-            🔍 Outlook-Suche (alle Ordner)
-          </button>
-          {graphSearchOpen && (
-            <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
-              Durchsucht alle Ordner inkl. Unterordner über Microsoft Graph
-            </span>
-          )}
-        </div>
-
+      {/* ── Outlook-Suche-Panel (Trigger sitzt in der Werkzeugleiste oben) ── */}
+      <div style={{ marginBottom: graphSearchOpen ? '16px' : '0' }}>
         {graphSearchOpen && (
           <div style={{ marginTop: '10px', padding: '12px 14px', background: 'rgba(37,99,235,0.04)', borderRadius: '10px', border: '1px solid rgba(37,99,235,0.2)' }}>
             <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--accent)', marginBottom: '10px' }}>
@@ -2427,6 +2405,8 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
                 setActionForm={setActionForm}
                 emailSignaturen={emailSignaturen}
                 emailVorlagen={emailVorlagen}
+                onQuickAction={openQuickAction}
+                onQuickVorlage={openWithVorlage}
                 onedriveTokens={onedriveTokens}
                 onUpdateOnedriveTokens={onUpdateOnedriveTokens}
               />
@@ -2459,6 +2439,7 @@ function EmailDetailPanel({
   actionForm, setActionForm,
   emailSignaturen = [],
   emailVorlagen = [],
+  onQuickAction, onQuickVorlage,
   onedriveTokens = null,
   onUpdateOnedriveTokens,
   inline = false,
@@ -3280,6 +3261,10 @@ function EmailDetailPanel({
                   <button onClick={() => { sendFromHistory(entry); onClose() }} style={sideBtn({ background: 'rgba(37,99,235,0.08)', color: 'var(--accent)', fontWeight: 600, border: '1px solid rgba(37,99,235,0.2)' })}>
                     📤 Jetzt senden
                   </button>
+                )}
+
+                {onQuickAction && (
+                  <SchnellaktionMenu typConfig={TYP_CONFIG} vorlagen={emailVorlagen} onAction={onQuickAction} onVorlage={onQuickVorlage} variant="full" />
                 )}
 
                 <div style={{ borderTop: '1px solid var(--border)', margin: '6px 0' }} />

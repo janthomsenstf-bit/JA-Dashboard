@@ -10,7 +10,6 @@
  */
 
 export const HAUPTBEREICHE = [
-  { key: 'agent',        label: 'Co-Trainer',    icon: '🧭', farbe: '#0d9488', beschreibung: 'Dein sprechender Assistent – frag das Spielbuch per Text oder Sprache und lege eigene Skills an.' },
   { key: 'kommunikation',label: 'Kommunikation', icon: '✉️', farbe: '#16a34a', beschreibung: 'E-Mails, Vorlagen und der gesamte Schriftverkehr.' },
   { key: 'personen',     label: 'Personen',      icon: '👥', farbe: '#0891b2', beschreibung: 'Mandanten, Ansprechpartner und Kontakte.' },
   { key: 'ustreg',       label: 'USt-Registrierung', icon: '🏛', farbe: '#4338ca', beschreibung: 'Umsatzsteuerliche Registrierung ausländischer Unternehmen – Fälle, Formulare, Wissensdatenbank.' },

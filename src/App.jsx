@@ -38,8 +38,6 @@ import ProzesseBereich from './components/ProzesseBereich.jsx'
 import ChecklistenBereich from './components/ChecklistenBereich.jsx'
 import LeistungspoolBereich from './components/LeistungspoolBereich.jsx'
 import { loadChecklistenUebersicht } from './utils/checklistenUebersichtStorage.js'
-import AgentBereich from './components/agent/AgentBereich.jsx'
-import { loadSkills, mergeWithDefaults } from './utils/skillsStorage.js'
 // USt-Registrierung – eigenständiges Modul, lazy geladen (Vorschau mit Beispieldaten)
 const UstRegistrierungBereich = lazy(() => import('./components/UstRegistrierungBereich.jsx'))
 
@@ -378,9 +376,9 @@ function isEmailOpen(incomingEvent, allEvents) {
 export default function App() {
   // Hauptbereich der neuen Navigation. 'spielbuch' = der bisherige Arbeitsbereich
   // (unverändert). Die übrigen Bereiche sind vorbereitet und noch leer.
-  // Beim Öffnen landet man auf dem Co-Trainer (Startseite). Der zuletzt gewählte
+  // Beim Öffnen landet man auf „Personen" (Mandantenübersicht). Der zuletzt gewählte
   // Bereich wird zwar weiter gespeichert, bestimmt aber nicht mehr die Landung.
-  const [hauptbereich, setHauptbereich] = useState('agent')
+  const [hauptbereich, setHauptbereich] = useState('personen')
   const wechselBereich = (key) => {
     setHauptbereich(key)
     try { localStorage.setItem('spielbuch-hauptbereich', key) } catch {}
@@ -407,7 +405,6 @@ export default function App() {
   const [showChecklistEditor, setShowChecklistEditor]   = useState(false)
   const [vorlagen, setVorlagen]                         = useState(() => loadVorlagen())           // Fallback: lokal
   const [checklisten, setChecklisten]                   = useState(() => loadChecklistenUebersicht()) // eigenständige JA-Checklisten
-  const [skills, setSkills]                             = useState(() => mergeWithDefaults(loadSkills())) // Co-Trainer-Skills
   const importRef                         = useRef(null)
 
   // ── Posteingang / E-Mail-Auto-Abruf ──────────────────────────────────────────
@@ -497,7 +494,6 @@ export default function App() {
         if (cloudData['spielbuch-checklisten-v1'])    setChecklistenTypen(cloudData['spielbuch-checklisten-v1'])
         if (cloudData['spielbuch-vorlagen-v1'])       setVorlagen(cloudData['spielbuch-vorlagen-v1'])
         if (Array.isArray(cloudData['spielbuch-checklisten-uebersicht-v1'])) setChecklisten(cloudData['spielbuch-checklisten-uebersicht-v1'])
-        if (Array.isArray(cloudData['spielbuch-skills-v1'])) setSkills(mergeWithDefaults(cloudData['spielbuch-skills-v1']))
         if (Array.isArray(cloudData['unbekannte-emails'])) setUnbekannteEmails(cloudData['unbekannte-emails'])
         if (Array.isArray(cloudData['email-vorlagen-v1']))    setEmailVorlagen(cloudData['email-vorlagen-v1'])
         if (Array.isArray(cloudData['email-signaturen-v1'])) setEmailSignaturen(cloudData['email-signaturen-v1'])
@@ -593,10 +589,6 @@ export default function App() {
     if (!authUser || dataLoading) return
     cloudSave('spielbuch-checklisten-uebersicht-v1', checklisten)
   }, [checklisten])
-  useEffect(() => {
-    if (!authUser || dataLoading) return
-    cloudSave('spielbuch-skills-v1', skills)
-  }, [skills])
   useEffect(() => {
     if (!authUser || dataLoading) return
     cloudSave('sdb-termine', termine)
@@ -1654,7 +1646,7 @@ export default function App() {
         const klientOffen = hauptbereich === 'personen' && !!selectedId && clients.some(c => c.id === selectedId)
         const zeigeUebersicht = hauptbereich === 'personen' && !klientOffen
         const zeigeArbeitsbereich = klientOffen
-        const eigeneBereiche = ['agent', 'personen', 'kommunikation', 'dokumente', 'uebersichten', 'prozesse', 'checklisten', 'leistungspool', 'ustreg']
+        const eigeneBereiche = ['personen', 'kommunikation', 'dokumente', 'uebersichten', 'prozesse', 'checklisten', 'leistungspool', 'ustreg']
         const zeigePlatzhalter = !eigeneBereiche.includes(hauptbereich)
         const offenerKlient = klientOffen ? clients.find(c => c.id === selectedId) : null
 
@@ -1694,22 +1686,6 @@ export default function App() {
                 onUpdateOnedriveTokens={setOnedriveTokens}
                 onOeffneMandant={(id, tab) => {
                   setDetailInitialTab(tab ?? TAB.dokumente)
-                  setSelectedId(id)
-                  wechselBereich('personen')
-                }}
-              />
-            )}
-
-            {/* Bereich „Co-Trainer" – Agenten-Startseite (rein lesend + Mail-Entwurf) */}
-            {hauptbereich === 'agent' && (
-              <AgentBereich
-                clients={clients}
-                skills={skills}
-                onSkillsChange={setSkills}
-                claudeApiKey={claudeApiKey}
-                offenerMandantName={offenerKlient?.name ?? null}
-                onOeffneMandant={(id) => {
-                  setDetailInitialTab(TAB.nachrichten)
                   setSelectedId(id)
                   wechselBereich('personen')
                 }}
