@@ -215,8 +215,17 @@ function openMailto({ empfaenger, betreff, text, cc, bcc }) {
 
 // ── KI ────────────────────────────────────────────────────────────────────────
 async function callClaude(systemPrompt, userText) {
+  // Umschaltbare KI-Schicht (Claude ODER ChatGPT) bevorzugen, sofern dort ein
+  // Schluessel gesetzt ist (Stammdaten → ⚙️ → API-Schlüssel). So greift die
+  // Anbieter-Wahl auch fuer die E-Mail-Entwuerfe.
+  if (hasAiKey()) {
+    const r = await callAI(systemPrompt, userText, { maxTokens: 1500 })
+    if (r && typeof r === 'object') return r
+    throw new Error('Antwort konnte nicht verarbeitet werden.')
+  }
+  // Fallback: alte direkte Claude-Leitung (Schluessel unter „Status & Arbeit" 🔑)
   const key = loadApiKey()
-  if (!key) throw new Error('Bitte zuerst den Claude API-Schlüssel im Reiter „Status & Arbeit" hinterlegen (🔑).')
+  if (!key) throw new Error('Bitte einen KI-Schlüssel hinterlegen: Stammdaten → ⚙️ → API-Schlüssel (Claude oder ChatGPT).')
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
