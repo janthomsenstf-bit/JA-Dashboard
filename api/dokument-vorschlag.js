@@ -33,13 +33,14 @@ export default async function handler(req, res) {
   }
   if (req.query.ping) return res.status(200).json({ version: VERSION })
 
-  // Freigaben lesen (für Claude Code): Karten, die der Nutzer freigegeben hat.
+  // Freigaben lesen (für Claude Code): bestätigte Karten (status 'zugeordnet', stand 'freigegeben'),
+  // die noch nicht ausgeführt (= noch nicht 'verarbeitet') sind.
   if (req.method === 'GET' && req.query.freigaben) {
     const { data, error } = await sb.from('bot_inbox').select('*')
-      .eq('intent', 'dokument_ablage').eq('status', 'neu')
+      .eq('intent', 'dokument_ablage').eq('status', 'zugeordnet')
       .order('created_at', { ascending: true }).limit(50)
     if (error) return res.status(500).json({ error: error.message })
-    const freigegeben = (data || []).filter(r => r.draft?.stand === 'freigegeben' || r.draft?.stand === 'verworfen')
+    const freigegeben = (data || []).filter(r => r.draft?.stand === 'freigegeben')
     return res.status(200).json({ karten: freigegeben })
   }
 
