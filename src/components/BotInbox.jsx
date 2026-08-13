@@ -897,7 +897,7 @@ export default function BotInbox({ clients, onUpdateClient, onNavigateToClient, 
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
         <span style={{ fontSize: '24px' }}>🤖</span>
         <div>
-          <h2 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: 'var(--text)' }}>Bot-Inbox</h2>
+          <h2 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: 'var(--text)' }}>Posteingang (KI)</h2>
           <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
             Telegram-Nachrichten verarbeiten
           </div>
@@ -966,7 +966,7 @@ export default function BotInbox({ clients, onUpdateClient, onNavigateToClient, 
       {/* Loading */}
       {loading && (
         <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--text-muted)', fontSize: '14px' }}>
-          ⏳ Lade Bot-Inbox…
+          ⏳ Lade Posteingang…
         </div>
       )}
 
@@ -1301,7 +1301,7 @@ export function BotInboxBadge({ onClick, active }) {
         transition: 'all 0.15s', position: 'relative',
       }}
     >
-      🤖 Bot-Inbox
+      🤖 Posteingang (KI)
       {count > 0 && (
         <span style={{
           marginLeft: 'auto', minWidth: '20px', height: '20px', lineHeight: '20px',

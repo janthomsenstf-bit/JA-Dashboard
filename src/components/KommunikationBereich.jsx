@@ -18,7 +18,7 @@ const FARBE = '#16a34a' // Farbwelt des Bereichs „Kommunikation"
 const KANAELE = [
   { key: 'email',    label: 'E-Mail',           icon: '✉️', aktiv: true },
   { key: 'website',  label: 'Website-Anfragen', icon: '🌐', aktiv: true },
-  { key: 'bot',      label: 'Bot-Inbox',        icon: '🤖', aktiv: true },
+  { key: 'bot',      label: 'Posteingang (KI)', icon: '🤖', aktiv: true },
   { key: 'whatsapp', label: 'WhatsApp',         icon: '💬', aktiv: false },
 ]
 
@@ -217,7 +217,7 @@ export default function KommunikationBereich({
         <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
           {slotBotInbox ?? (
             <div style={{ padding: '48px', textAlign: 'center', color: 'var(--text-muted)' }}>
-              Bot-Inbox ist hier nicht verfügbar.
+              Posteingang ist hier nicht verfügbar.
             </div>
           )}
         </div>
