@@ -68,12 +68,16 @@ function EmailContent({ item, expanded, onedriveTokens, onTokenRefresh, onSpam }
     if (!onedriveTokens?.accessToken) {
       setUpStatus({ ok: false, msg: 'Keine OneDrive-Verbindung – bitte im Dashboard verbinden.' }); return
     }
-    if (e.uid == null) { setUpStatus({ ok: false, msg: 'Keine Mail-Referenz (uid) – Mail neu abrufen.' }); return }
+    // Stabile Message-ID: aus _email oder (Altbestand) aus dem Dedupe-Schluessel 'email:<id>'
+    const messageId = e.messageId
+      || (typeof item.telegram_message_id === 'string' && item.telegram_message_id.startsWith('email:')
+            ? item.telegram_message_id.slice(6) : null)
+    if (e.uid == null && !messageId) { setUpStatus({ ok: false, msg: 'Keine Mail-Referenz – Mail neu abrufen.' }); return }
     setUpStatus('laeuft')
     try {
       const res = await fetch('/api/mail-to-posteingang', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ account: e.account, uid: e.uid, filenames: anhaenge.map(a => a.filename), tokens: onedriveTokens }),
+        body: JSON.stringify({ account: e.account, uid: e.uid, messageId, filenames: anhaenge.map(a => a.filename), tokens: onedriveTokens }),
       })
       const d = await res.json().catch(() => ({}))
       if (d.newTokens && onTokenRefresh) onTokenRefresh(d.newTokens)

@@ -39,6 +39,38 @@ async function refreshAccessToken(refreshToken) {
 
 const encPath = p => p.split('/').map(encodeURIComponent).join('/')
 
+// Findet die Original-Mail robust: primaer ueber die STABILE Message-ID (in allen
+// Ordnern, INBOX zuerst), sonst Fallback ueber die positionsabhaengige uid im INBOX.
+async function findeMailSource(imap, { uid, messageId }) {
+  if (messageId) {
+    let paths = ['INBOX']
+    try {
+      const boxes = await imap.list()
+      paths = ['INBOX', ...boxes.map(b => b.path).filter(p => p && p.toUpperCase() !== 'INBOX')]
+    } catch {}
+    for (const p of paths) {
+      try {
+        await imap.mailboxOpen(p)
+        const hits = await imap.search({ header: { 'message-id': messageId } })
+        if (hits && hits.length) {
+          const msg = await imap.fetchOne(hits[hits.length - 1], { source: true })
+          if (msg?.source) return msg.source
+        }
+      } catch { /* Ordner nicht durchsuchbar -> weiter */ }
+    }
+  }
+  if (uid != null) {
+    try {
+      await imap.mailboxOpen('INBOX')
+      // erst als echte UID, dann als Sequenznummer (Altbestand speicherte Sequenznummern)
+      let msg = await imap.fetchOne(String(uid), { source: true }, { uid: true }).catch(() => null)
+      if (!msg?.source) msg = await imap.fetchOne(String(uid), { source: true }).catch(() => null)
+      if (msg?.source) return msg.source
+    } catch {}
+  }
+  return null
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
@@ -46,8 +78,8 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end()
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
-  const { account = 'strato', uid, filenames, tokens: inputTokens, targetFolder = '13. Posteingang' } = req.body || {}
-  if (!uid) return res.status(400).json({ error: 'uid fehlt' })
+  const { account = 'strato', uid, messageId, filenames, tokens: inputTokens, targetFolder = '13. Posteingang' } = req.body || {}
+  if (uid == null && !messageId) return res.status(400).json({ error: 'uid/messageId fehlt' })
   if (!Array.isArray(filenames) || !filenames.length) return res.status(400).json({ error: 'filenames fehlt' })
   if (!inputTokens?.accessToken) return res.status(401).json({ error: 'tokens fehlen', needsReauth: true })
 
@@ -67,10 +99,9 @@ export default async function handler(req, res) {
   const hochgeladen = [], uebersprungen = []
   try {
     await imap.connect()
-    await imap.mailboxOpen('INBOX')
-    const msg = await imap.fetchOne(String(uid), { source: true }, { uid: true })
-    if (!msg?.source) { await imap.logout(); return res.status(404).json({ error: 'E-Mail nicht gefunden', ...newTokensField }) }
-    const parsed = await simpleParser(msg.source)
+    const source = await findeMailSource(imap, { uid, messageId })
+    if (!source) { await imap.logout(); return res.status(404).json({ error: 'E-Mail nicht gefunden', ...newTokensField }) }
+    const parsed = await simpleParser(source)
     await imap.logout()
 
     for (const fn of filenames) {

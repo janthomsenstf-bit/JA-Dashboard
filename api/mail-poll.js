@@ -265,6 +265,7 @@ export default async function handler(req, res) {
             date: datum.slice(0, 10),
             account,
             uid,
+            messageId,          // stabile Referenz zum Wiederfinden (uid ist positionsabhaengig)
             anhaenge,
             moeglicherSpam: !!(cl.spam && !cl.spam_sicher),
           },
