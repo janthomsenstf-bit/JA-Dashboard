@@ -94,12 +94,13 @@ const inputBase = { width: '100%', padding: '7px 10px', border: '1px solid var(-
 const selectBase = { ...inputBase }
 
 // ── Formular ──────────────────────────────────────────────────────────────────────
-function HonorarForm({ initial, isNew, onSave, onCancel }) {
+function HonorarForm({ initial, isNew, onSave, onCancel, auftraege = [] }) {
   const [form, setForm] = useState(() => ({
     ...initial,
     betrag: initial.betrag === 0 && isNew ? '' : String(initial.betrag),
   }))
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+  const offeneAuftraege = (auftraege ?? []).filter(a => a && a.status !== 'erledigt')
 
   const betragNum  = parseFloat(form.betrag) || 0
   const monat      = form.betrag !== '' ? toMonatswert(betragNum, form.rhythmus) : null
@@ -108,7 +109,7 @@ function HonorarForm({ initial, isNew, onSave, onCancel }) {
   const jahrWarn   = isEinmalig && !form.leistungsjahr
   const canSave    = isEinmalig ? (form.rhythmus === 'aufwand' || betragNum > 0) : betragNum > 0
 
-  function handleSave() { if (canSave) onSave({ ...form, betrag: betragNum }) }
+  function handleSave() { if (canSave) onSave({ ...form, betrag: betragNum, auftragId: form.auftragId || null }) }
 
   return (
     <div style={{ border: `2px solid ${ACCENT}44`, borderRadius: '10px', overflow: 'hidden' }}>
@@ -203,6 +204,19 @@ function HonorarForm({ initial, isNew, onSave, onCancel }) {
           </label>
         </div>
 
+        {/* Zeile 4: Kopplung an einen Auftrag (optional) */}
+        {offeneAuftraege.length > 0 && (
+          <div>
+            <FieldLabel>Zu Auftrag (optional)</FieldLabel>
+            <select value={form.auftragId || ''} onChange={e => set('auftragId', e.target.value || null)} style={selectBase}>
+              <option value="">— kein Auftrag —</option>
+              {offeneAuftraege.map(a => (
+                <option key={a.id} value={a.id}>{(a.bezeichnung || a.typ) + (a.jahr ? ` (${a.jahr})` : '')}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
         {/* Hinweis: Jahr fehlt bei einmalig */}
         {jahrWarn && (
           <div style={{ background: 'rgba(249,115,22,0.08)', border: '1px solid rgba(249,115,22,0.3)', borderRadius: '6px', padding: '7px 10px', fontSize: '11px', color: '#f97316' }}>
@@ -246,7 +260,7 @@ function HonorarForm({ initial, isNew, onSave, onCancel }) {
 }
 
 // ── Einzelne Karte ────────────────────────────────────────────────────────────────
-function HonorarKarte({ h, onUpdate, onDelete }) {
+function HonorarKarte({ h, onUpdate, onDelete, auftraege = [] }) {
   const [editing, setEditing] = useState(false)
   const cfg       = LEISTUNGSART_CFG[h.leistungsart] ?? LEISTUNGSART_CFG.sonstiges
   const monat     = toMonatswert(h.betrag, h.rhythmus)
@@ -262,6 +276,7 @@ function HonorarKarte({ h, onUpdate, onDelete }) {
         isNew={false}
         onSave={updated => { onUpdate(updated); setEditing(false) }}
         onCancel={() => setEditing(false)}
+        auftraege={auftraege}
       />
     )
   }
@@ -371,7 +386,7 @@ function HonorarKarte({ h, onUpdate, onDelete }) {
 }
 
 // ── Inaktive Sektion ──────────────────────────────────────────────────────────────
-function InaktiveSection({ honorare, onUpdate, onDelete }) {
+function InaktiveSection({ honorare, onUpdate, onDelete, auftraege = [] }) {
   const [open, setOpen] = useState(false)
   return (
     <div style={{ borderTop: '1px solid var(--border)', paddingTop: '8px' }}>
@@ -383,7 +398,7 @@ function InaktiveSection({ honorare, onUpdate, onDelete }) {
       {open && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '8px' }}>
           {honorare.map(h => (
-            <HonorarKarte key={h.id} h={h} onUpdate={onUpdate} onDelete={() => onDelete(h.id)} />
+            <HonorarKarte key={h.id} h={h} onUpdate={onUpdate} onDelete={() => onDelete(h.id)} auftraege={auftraege} />
           ))}
         </div>
       )}
@@ -817,7 +832,7 @@ export default function HonorareTab({ client, onUpdate, emailSignaturen = [] }) 
 
         <div style={{ padding: '12px', background: 'var(--surface2)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
           {showForm && (
-            <HonorarForm initial={mkHonorar()} isNew={true} onSave={addHonorar} onCancel={() => setShowForm(false)} />
+            <HonorarForm initial={mkHonorar()} isNew={true} onSave={addHonorar} onCancel={() => setShowForm(false)} auftraege={client.auftraege ?? []} />
           )}
 
           {honorare.length === 0 && !showForm && (
@@ -835,13 +850,13 @@ export default function HonorareTab({ client, onUpdate, emailSignaturen = [] }) 
           {aktiveHonorare.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               {aktiveHonorare.map(h => (
-                <HonorarKarte key={h.id} h={h} onUpdate={updateHonorar} onDelete={() => deleteHonorar(h.id)} />
+                <HonorarKarte key={h.id} h={h} onUpdate={updateHonorar} onDelete={() => deleteHonorar(h.id)} auftraege={client.auftraege ?? []} />
               ))}
             </div>
           )}
 
           {inaktiveHonorare.length > 0 && (
-            <InaktiveSection honorare={inaktiveHonorare} onUpdate={updateHonorar} onDelete={deleteHonorar} />
+            <InaktiveSection honorare={inaktiveHonorare} onUpdate={updateHonorar} onDelete={deleteHonorar} auftraege={client.auftraege ?? []} />
           )}
         </div>
       </div>
