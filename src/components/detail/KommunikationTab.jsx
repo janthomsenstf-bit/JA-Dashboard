@@ -2696,19 +2696,9 @@ function EmailDetailPanel({
       absender: entry.absender ?? '',
       datum:    entry.erstelltAm ?? entry.gesendetAm ?? new Date().toISOString(),
     }
-    // Aufgabe in client.aufgaben (Eigene Aufgaben)
-    const newTask = {
-      id: 'a' + Date.now().toString(36),
-      titel: aufgabeTitel.trim(),
-      inhalt: `E-Mail von ${entry.absender ?? ''}: ${entry.betreff ?? ''}`,
-      prioritaet: aufgabePrio,
-      faelligAm: aufgabeFaellig || null,
-      erledigt: false, erledigtAm: null,
-      datum: new Date().toISOString(),
-      quelle: 'email',
-      emailRef,
-    }
-    // Auch als Auftrag anlegen (typ freitext), damit es in der globalen Aufgabenübersicht erscheint
+    // EIN Ding: die Aufgabe wird ausschliesslich als Auftrag (typ freitext) angelegt.
+    // Sichtbar in der globalen Aufgabenuebersicht UND per Suche auffindbar (search.js indexiert auftraege).
+    // Fruehere Doppelablage in client.aufgaben (unsichtbar) wurde entfernt; prioritaet wird additiv am Auftrag gefuehrt.
     const newAuftrag = {
       id: 'au' + Date.now().toString(36) + Math.random().toString(36).slice(2, 4),
       typ: 'freitext',
@@ -2716,6 +2706,7 @@ function EmailDetailPanel({
       jahr: new Date().getFullYear(),
       monat: null,
       status: 'offen',
+      prioritaet: aufgabePrio,
       frist: aufgabeFaellig || null,
       notiz: `E-Mail von ${entry.absender ?? ''}: ${entry.betreff ?? ''}`,
       hinweise: [],
@@ -2723,7 +2714,6 @@ function EmailDetailPanel({
       erstelltAm: new Date().toISOString(),
     }
     onUpdate({
-      aufgaben:  [newTask, ...(client.aufgaben ?? [])],
       auftraege: [newAuftrag, ...(client.auftraege ?? [])],
     })
     setActionForm(null)
