@@ -881,6 +881,31 @@ export default function BotInbox({ clients, onUpdateClient, onNavigateToClient, 
     showToast('✅ Erledigt')
   }
 
+  // ── Erledigt + Wiedervorlage: aus dem Posteingang nehmen, aber offenen Punkt
+  //    als Freitext-Auftrag beim zugeordneten Mandanten anlegen (Mail verknuepft) ──
+  async function handleErledigtWiedervorlage(item) {
+    const clientId = assignedClients[item.id] || item.client_id
+    const client = clients.find(c => c.id === clientId)
+    if (!client) { showToast('Für die Wiedervorlage bitte zuerst einen Mandanten zuordnen'); return }
+    const e = item.draft?._email || {}
+    const betreff = e.subject || (item.raw_text || '').replace(/\s+/g, ' ').trim().slice(0, 60) || 'Wiedervorlage'
+    const auftrag = mkAuftrag('freitext')
+    auftrag.bezeichnung = `Wiedervorlage: ${betreff}`
+    auftrag.notiz = e.summary || (item.raw_text || '').slice(0, 400)
+    if (e.from || e.messageId || e.uid != null) {
+      auftrag.verknuepfungen = [mkVerknuepfung({ art: 'mail', betreff, absender: e.from || '', datum: e.date || null })]
+    }
+    onUpdateClient(clientId, { auftraege: [auftrag, ...(client.auftraege ?? [])] })
+    await supabase.from('bot_inbox').update({ status: 'verarbeitet' }).eq('id', item.id)
+    setItems(prev => prev.filter(i => i.id !== item.id))
+    setCounts(prev => ({
+      ...prev,
+      [activeTab]: Math.max(0, prev[activeTab] - 1),
+      verarbeitet: (prev.verarbeitet || 0) + 1,
+    }))
+    showToast('✓ Erledigt · Wiedervorlage beim Mandanten angelegt')
+  }
+
   // ── Dokument-Bündel freigeben / verwerfen (Claude Code führt danach aus) ──────
   async function dokumentFreigeben(item, neuStand) {
     const dokumente = (item.draft?.dokumente || []).map(d => ({
@@ -1248,6 +1273,16 @@ export default function BotInbox({ clients, onUpdateClient, onNavigateToClient, 
                     }}>
                       ✓ Als erledigt markieren
                     </button>
+                    {hasClient && (
+                      <button onClick={() => handleErledigtWiedervorlage(item)}
+                        title="Erledigt, aber offenen Punkt als Wiedervorlage-Aufgabe beim Mandanten anlegen" style={{
+                        padding: '7px 14px', borderRadius: '8px', border: '1px solid rgba(217,119,6,0.35)',
+                        background: 'rgba(217,119,6,0.08)', cursor: 'pointer',
+                        color: '#d97706', fontWeight: 600, fontSize: '12px',
+                      }}>
+                        🔔 Erledigt + Wiedervorlage
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -1273,6 +1308,16 @@ export default function BotInbox({ clients, onUpdateClient, onNavigateToClient, 
                 }}>
                   ✓ Erledigt
                 </button>
+                {hasClient && (
+                  <button onClick={() => handleErledigtWiedervorlage(item)}
+                    title="Erledigt, aber offenen Punkt als Wiedervorlage-Aufgabe beim Mandanten anlegen" style={{
+                    padding: '6px 14px', borderRadius: '8px', border: '1px solid rgba(217,119,6,0.35)',
+                    background: 'rgba(217,119,6,0.08)', cursor: 'pointer',
+                    color: '#d97706', fontWeight: 600, fontSize: '12px',
+                  }}>
+                    🔔 + Wiedervorlage
+                  </button>
+                )}
               </div>
             )}
           </div>
