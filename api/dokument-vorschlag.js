@@ -33,6 +33,34 @@ export default async function handler(req, res) {
   }
   if (req.query.ping) return res.status(200).json({ version: VERSION })
 
+  // ── #27 Posteingang-Jobs (Auslöser aus dem Dashboard → lokaler Worker) ──────────
+  // Offene Verarbeitungs-Anfragen holen (für den lokalen Worker).
+  if (req.method === 'GET' && req.query.jobs) {
+    const { data, error } = await sb.from('bot_inbox').select('*')
+      .eq('intent', 'posteingang_job').neq('status', 'verarbeitet')
+      .order('created_at', { ascending: true }).limit(50)
+    if (error) return res.status(500).json({ error: error.message })
+    return res.status(200).json({ jobs: data || [] })
+  }
+  // Job in Bearbeitung nehmen (stand → 'in_arbeit').
+  if (req.method === 'POST' && req.query.job_claim) {
+    const id = req.body?.id
+    if (!id) return res.status(400).json({ error: 'id fehlt' })
+    const { data: row } = await sb.from('bot_inbox').select('draft').eq('id', id).single()
+    const neuDraft = { ...(row?.draft || {}), stand: 'in_arbeit', startAm: new Date().toISOString() }
+    const { error } = await sb.from('bot_inbox').update({ draft: neuDraft }).eq('id', id)
+    return res.status(200).json({ ok: !error, error: error?.message || null })
+  }
+  // Job abschließen (status → 'verarbeitet', stand → 'fertig', Ergebnis-Zusammenfassung).
+  if (req.method === 'POST' && req.query.job_done) {
+    const { id, summary, count } = req.body || {}
+    if (!id) return res.status(400).json({ error: 'id fehlt' })
+    const { data: row } = await sb.from('bot_inbox').select('draft').eq('id', id).single()
+    const neuDraft = { ...(row?.draft || {}), stand: 'fertig', ergebnis: clean(summary) || null, anzahl: Number(count) || 0, fertigAm: new Date().toISOString() }
+    const { error } = await sb.from('bot_inbox').update({ status: 'verarbeitet', draft: neuDraft, confirmed_at: new Date().toISOString() }).eq('id', id)
+    return res.status(200).json({ ok: !error, error: error?.message || null })
+  }
+
   // Freigaben lesen (für Claude Code): bestätigte Karten (stand 'freigegeben'), noch nicht ausgeführt.
   if (req.method === 'GET' && req.query.freigaben) {
     const { data, error } = await sb.from('bot_inbox').select('*')
