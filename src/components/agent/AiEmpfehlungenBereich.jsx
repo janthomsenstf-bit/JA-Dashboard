@@ -273,6 +273,7 @@ export default function AiEmpfehlungenBereich({ clients = [], dispatcher, onOeff
 // ── Karte für eine unzugeordnete E-Mail (unbekannter Absender) ──────────────────
 function UnbekanntCard({ email, clients = [], emailVorlagen = [], onAssign, onIgnore }) {
   const [zielId, setZielId] = useState('')
+  const [auftragId, setAuftragId] = useState('')   // #24 – optional an eine Akte/Auftrag andocken
   const [body, setBody]     = useState(null)
   const [zus, setZus]       = useState(null)   // { zusammenfassung, empfehlung }
   const [antwort, setAntwort] = useState(null) // { betreff, text }
@@ -339,6 +340,9 @@ function UnbekanntCard({ email, clients = [], emailVorlagen = [], onAssign, onIg
   }
 
   const aktive = clients.filter(c => !c.archiviert).slice().sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')))
+  const zielClient = aktive.find(c => c.id === zielId)
+  const zielAuftraege = (zielClient?.auftraege || []).filter(a => a && !a.archiviert && a.status !== 'abgeschlossen' && a.status !== 'erledigt')
+  const auftragLabel = (a) => a.bezeichnung || [a.typ, a.jahr].filter(Boolean).join(' ') || 'Auftrag'
   const fmt = (d) => { if (!d) return ''; const x = new Date(d); return isNaN(x) ? '' : x.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit' }) }
   const datum = fmt(email.datum || email.empfangenAm)
   return (
@@ -397,12 +401,19 @@ function UnbekanntCard({ email, clients = [], emailVorlagen = [], onAssign, onIg
         </div>
       )}
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '10px' }}>
-        <select value={zielId} onChange={e => setZielId(e.target.value)}
+        <select value={zielId} onChange={e => { setZielId(e.target.value); setAuftragId('') }}
           style={{ flex: '1 1 180px', minWidth: 0, padding: '6px 9px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text)', fontSize: '12px' }}>
           <option value="">→ Mandant zuordnen …</option>
           {aktive.map(c => <option key={c.id} value={c.id}>{c.name}{c.mandantennummer ? ` (${c.mandantennummer})` : ''}</option>)}
         </select>
-        <button disabled={!zielId} onClick={() => { if (zielId) onAssign?.(email.uid, email.account, zielId) }}
+        {zielAuftraege.length > 0 && (
+          <select value={auftragId} onChange={e => setAuftragId(e.target.value)}
+            style={{ flex: '1 1 180px', minWidth: 0, padding: '6px 9px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text)', fontSize: '12px' }}>
+            <option value="">🔗 optional: an Auftrag andocken …</option>
+            {zielAuftraege.map(a => <option key={a.id} value={a.id}>{auftragLabel(a)}</option>)}
+          </select>
+        )}
+        <button disabled={!zielId} onClick={() => { if (zielId) onAssign?.(email.uid, email.account, zielId, auftragId || undefined) }}
           style={{ background: zielId ? 'var(--accent)' : 'var(--surface2)', color: zielId ? '#fff' : 'var(--text-muted)', border: '1px solid var(--accent)', padding: '6px 13px', borderRadius: 'var(--radius-sm)', fontSize: '12px', fontWeight: 700, cursor: zielId ? 'pointer' : 'default', opacity: zielId ? 1 : 0.6 }}>
           Zuordnen
         </button>

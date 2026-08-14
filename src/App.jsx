@@ -19,6 +19,7 @@ import CommandPalette        from './components/CommandPalette.jsx'
 import { supabase } from './utils/supabaseClient.js'
 import { cloudLoadAll, cloudSave, cloudSaveNow, cloudSnapshot, migrateLocalStorageToCloud } from './utils/cloudStorage.js'
 import { mergeClientsInto } from './utils/clientMerge.js'
+import { mkVerknuepfung, verknuepfungAnhaengen } from './utils/verknuepfung.js'
 import { saveSessionState, loadSessionState, clearSessionState } from './utils/sessionPersistence.js'
 import LoginPage from './components/LoginPage.jsx'
 import FormularPage from './components/formular/FormularPage.jsx'
@@ -825,17 +826,26 @@ export default function App() {
   //    gelöscht), damit es bei Bedarf mit 404-Markierung reaktiviert werden kann.
 
   // ── E-Mail einem Mandanten manuell zuordnen ───────────────────────────────────
-  function assignEmail(emailUid, emailAccount, clientId, saveContact) {
+  function assignEmail(emailUid, emailAccount, clientId, saveContact, auftragId) {
     const email = unbekannteEmailsRef.current.find(e => e.uid === emailUid && e.account === emailAccount)
     if (!email) return
     const event = buildIncomingEvent(email)
+    if (auftragId) event.auftragId = auftragId   // #24 – Mail direkt an eine Akte/Auftrag haengen
     setClients(prev => prev.map(c => {
       if (c.id !== clientId) return c
       const komm = c.kommunikation ?? { events: [] }
       const newKontakte = saveContact && !( c.kontakte ?? []).some(k => k.email?.toLowerCase() === email.von?.toLowerCase())
         ? [...(c.kontakte ?? []), { id: 'p' + Date.now().toString(36), name: email.vonName || '', rolle: '', email: email.von, telefon: '' }]
         : c.kontakte ?? []
-      return { ...c, kommunikation: { ...komm, events: [event, ...komm.events] }, kontakte: newKontakte }
+      // Optional: additive Verknuepfung (art 'mail') am gewaehlten Auftrag – EIN Container, kein Zweitsystem.
+      const auftraege = auftragId
+        ? verknuepfungAnhaengen({
+            auftraege: c.auftraege,
+            zielId: auftragId,
+            eintrag: mkVerknuepfung({ art: 'mail', betreff: email.betreff || '', absender: email.von || '', datum: email.datum || null, eventId: event.id }),
+          }).auftraege
+        : c.auftraege
+      return { ...c, kommunikation: { ...komm, events: [event, ...komm.events] }, kontakte: newKontakte, auftraege }
     }))
     setUnbekannteEmails(prev => prev.filter(e => !(e.uid === emailUid && e.account === emailAccount)))
   }
@@ -1698,7 +1708,7 @@ export default function App() {
                 onOeffneMandant={(id) => { setDetailInitialTab(TAB.nachrichten); setSelectedId(id); wechselBereich('personen') }}
                 onMailErledigt={markMailErledigt}
                 unbekannteEmails={unbekannteEmails}
-                onAssignEmail={(uid, account, clientId) => assignEmail(uid, account, clientId, false)}
+                onAssignEmail={(uid, account, clientId, auftragId) => assignEmail(uid, account, clientId, false, auftragId)}
                 onDismissUnbekannt={(uid, account) => setUnbekannteEmails(prev => prev.filter(e => !(e.uid === uid && e.account === account)))}
                 emailVorlagen={emailVorlagen}
               />
