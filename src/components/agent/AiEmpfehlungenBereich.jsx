@@ -39,8 +39,20 @@ const IGNORE_KEY = 'ki-ignorierte-absender-v1'
 function ladeIgnore() { try { return JSON.parse(localStorage.getItem(IGNORE_KEY) || '[]') } catch { return [] } }
 function speichereIgnore(l) { try { localStorage.setItem(IGNORE_KEY, JSON.stringify(l)) } catch { /* ignore */ } }
 
+// Vorfilter OHNE KI: klar automatische/Bulk-Absender vorsortieren (konservativ,
+// damit keine echte Mandanten-Mail versehentlich als „unwichtig" gilt).
+const BULK_LOCAL = new Set(['noreply', 'no-reply', 'no_reply', 'donotreply', 'do-not-reply', 'mailer', 'mailer-daemon', 'notifications', 'notification', 'notify', 'mailings', 'mailing', 'postmaster', 'newsletter', 'news', 'marketing'])
+function istWahrscheinlichUnwichtig(email) {
+  const local = String(email.von || '').toLowerCase().split('@')[0] || ''
+  if (BULK_LOCAL.has(local) || local.includes('noreply') || local.includes('no-reply') || local.includes('newsletter')) return true
+  const bet = String(email.betreff || '').toLowerCase()
+  if (bet.includes('newsletter') || bet.includes('unsubscribe') || bet.includes('abmelden')) return true
+  return false
+}
+
 export default function AiEmpfehlungenBereich({ clients = [], dispatcher, onOeffneMandant, onMailErledigt, unbekannteEmails = [], onAssignEmail, onDismissUnbekannt }) {
   const [ignore, setIgnore]      = useState(ladeIgnore)
+  const [zeigeUnwichtig, setZeigeUnwichtig] = useState(false)
   const generiert = useMemo(() => generiereVorgaenge(clients, ignore), [clients, ignore])
   const [mcp, setMcp]             = useState([])
   const [ladeFehler, setLadeFehler] = useState('')
@@ -62,6 +74,8 @@ export default function AiEmpfehlungenBereich({ clients = [], dispatcher, onOeff
   // Unzugeordnete E-Mails (unbekannter Absender) – gefiltert um ignorierte Absender.
   const ignoreSet = useMemo(() => new Set(ignore.map(a => String(a).toLowerCase().trim())), [ignore])
   const unbekannt = (unbekannteEmails || []).filter(e => !ignoreSet.has(String(e.von || '').toLowerCase().trim()))
+  const wichtigUnbekannt   = unbekannt.filter(e => !istWahrscheinlichUnwichtig(e))
+  const unwichtigUnbekannt = unbekannt.filter(e =>  istWahrscheinlichUnwichtig(e))
   function ignoriereUnbekannt(email) {
     const abs = String(email.von || '').toLowerCase().trim()
     if (abs) { const n = [...new Set([...ignore, abs])]; setIgnore(n); speichereIgnore(n) }
@@ -133,16 +147,35 @@ export default function AiEmpfehlungenBereich({ clients = [], dispatcher, onOeff
           </div>
         )}
 
-        {unbekannt.length > 0 && (
+        {wichtigUnbekannt.length > 0 && (
           <div style={{ marginBottom: '18px' }}>
             <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--yellow)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '8px' }}>
-              📥 Unzugeordnete E-Mails ({unbekannt.length}) – wem gehören sie?
+              📥 Unzugeordnete E-Mails ({wichtigUnbekannt.length}) – wem gehören sie?
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {unbekannt.map(e => (
+              {wichtigUnbekannt.map(e => (
                 <UnbekanntCard key={`${e.account}:${e.uid}`} email={e} clients={clients} onAssign={onAssignEmail} onIgnore={() => ignoriereUnbekannt(e)} />
               ))}
             </div>
+          </div>
+        )}
+
+        {unwichtigUnbekannt.length > 0 && (
+          <div style={{ marginBottom: '18px' }}>
+            <button
+              onClick={() => setZeigeUnwichtig(v => !v)}
+              style={{ background: 'none', border: 'none', padding: '2px 0', cursor: 'pointer', fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+            >
+              <span aria-hidden="true">{zeigeUnwichtig ? '▾' : '▸'}</span>
+              Weniger wichtig · Werbung / Newsletter ({unwichtigUnbekannt.length})
+            </button>
+            {zeigeUnwichtig && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '8px', opacity: 0.85 }}>
+                {unwichtigUnbekannt.map(e => (
+                  <UnbekanntCard key={`${e.account}:${e.uid}`} email={e} clients={clients} onAssign={onAssignEmail} onIgnore={() => ignoriereUnbekannt(e)} />
+                ))}
+              </div>
+            )}
           </div>
         )}
 
