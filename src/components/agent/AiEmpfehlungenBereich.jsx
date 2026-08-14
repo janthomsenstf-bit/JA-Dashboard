@@ -275,6 +275,8 @@ function UnbekanntCard({ email, clients = [], emailVorlagen = [], onAssign, onIg
   const [zielId, setZielId] = useState('')
   const [auftragId, setAuftragId] = useState('')   // #24 – optional an eine Akte/Auftrag andocken
   const [body, setBody]     = useState(null)
+  const [attachments, setAttachments] = useState(null) // #25 – null=noch nicht geladen, []=keine
+  const [erk, setErk]       = useState({})             // #25 – Dateiname → { typ, erkannt, empfehlung }
   const [zus, setZus]       = useState(null)   // { zusammenfassung, empfehlung }
   const [antwort, setAntwort] = useState(null) // { betreff, text }
   const [busy, setBusy]     = useState('')     // '' | 'zus' | 'antwort' | 'senden'
@@ -287,7 +289,9 @@ function UnbekanntCard({ email, clients = [], emailVorlagen = [], onAssign, onIg
     const res  = await fetch(`/api/get-email-content?uid=${encodeURIComponent(email.uid)}&account=${encodeURIComponent(email.account)}`)
     const data = await res.json().catch(() => ({}))
     const b = String(data.text || (data.html || '').replace(/<[^>]+>/g, ' ') || '').replace(/\s+/g, ' ').slice(0, 4000)
-    setBody(b); return b
+    setBody(b)
+    setAttachments(Array.isArray(data.attachments) ? data.attachments : [])   // #25 – Anhänge aus derselben Antwort
+    return b
   }
 
   // #21 – KI-Zusammenfassung + Empfehlung, ERST auf Klick (kostenschonend).
@@ -339,6 +343,29 @@ function UnbekanntCard({ email, clients = [], emailVorlagen = [], onAssign, onIg
     finally { setBusy('') }
   }
 
+  // #25 – Anhänge laden (aus derselben Mail-Antwort) und anzeigen.
+  async function anhaengePruefen() {
+    if (busy || attachments != null) return
+    setBusy('anhaenge'); setFehler('')
+    try { await holeBody() } catch (e) { setFehler(e?.message || String(e)) }
+    finally { setBusy('') }
+  }
+
+  // #25 – einen Anhang per KI einordnen (Dateiname + Typ + Mail-Kontext, keine Pixel-OCR).
+  async function belegErkennen(att) {
+    if (busy) return
+    if (!hasAiKey()) { setFehler('Kein KI-Schlüssel hinterlegt (Stammdaten → ⚙️).'); return }
+    setBusy('erk:' + att.name); setFehler('')
+    try {
+      const b = await holeBody()
+      const sys  = 'Du bist die Assistenz eines deutschen Steuerberaters und ordnest einen E-Mail-Anhang ein. Nutze Dateiname, Dateityp und Mail-Kontext. Antworte AUSSCHLIESSLICH als JSON: {"typ":"Eingangsrechnung|Ausgangsrechnung|Kontoauszug|Vertrag|Bescheid|Lohnunterlage|Sonstiges","erkannt":"1 kurzer Satz, was das Dokument ist","empfehlung":"kurze Ablage-/Zuordnungsempfehlung"}. Nichts erfinden; bei Unsicherheit typ "Sonstiges". Deutsch.'
+      const user = `Anhang: ${att.name} (${att.contentType || '?'}, ${Math.round((att.size || 0) / 1024)} KB)\n\nMail-Betreff: ${email.betreff || ''}\nAbsender: ${email.vonName || ''} <${email.von || ''}>\n\nMail-Text:\n${(b || '').slice(0, 1500)}`
+      const r = await callAI(sys, user, { maxTokens: 400 })
+      setErk(prev => ({ ...prev, [att.name]: { typ: r.typ || 'Sonstiges', erkannt: r.erkannt || '', empfehlung: r.empfehlung || '' } }))
+    } catch (e) { setFehler(e?.message || String(e)) }
+    finally { setBusy('') }
+  }
+
   const aktive = clients.filter(c => !c.archiviert).slice().sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')))
   const zielClient = aktive.find(c => c.id === zielId)
   const zielAuftraege = (zielClient?.auftraege || []).filter(a => a && !a.archiviert && a.status !== 'abgeschlossen' && a.status !== 'erledigt')
@@ -383,8 +410,43 @@ function UnbekanntCard({ email, clients = [], emailVorlagen = [], onAssign, onIg
           </div>
         </div>
       )}
+      {attachments != null && attachments.length > 0 && (
+        <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          {attachments.map((att, i) => {
+            const href = att.tooLarge
+              ? `/api/download-attachment?uid=${encodeURIComponent(email.uid)}&account=${encodeURIComponent(email.account)}&name=${encodeURIComponent(att.name)}`
+              : `data:${att.contentType || 'application/octet-stream'};base64,${att.data || ''}`
+            const e = erk[att.name]
+            return (
+              <div key={i} style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '6px 9px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '220px' }}>📎 {att.name}</span>
+                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{Math.round((att.size || 0) / 1024)} KB</span>
+                  <a href={href} download={att.name} target="_blank" rel="noreferrer" style={{ fontSize: '11.5px', color: 'var(--accent)', textDecoration: 'none' }}>⬇ Öffnen</a>
+                  {!e && (
+                    <button onClick={() => belegErkennen(att)} disabled={!!busy}
+                      style={{ background: 'none', border: 'none', padding: 0, cursor: busy ? 'default' : 'pointer', color: 'var(--accent)', fontSize: '11.5px' }}>
+                      {busy === 'erk:' + att.name ? '⏳ erkennt …' : '🔍 Beleg erkennen (KI)'}
+                    </button>
+                  )}
+                </div>
+                {e && (
+                  <div style={{ marginTop: '5px', fontSize: '12px', color: 'var(--text)', lineHeight: 1.45 }}>
+                    <span style={{ background: 'var(--surface2)', borderRadius: '999px', padding: '1px 8px', fontSize: '11px', fontWeight: 700 }}>{e.typ}</span>{' '}
+                    {e.erkannt}
+                    {e.empfehlung && <div style={{ color: 'var(--accent)', marginTop: '2px' }}>→ {e.empfehlung}</div>}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+      {attachments != null && attachments.length === 0 && (
+        <div style={{ marginTop: '8px', fontSize: '11.5px', color: 'var(--text-muted)' }}>📎 keine Anhänge</div>
+      )}
       {fehler && <div style={{ marginTop: '6px', fontSize: '11px', color: 'var(--red)' }}>{fehler}</div>}
-      {(!zus || !antwort) && (
+      {(!zus || !antwort || attachments === null) && (
         <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', marginTop: '8px' }}>
           {!zus && (
             <button onClick={zusammenfassen} disabled={!!busy}
@@ -396,6 +458,12 @@ function UnbekanntCard({ email, clients = [], emailVorlagen = [], onAssign, onIg
             <button onClick={antwortEntwerfen} disabled={!!busy}
               style={{ background: 'none', border: 'none', padding: 0, cursor: busy ? 'default' : 'pointer', color: 'var(--accent)', fontSize: '11.5px' }}>
               {busy === 'antwort' ? '⏳ entwirft …' : '✍️ Antwort entwerfen (KI)'}
+            </button>
+          )}
+          {attachments === null && (
+            <button onClick={anhaengePruefen} disabled={!!busy}
+              style={{ background: 'none', border: 'none', padding: 0, cursor: busy ? 'default' : 'pointer', color: 'var(--accent)', fontSize: '11.5px' }}>
+              {busy === 'anhaenge' ? '⏳ lädt …' : '📎 Anhänge prüfen'}
             </button>
           )}
         </div>
