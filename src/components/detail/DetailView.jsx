@@ -257,7 +257,7 @@ export default function DetailView({
           {TAB_NAV.map((tab, i) => (
             <button
               key={i}
-              className={`tab-nav-btn${activeTab === i ? ' active' : ''}`}
+              className={`tab-nav-btn${activeTab === i ? ' active' : ''}${(i === TAB.auftraege || i === TAB.jahresabschluss || i === TAB.lohn) ? ' leistung-links-aus' : ''}`}
               onClick={() => { setNurLeistungId(null); setActiveTab(i) }}
               title={tab.short}
               aria-current={activeTab === i ? 'page' : undefined}
@@ -468,6 +468,9 @@ export default function DetailView({
         <style>{`
           .leistungen-right { width: 236px; flex-shrink: 0; border-left: 1px solid var(--border); background: var(--surface); overflow-y: auto; padding: 10px 8px; display: flex; flex-direction: column; gap: 2px; }
           @media (max-width: 900px) { .leistungen-right { display: none } }
+          /* Aufträge/Jahresabschluss/Lohn leben ab 901px rechts im Leistungen-Band → links ausblenden.
+             Darunter (schmaler Desktop/Handy) bleiben sie im linken Menü erreichbar. */
+          @media (min-width: 901px) { .leistung-links-aus { display: none !important; } }
         `}</style>
 
       </div>
