@@ -37,6 +37,8 @@ import UebersichtenBereich from './components/UebersichtenBereich.jsx'
 import ProzesseBereich from './components/ProzesseBereich.jsx'
 import ChecklistenBereich from './components/ChecklistenBereich.jsx'
 import LeistungspoolBereich from './components/LeistungspoolBereich.jsx'
+import AiEmpfehlungenBereich from './components/agent/AiEmpfehlungenBereich.jsx'
+import { erstelleDispatcher } from './utils/aktionDispatcher.js'
 import { loadChecklistenUebersicht } from './utils/checklistenUebersichtStorage.js'
 // USt-Registrierung – eigenständiges Modul, lazy geladen (Vorschau mit Beispieldaten)
 const UstRegistrierungBereich = lazy(() => import('./components/UstRegistrierungBereich.jsx'))
@@ -1646,13 +1648,31 @@ export default function App() {
         const klientOffen = hauptbereich === 'personen' && !!selectedId && clients.some(c => c.id === selectedId)
         const zeigeUebersicht = hauptbereich === 'personen' && !klientOffen
         const zeigeArbeitsbereich = klientOffen
-        const eigeneBereiche = ['personen', 'kommunikation', 'dokumente', 'uebersichten', 'prozesse', 'checklisten', 'leistungspool', 'ustreg']
+        const eigeneBereiche = ['ki_empfehlungen', 'personen', 'kommunikation', 'dokumente', 'uebersichten', 'prozesse', 'checklisten', 'leistungspool', 'ustreg']
         const zeigePlatzhalter = !eigeneBereiche.includes(hauptbereich)
         const offenerKlient = klientOffen ? clients.find(c => c.id === selectedId) : null
 
         return (
           <>
             {zeigePlatzhalter && <BereichPlatzhalter bereich={hauptbereich} />}
+
+            {/* Bereich „AI-Empfehlungen" – erkannte Vorgänge + Aktionen (sicher über App-Setter) */}
+            {hauptbereich === 'ki_empfehlungen' && (
+              <AiEmpfehlungenBereich
+                clients={clients}
+                dispatcher={erstelleDispatcher({
+                  aufgabe_anlegen:       (p) => addAufgabe({ typ: 'einmal', titel: p.titel, beschreibung: p.beschreibung ?? '', mandantId: p.mandantId ?? null, faellig: p.faelligkeit ? `${p.faelligkeit}T12:00:00` : null, erledigt: false }),
+                  frist_anlegen:         (p) => addAufgabe({ typ: 'einmal', titel: p.titel, mandantId: p.mandantId ?? null, faellig: p.faelligkeit ? `${p.faelligkeit}T12:00:00` : null, erledigt: false }),
+                  wiedervorlage_anlegen: (p) => addAufgabe({ typ: 'einmal', titel: `Wiedervorlage: ${p.bezug}`, mandantId: p.mandantId ?? null, faellig: p.faelligkeit ? `${p.faelligkeit}T12:00:00` : null, erledigt: false }),
+                  anruf_aufgabe:         (p) => addAufgabe({ typ: 'einmal', titel: `Anruf: ${p.worum}`, mandantId: p.mandantId ?? null, faellig: p.faelligkeit ? `${p.faelligkeit}T12:00:00` : null, erledigt: false }),
+                  rueckfrage_anlegen:    (p) => addRueckfrage(p.mandantId, p.text),
+                  notiz_anlegen:         (p) => updateClient(p.mandantId, { notizen: [clients.find(c => c.id === p.mandantId)?.notizen || '', p.text].filter(Boolean).join('\n') }),
+                  termin_anlegen:        (p) => addTermin({ id: 't_' + Date.now().toString(36), titel: p.titel, start: p.start, mandantId: p.mandantId ?? null }),
+                  stammdaten_aktualisieren: (p) => updateClient(p.mandantId, p.patch || {}),
+                })}
+                onOeffneMandant={(id) => { setDetailInitialTab(TAB.nachrichten); setSelectedId(id); wechselBereich('personen') }}
+              />
+            )}
 
             {zeigeUebersicht && (
               <PersonenBereich
