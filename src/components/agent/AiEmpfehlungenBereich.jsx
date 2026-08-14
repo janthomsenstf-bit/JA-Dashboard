@@ -39,7 +39,7 @@ const IGNORE_KEY = 'ki-ignorierte-absender-v1'
 function ladeIgnore() { try { return JSON.parse(localStorage.getItem(IGNORE_KEY) || '[]') } catch { return [] } }
 function speichereIgnore(l) { try { localStorage.setItem(IGNORE_KEY, JSON.stringify(l)) } catch { /* ignore */ } }
 
-export default function AiEmpfehlungenBereich({ clients = [], dispatcher, onOeffneMandant, onMailErledigt }) {
+export default function AiEmpfehlungenBereich({ clients = [], dispatcher, onOeffneMandant, onMailErledigt, unbekannteEmails = [], onAssignEmail, onDismissUnbekannt }) {
   const [ignore, setIgnore]      = useState(ladeIgnore)
   const generiert = useMemo(() => generiereVorgaenge(clients, ignore), [clients, ignore])
   const [mcp, setMcp]             = useState([])
@@ -57,6 +57,15 @@ export default function AiEmpfehlungenBereich({ clients = [], dispatcher, onOeff
     const abs = String(v._absender || '').toLowerCase().trim()
     if (abs) { const n = [...new Set([...ignore, abs])]; setIgnore(n); speichereIgnore(n) }
     if (Array.isArray(v._mailEventIds) && v._mailEventIds.length) onMailErledigt?.(v.mandantId, v._mailEventIds)
+  }
+
+  // Unzugeordnete E-Mails (unbekannter Absender) – gefiltert um ignorierte Absender.
+  const ignoreSet = useMemo(() => new Set(ignore.map(a => String(a).toLowerCase().trim())), [ignore])
+  const unbekannt = (unbekannteEmails || []).filter(e => !ignoreSet.has(String(e.von || '').toLowerCase().trim()))
+  function ignoriereUnbekannt(email) {
+    const abs = String(email.von || '').toLowerCase().trim()
+    if (abs) { const n = [...new Set([...ignore, abs])]; setIgnore(n); speichereIgnore(n) }
+    onDismissUnbekannt?.(email.uid, email.account)
   }
 
   const ladeMcp = useCallback(async () => {
@@ -99,6 +108,7 @@ export default function AiEmpfehlungenBereich({ clients = [], dispatcher, onOeff
             <div style={{ fontSize: '17px', fontWeight: 800, color: 'var(--text)' }}>AI-Empfehlungen</div>
             <div style={{ fontSize: '12.5px', color: 'var(--text-muted)' }}>
               {vorgaenge.length} Vorgang{vorgaenge.length !== 1 ? 'e' : ''}
+              {unbekannt.length ? ` · ${unbekannt.length} unzugeordnete Mail${unbekannt.length !== 1 ? 's' : ''}` : ''}
               {dringend ? ` · ${dringend} mit Handlungsbedarf` : ''}
               {mcp.length ? ` · ${mcp.length} vom Handy` : ''}
             </div>
@@ -123,7 +133,20 @@ export default function AiEmpfehlungenBereich({ clients = [], dispatcher, onOeff
           </div>
         )}
 
-        {vorgaenge.length === 0 ? (
+        {unbekannt.length > 0 && (
+          <div style={{ marginBottom: '18px' }}>
+            <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--yellow)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '8px' }}>
+              📥 Unzugeordnete E-Mails ({unbekannt.length}) – wem gehören sie?
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {unbekannt.map(e => (
+                <UnbekanntCard key={`${e.account}:${e.uid}`} email={e} clients={clients} onAssign={onAssignEmail} onIgnore={() => ignoriereUnbekannt(e)} />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {vorgaenge.length === 0 && unbekannt.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '8vh 0', color: 'var(--text-muted)', fontSize: '14px' }}>
             <div style={{ fontSize: '30px', marginBottom: '8px' }} aria-hidden="true">✓</div>
             Nichts Offenes erkannt – alles im grünen Bereich.
@@ -176,6 +199,37 @@ export default function AiEmpfehlungenBereich({ clients = [], dispatcher, onOeff
             ))}
           </div>
         )}
+      </div>
+    </div>
+  )
+}
+
+// ── Karte für eine unzugeordnete E-Mail (unbekannter Absender) ──────────────────
+function UnbekanntCard({ email, clients = [], onAssign, onIgnore }) {
+  const [zielId, setZielId] = useState('')
+  const aktive = clients.filter(c => !c.archiviert).slice().sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')))
+  const fmt = (d) => { if (!d) return ''; const x = new Date(d); return isNaN(x) ? '' : x.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit' }) }
+  const datum = fmt(email.datum || email.empfangenAm)
+  return (
+    <div style={{ border: '1px solid var(--border)', borderLeft: '4px solid var(--yellow)', borderRadius: 'var(--radius)', background: 'var(--surface)', boxShadow: 'var(--shadow)', padding: '11px 14px' }}>
+      <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{email.betreff || '(kein Betreff)'}</div>
+      <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', marginTop: '2px' }}>
+        von {email.vonName ? `${email.vonName} · ` : ''}{email.von || 'unbekannt'}{datum ? ` · ${datum}` : ''}
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '10px' }}>
+        <select value={zielId} onChange={e => setZielId(e.target.value)}
+          style={{ flex: '1 1 180px', minWidth: 0, padding: '6px 9px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text)', fontSize: '12px' }}>
+          <option value="">→ Mandant zuordnen …</option>
+          {aktive.map(c => <option key={c.id} value={c.id}>{c.name}{c.mandantennummer ? ` (${c.mandantennummer})` : ''}</option>)}
+        </select>
+        <button disabled={!zielId} onClick={() => { if (zielId) onAssign?.(email.uid, email.account, zielId) }}
+          style={{ background: zielId ? 'var(--accent)' : 'var(--surface2)', color: zielId ? '#fff' : 'var(--text-muted)', border: '1px solid var(--accent)', padding: '6px 13px', borderRadius: 'var(--radius-sm)', fontSize: '12px', fontWeight: 700, cursor: zielId ? 'pointer' : 'default', opacity: zielId ? 1 : 0.6 }}>
+          Zuordnen
+        </button>
+        <button onClick={() => onIgnore?.()} title="Künftige E-Mails von diesem Absender ignorieren"
+          style={{ background: 'none', border: '1px solid var(--border)', color: 'var(--text-secondary)', padding: '6px 11px', borderRadius: '999px', fontSize: '11px', cursor: 'pointer' }}>
+          🚫 Absender ignorieren
+        </button>
       </div>
     </div>
   )

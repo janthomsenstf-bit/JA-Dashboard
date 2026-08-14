@@ -1697,6 +1697,9 @@ export default function App() {
                 })}
                 onOeffneMandant={(id) => { setDetailInitialTab(TAB.nachrichten); setSelectedId(id); wechselBereich('personen') }}
                 onMailErledigt={markMailErledigt}
+                unbekannteEmails={unbekannteEmails}
+                onAssignEmail={(uid, account, clientId) => assignEmail(uid, account, clientId, false)}
+                onDismissUnbekannt={(uid, account) => setUnbekannteEmails(prev => prev.filter(e => !(e.uid === uid && e.account === account)))}
               />
             )}
 
