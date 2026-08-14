@@ -51,7 +51,25 @@ function istWahrscheinlichUnwichtig(email) {
   return false
 }
 
-export default function AiEmpfehlungenBereich({ clients = [], dispatcher, onOeffneMandant, onMailErledigt, unbekannteEmails = [], onAssignEmail, onDismissUnbekannt, emailVorlagen = [] }) {
+// #26 – kleine Kennzahl-Pille fürs Tages-Briefing.
+function BriefPill({ icon, n, label, tone = 'muted', sub = '' }) {
+  const col = tone === 'red' ? 'var(--red)' : tone === 'yellow' ? 'var(--yellow)' : tone === 'accent' ? 'var(--accent)' : 'var(--text-muted)'
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '7px', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '999px', padding: '5px 12px' }}>
+      <span aria-hidden="true">{icon}</span>
+      <span style={{ fontSize: '14px', fontWeight: 800, color: col }}>{n}</span>
+      <span style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>{label}{sub ? ` · ${sub}` : ''}</span>
+    </div>
+  )
+}
+
+function fmtBriefDatum(d) {
+  if (!d) return ''
+  const x = new Date(d)
+  return isNaN(x) ? '' : x.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })
+}
+
+export default function AiEmpfehlungenBereich({ clients = [], dispatcher, onOeffneMandant, onMailErledigt, unbekannteEmails = [], onAssignEmail, onDismissUnbekannt, emailVorlagen = [], aufgaben = [] }) {
   const [ignore, setIgnore]      = useState(ladeIgnore)
   const [zeigeUnwichtig, setZeigeUnwichtig] = useState(false)
   const [zeigeAusgeblendet, setZeigeAusgeblendet] = useState(false)
@@ -121,6 +139,14 @@ export default function AiEmpfehlungenBereich({ clients = [], dispatcher, onOeff
   const vorgaenge = [...mcp, ...generiert]
   const dringend = vorgaenge.filter(v => v.schwere === 'handlungsbedarf').length
 
+  // #26 – Tages-Briefing: datengetrieben, sofort & kostenlos (kein KI-Aufruf beim Öffnen).
+  const jetzt = new Date()
+  const heuteStr = `${jetzt.getFullYear()}-${String(jetzt.getMonth() + 1).padStart(2, '0')}-${String(jetzt.getDate()).padStart(2, '0')}`
+  const offeneAufgaben = (aufgaben || []).filter(a => a && !a.erledigt && a.faellig)
+  const faelligHeute   = offeneAufgaben.filter(a => String(a.faellig).slice(0, 10) === heuteStr)
+  const ueberfaellig   = offeneAufgaben.filter(a => String(a.faellig).slice(0, 10) <   heuteStr)
+  const briefingLeer   = unbekannt.length === 0 && dringend === 0 && faelligHeute.length === 0 && ueberfaellig.length === 0 && mcp.length === 0
+
   return (
     <div style={{ flex: 1, overflowY: 'auto', background: 'var(--bg)', minHeight: 0 }}>
       <div style={{ maxWidth: '820px', margin: '0 auto', padding: '20px 16px 60px' }}>
@@ -148,6 +174,42 @@ export default function AiEmpfehlungenBereich({ clients = [], dispatcher, onOeff
         <div style={{ fontSize: '12px', color: 'var(--text-muted)', margin: '10px 0 18px', lineHeight: 1.55 }}>
           Automatisch erkannt aus deinen Daten und vom Handy gemeldet (über den MCP). Aktionen legen erst
           nach deinem Klick etwas an; außenwirksame Schritte (z. B. Mail senden) bleiben deiner Freigabe vorbehalten.
+        </div>
+
+        {/* #26 – Tages-Briefing beim Öffnen */}
+        <div style={{ border: '1px solid var(--border)', borderLeft: '4px solid var(--accent)', borderRadius: 'var(--radius)', background: 'var(--surface)', boxShadow: 'var(--shadow)', padding: '14px 16px', marginBottom: '18px' }}>
+          <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--text)' }}>☀️ Dein Überblick</div>
+          <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', marginBottom: '10px' }}>
+            {jetzt.toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
+          </div>
+          {briefingLeer ? (
+            <div style={{ fontSize: '12.5px', color: 'var(--text-muted)' }}>Nichts Dringendes — dein Eingang ist ruhig. 👍</div>
+          ) : (
+            <>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <BriefPill icon="📥" n={unbekannt.length}     label="unzugeordnete Mails" tone={wichtigUnbekannt.length ? 'yellow' : 'muted'} sub={wichtigUnbekannt.length ? `${wichtigUnbekannt.length} wichtig` : ''} />
+                <BriefPill icon="🔴" n={dringend}             label="Handlungsbedarf"     tone={dringend ? 'red' : 'muted'} />
+                <BriefPill icon="📅" n={faelligHeute.length}  label="heute fällig"        tone={faelligHeute.length ? 'accent' : 'muted'} />
+                <BriefPill icon="⏳" n={ueberfaellig.length}  label="überfällig"          tone={ueberfaellig.length ? 'red' : 'muted'} />
+                {mcp.length > 0 && <BriefPill icon="📱" n={mcp.length} label="vom Handy" tone="accent" />}
+              </div>
+              {(ueberfaellig.length > 0 || faelligHeute.length > 0) && (
+                <div style={{ marginTop: '11px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                  {[...ueberfaellig.map(a => ({ a, ueb: true })), ...faelligHeute.map(a => ({ a, ueb: false }))].slice(0, 5).map(({ a, ueb }) => (
+                    <div key={a.id} style={{ fontSize: '12px', color: 'var(--text)', display: 'flex', gap: '6px', alignItems: 'baseline' }}>
+                      <span aria-hidden="true">{ueb ? '⏳' : '📅'}</span>
+                      <span style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.titel || 'Aufgabe'}</span>
+                      {nameOf(a.mandantId) && <span style={{ color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>· {nameOf(a.mandantId)}</span>}
+                      <span style={{ color: ueb ? 'var(--red)' : 'var(--text-muted)', marginLeft: 'auto', whiteSpace: 'nowrap' }}>{fmtBriefDatum(a.faellig)}</span>
+                    </div>
+                  ))}
+                  {(ueberfaellig.length + faelligHeute.length) > 5 && (
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>… und {(ueberfaellig.length + faelligHeute.length) - 5} weitere</div>
+                  )}
+                </div>
+              )}
+            </>
+          )}
         </div>
 
         {ladeFehler && (
