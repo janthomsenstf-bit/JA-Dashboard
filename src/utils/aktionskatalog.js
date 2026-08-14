@@ -175,8 +175,8 @@ export const AKTIONEN = [
   },
   {
     id: 'auftrag_blockieren', label: 'Auftrag blockieren', icon: '🚧', kategorie: 'ja',
-    stufe: 'bestaetigen', umkehrbar: true, implementiert: false,
-    datenanschluss: "Status-Feld am Auftrag (client.auftraege)",
+    stufe: 'bestaetigen', umkehrbar: true, implementiert: true,
+    datenanschluss: "additives Flag am Auftrag: blockiert/blockGrund (client.auftraege)",
     params: [
       { key: 'mandantId', label: 'Mandant', required: true },
       { key: 'auftragId', label: 'Auftrag', required: true },

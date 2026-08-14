@@ -1693,6 +1693,7 @@ export default function App() {
                   notiz_anlegen:         (p) => { const mid = resolveMid(p); if (mid) updateClient(mid, { notizen: [clients.find(c => c.id === mid)?.notizen || '', p.text].filter(Boolean).join('\n') }) },
                   termin_anlegen:        (p) => addTermin({ id: 't_' + Date.now().toString(36), titel: p.titel, start: p.start, mandantId: resolveMid(p) }),
                   stammdaten_aktualisieren: (p) => { const mid = resolveMid(p); if (mid) updateClient(mid, p.patch || {}) },
+                  auftrag_blockieren:    (p) => { const mid = resolveMid(p); const c = clients.find(x => x.id === mid); if (mid && c && p.auftragId) updateClient(mid, { auftraege: (c.auftraege || []).map(a => a.id === p.auftragId ? { ...a, blockiert: true, blockGrund: p.grund || '', blockiertAm: new Date().toISOString() } : a) }) },
                 })}
                 onOeffneMandant={(id) => { setDetailInitialTab(TAB.nachrichten); setSelectedId(id); wechselBereich('personen') }}
                 onMailErledigt={markMailErledigt}

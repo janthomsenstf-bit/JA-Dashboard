@@ -3750,6 +3750,17 @@ function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete, client, onOpe
   const [showAbschlussConfirm, setShowAbschlussConfirm] = useState(false)
   const abschliessen  = () => { onUpdate({ status: 'erledigt', erledigtAm: new Date().toISOString() }); setShowAbschlussConfirm(false) }
   const wiederOeffnen = () => onUpdate({ status: 'in_bearbeitung', erledigtAm: null })
+
+  // ── Auftrag blockieren (additiv & orthogonal: eigenes Flag, kein Status-Wert) ──
+  // Überlagert nur; lässt status/jaWorkflowStatus/workflowStatus unangetastet.
+  const blockiert = !!au.blockiert
+  const blockieren = () => {
+    const g = window.prompt('Grund für die Blockade (z. B. „Tilgungsplan fehlt"):', au.blockGrund || '')
+    if (g === null) return
+    onUpdate({ blockiert: true, blockGrund: g.trim(), blockiertAm: new Date().toISOString() })
+  }
+  const blockAufheben = () => onUpdate({ blockiert: false, blockGrund: '', blockiertAm: null })
+
   const fmtAbDatum    = iso => { if (!iso) return ''; const d = new Date(iso); return `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}.${d.getFullYear()}` }
 
   const isJA        = au.typ === 'jahresabschluss'
@@ -3782,6 +3793,11 @@ function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete, client, onOpe
             <span style={{ fontSize: '10px', color: typCfg.color, fontWeight: 600, background: typCfg.bg, padding: '1px 6px', borderRadius: '8px', border: `1px solid ${typCfg.border}` }}>
               {typCfg.label}
             </span>
+            {au.blockiert && (
+              <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--red)', background: 'var(--red-dim)', padding: '1px 6px', borderRadius: '8px', border: '1px solid var(--red)' }}>
+                🚧 Blockiert
+              </span>
+            )}
             {/* JA: Workflow-Status statt einfachem "Jahr" */}
             {isJA && jaWfsCfg && (
               <span style={{ fontSize: '10px', fontWeight: 600, color: jaWfsCfg.color, background: jaWfsCfg.bg, padding: '1px 6px', borderRadius: '8px', border: `1px solid ${jaWfsCfg.border}` }}>
@@ -4128,6 +4144,29 @@ function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete, client, onOpe
             )}
           </div>
           )}
+
+          {/* Blockieren – additiv, orthogonal zum Status (überlagert nur) */}
+          <div style={{ marginTop: '10px' }}>
+            {blockiert ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', padding: '10px 12px', borderRadius: '8px', background: 'rgba(220,38,38,0.06)', border: '1px solid rgba(220,38,38,0.35)' }}>
+                <span style={{ fontSize: '16px', flexShrink: 0 }}>🚧</span>
+                <div style={{ flex: 1, minWidth: '150px' }}>
+                  <div style={{ fontSize: '12.5px', fontWeight: 700, color: 'var(--red)' }}>Auftrag blockiert</div>
+                  {au.blockGrund && <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{au.blockGrund}</div>}
+                  {au.blockiertAm && <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>seit {fmtAbDatum(au.blockiertAm)}</div>}
+                </div>
+                <button onClick={blockAufheben}
+                  style={{ fontSize: '12px', fontWeight: 600, padding: '6px 12px', borderRadius: '7px', border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text)', cursor: 'pointer', flexShrink: 0 }}>
+                  Blockierung aufheben
+                </button>
+              </div>
+            ) : (
+              <button onClick={blockieren}
+                style={{ fontSize: '12px', fontWeight: 600, padding: '7px 13px', borderRadius: '7px', border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                🚧 Auftrag blockieren
+              </button>
+            )}
+          </div>
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '14px', paddingTop: '10px', borderTop: '1px solid var(--border)' }}>
             <button onClick={onDelete}
