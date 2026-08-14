@@ -1700,6 +1700,7 @@ export default function App() {
                 unbekannteEmails={unbekannteEmails}
                 onAssignEmail={(uid, account, clientId) => assignEmail(uid, account, clientId, false)}
                 onDismissUnbekannt={(uid, account) => setUnbekannteEmails(prev => prev.filter(e => !(e.uid === uid && e.account === account)))}
+                emailVorlagen={emailVorlagen}
               />
             )}
 

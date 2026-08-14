@@ -51,7 +51,7 @@ function istWahrscheinlichUnwichtig(email) {
   return false
 }
 
-export default function AiEmpfehlungenBereich({ clients = [], dispatcher, onOeffneMandant, onMailErledigt, unbekannteEmails = [], onAssignEmail, onDismissUnbekannt }) {
+export default function AiEmpfehlungenBereich({ clients = [], dispatcher, onOeffneMandant, onMailErledigt, unbekannteEmails = [], onAssignEmail, onDismissUnbekannt, emailVorlagen = [] }) {
   const [ignore, setIgnore]      = useState(ladeIgnore)
   const [zeigeUnwichtig, setZeigeUnwichtig] = useState(false)
   const [zeigeAusgeblendet, setZeigeAusgeblendet] = useState(false)
@@ -163,7 +163,7 @@ export default function AiEmpfehlungenBereich({ clients = [], dispatcher, onOeff
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               {wichtigUnbekannt.map(e => (
-                <UnbekanntCard key={`${e.account}:${e.uid}`} email={e} clients={clients} onAssign={onAssignEmail} onIgnore={() => ignoriereUnbekannt(e)} />
+                <UnbekanntCard key={`${e.account}:${e.uid}`} email={e} clients={clients} emailVorlagen={emailVorlagen} onAssign={onAssignEmail} onIgnore={() => ignoriereUnbekannt(e)} />
               ))}
             </div>
           </div>
@@ -181,7 +181,7 @@ export default function AiEmpfehlungenBereich({ clients = [], dispatcher, onOeff
             {zeigeUnwichtig && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '8px', opacity: 0.85 }}>
                 {unwichtigUnbekannt.map(e => (
-                  <UnbekanntCard key={`${e.account}:${e.uid}`} email={e} clients={clients} onAssign={onAssignEmail} onIgnore={() => ignoriereUnbekannt(e)} />
+                  <UnbekanntCard key={`${e.account}:${e.uid}`} email={e} clients={clients} emailVorlagen={emailVorlagen} onAssign={onAssignEmail} onIgnore={() => ignoriereUnbekannt(e)} />
                 ))}
               </div>
             )}
@@ -271,27 +271,71 @@ export default function AiEmpfehlungenBereich({ clients = [], dispatcher, onOeff
 }
 
 // ── Karte für eine unzugeordnete E-Mail (unbekannter Absender) ──────────────────
-function UnbekanntCard({ email, clients = [], onAssign, onIgnore }) {
+function UnbekanntCard({ email, clients = [], emailVorlagen = [], onAssign, onIgnore }) {
   const [zielId, setZielId] = useState('')
+  const [body, setBody]     = useState(null)
   const [zus, setZus]       = useState(null)   // { zusammenfassung, empfehlung }
-  const [laedt, setLaedt]   = useState(false)
+  const [antwort, setAntwort] = useState(null) // { betreff, text }
+  const [busy, setBusy]     = useState('')     // '' | 'zus' | 'antwort' | 'senden'
   const [fehler, setFehler] = useState('')
+  const [sendMsg, setSendMsg] = useState('')
+
+  // Inhalt der Mail EINMAL laden (für Zusammenfassung & Entwurf wiederverwendet).
+  async function holeBody() {
+    if (body != null) return body
+    const res  = await fetch(`/api/get-email-content?uid=${encodeURIComponent(email.uid)}&account=${encodeURIComponent(email.account)}`)
+    const data = await res.json().catch(() => ({}))
+    const b = String(data.text || (data.html || '').replace(/<[^>]+>/g, ' ') || '').replace(/\s+/g, ' ').slice(0, 4000)
+    setBody(b); return b
+  }
 
   // #21 – KI-Zusammenfassung + Empfehlung, ERST auf Klick (kostenschonend).
   async function zusammenfassen() {
-    if (laedt || zus) return
+    if (busy || zus) return
     if (!hasAiKey()) { setFehler('Kein KI-Schlüssel hinterlegt (Stammdaten → ⚙️).'); return }
-    setLaedt(true); setFehler('')
+    setBusy('zus'); setFehler('')
     try {
-      const res  = await fetch(`/api/get-email-content?uid=${encodeURIComponent(email.uid)}&account=${encodeURIComponent(email.account)}`)
-      const data = await res.json().catch(() => ({}))
-      const body = String(data.text || (data.html || '').replace(/<[^>]+>/g, ' ') || '').replace(/\s+/g, ' ').slice(0, 4000)
+      const b = await holeBody()
       const sys  = 'Du bist die Assistenz eines deutschen Steuerberaters. Fasse die eingegangene E-Mail in 1–2 knappen Sätzen zusammen und gib eine kurze Handlungsempfehlung. Antworte AUSSCHLIESSLICH als JSON: {"zusammenfassung":"...","empfehlung":"..."}. Nichts erfinden. Deutsch.'
-      const user = `Von: ${email.vonName || ''} <${email.von || ''}>\nBetreff: ${email.betreff || ''}\n\n${body || '(kein Textinhalt abrufbar)'}`
+      const user = `Von: ${email.vonName || ''} <${email.von || ''}>\nBetreff: ${email.betreff || ''}\n\n${b || '(kein Textinhalt abrufbar)'}`
       const r = await callAI(sys, user, { maxTokens: 500 })
       setZus({ zusammenfassung: r.zusammenfassung || r.text || '(keine Zusammenfassung)', empfehlung: r.empfehlung || '' })
     } catch (e) { setFehler(e?.message || String(e)) }
-    finally { setLaedt(false) }
+    finally { setBusy('') }
+  }
+
+  // #23 – Antwort-Entwurf, ERST auf Klick. Senden bleibt ein separater Nutzer-Klick.
+  async function antwortEntwerfen() {
+    if (busy || antwort) return
+    if (!hasAiKey()) { setFehler('Kein KI-Schlüssel hinterlegt (Stammdaten → ⚙️).'); return }
+    setBusy('antwort'); setFehler('')
+    try {
+      const b = await holeBody()
+      const sys  = 'Du bist die Assistenz eines deutschen Steuerberaters und formulierst einen freundlichen, professionellen Antwort-Entwurf (Sie-Form) auf die eingegangene E-Mail. Antworte AUSSCHLIESSLICH als JSON: {"betreff":"...","text":"..."}. Der Text von Anrede bis Grußformel. Deutsch. Nichts erfinden; fehlen Infos, bleib allgemein höflich.'
+      const user = `Eingegangene E-Mail:\nVon: ${email.vonName || ''} <${email.von || ''}>\nBetreff: ${email.betreff || ''}\n\n${b || '(kein Textinhalt)'}`
+      const r = await callAI(sys, user, { maxTokens: 800 })
+      setAntwort({ betreff: r.betreff || `Re: ${email.betreff || ''}`, text: r.text || '' })
+    } catch (e) { setFehler(e?.message || String(e)) }
+    finally { setBusy('') }
+  }
+
+  function vorlageEinsetzen(v) {
+    if (!v) return
+    const text = v.text || v.inhalt || v.body || String(v.html || '').replace(/<[^>]+>/g, ' ')
+    setAntwort(a => ({ betreff: (a && a.betreff) || v.betreff || `Re: ${email.betreff || ''}`, text: text || (a && a.text) || '' }))
+  }
+
+  async function senden() {
+    if (!antwort || busy) return
+    if (!window.confirm(`Antwort an ${email.von} jetzt senden?`)) return
+    setBusy('senden'); setSendMsg(''); setFehler('')
+    try {
+      const res  = await fetch('/api/send-email', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to: email.von, subject: antwort.betreff, text: antwort.text, account: email.account || 'hostinger' }) })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`)
+      setSendMsg('✓ Gesendet')
+    } catch (e) { setSendMsg('⚠ ' + (e?.message || String(e))) }
+    finally { setBusy('') }
   }
 
   const aktive = clients.filter(c => !c.archiviert).slice().sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')))
@@ -303,18 +347,55 @@ function UnbekanntCard({ email, clients = [], onAssign, onIgnore }) {
       <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', marginTop: '2px' }}>
         von {email.vonName ? `${email.vonName} · ` : ''}{email.von || 'unbekannt'}{datum ? ` · ${datum}` : ''}
       </div>
-      {zus ? (
+      {zus && (
         <div style={{ marginTop: '8px', fontSize: '12.5px', color: 'var(--text)', background: 'var(--surface2)', borderRadius: 'var(--radius-sm)', padding: '8px 10px', lineHeight: 1.5 }}>
           <div>{zus.zusammenfassung}</div>
           {zus.empfehlung && <div style={{ marginTop: '4px', color: 'var(--accent)' }}>→ {zus.empfehlung}</div>}
         </div>
-      ) : (
-        <button onClick={zusammenfassen} disabled={laedt}
-          style={{ marginTop: '8px', background: 'none', border: 'none', padding: 0, cursor: laedt ? 'default' : 'pointer', color: 'var(--accent)', fontSize: '11.5px' }}>
-          {laedt ? '⏳ fasst zusammen …' : '🧾 Zusammenfassen (KI)'}
-        </button>
+      )}
+      {antwort && (
+        <div style={{ marginTop: '8px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          <input value={antwort.betreff} onChange={e => setAntwort(a => ({ ...a, betreff: e.target.value }))}
+            style={{ width: '100%', boxSizing: 'border-box', padding: '7px 9px', fontSize: '12.5px', fontWeight: 600, color: 'var(--text)', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', outline: 'none', fontFamily: 'inherit' }} />
+          <textarea value={antwort.text} onChange={e => setAntwort(a => ({ ...a, text: e.target.value }))} rows={6}
+            style={{ width: '100%', boxSizing: 'border-box', padding: '7px 9px', fontSize: '12.5px', color: 'var(--text)', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', outline: 'none', fontFamily: 'inherit', resize: 'vertical', lineHeight: 1.5 }} />
+          {emailVorlagen.length > 0 && (
+            <select defaultValue="" onChange={e => { const v = emailVorlagen.find(x => String(x.id) === e.target.value); vorlageEinsetzen(v); e.target.value = '' }}
+              style={{ padding: '6px 9px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text)', fontSize: '12px', cursor: 'pointer' }}>
+              <option value="">📄 Vorlage einsetzen …</option>
+              {emailVorlagen.map(v => <option key={v.id} value={v.id}>{v.name || v.titel || v.bezeichnung || 'Vorlage'}</option>)}
+            </select>
+          )}
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+            <button onClick={() => { try { navigator.clipboard?.writeText(`Betreff: ${antwort.betreff}\n\n${antwort.text}`); setSendMsg('✓ Kopiert') } catch { /* noop */ } }}
+              style={{ background: 'none', border: '1px solid var(--border)', color: 'var(--text-secondary)', padding: '6px 11px', borderRadius: 'var(--radius-sm)', fontSize: '12px', cursor: 'pointer' }}>
+              📋 Kopieren
+            </button>
+            <button onClick={senden} disabled={busy === 'senden'}
+              style={{ background: 'var(--accent)', color: '#fff', border: '1px solid var(--accent)', padding: '6px 13px', borderRadius: 'var(--radius-sm)', fontSize: '12px', fontWeight: 700, cursor: busy === 'senden' ? 'default' : 'pointer', opacity: busy === 'senden' ? 0.6 : 1 }}>
+              {busy === 'senden' ? '⏳ sendet …' : `📤 An ${email.von} senden`}
+            </button>
+            {sendMsg && <span style={{ fontSize: '11.5px', color: sendMsg.startsWith('✓') ? 'var(--green)' : 'var(--red)' }}>{sendMsg}</span>}
+          </div>
+        </div>
       )}
       {fehler && <div style={{ marginTop: '6px', fontSize: '11px', color: 'var(--red)' }}>{fehler}</div>}
+      {(!zus || !antwort) && (
+        <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', marginTop: '8px' }}>
+          {!zus && (
+            <button onClick={zusammenfassen} disabled={!!busy}
+              style={{ background: 'none', border: 'none', padding: 0, cursor: busy ? 'default' : 'pointer', color: 'var(--accent)', fontSize: '11.5px' }}>
+              {busy === 'zus' ? '⏳ fasst zusammen …' : '🧾 Zusammenfassen (KI)'}
+            </button>
+          )}
+          {!antwort && (
+            <button onClick={antwortEntwerfen} disabled={!!busy}
+              style={{ background: 'none', border: 'none', padding: 0, cursor: busy ? 'default' : 'pointer', color: 'var(--accent)', fontSize: '11.5px' }}>
+              {busy === 'antwort' ? '⏳ entwirft …' : '✍️ Antwort entwerfen (KI)'}
+            </button>
+          )}
+        </div>
+      )}
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '10px' }}>
         <select value={zielId} onChange={e => setZielId(e.target.value)}
           style={{ flex: '1 1 180px', minWidth: 0, padding: '6px 9px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text)', fontSize: '12px' }}>
