@@ -54,6 +54,7 @@ function istWahrscheinlichUnwichtig(email) {
 export default function AiEmpfehlungenBereich({ clients = [], dispatcher, onOeffneMandant, onMailErledigt, unbekannteEmails = [], onAssignEmail, onDismissUnbekannt }) {
   const [ignore, setIgnore]      = useState(ladeIgnore)
   const [zeigeUnwichtig, setZeigeUnwichtig] = useState(false)
+  const [zeigeAusgeblendet, setZeigeAusgeblendet] = useState(false)
   const generiert = useMemo(() => generiereVorgaenge(clients, ignore), [clients, ignore])
   const [mcp, setMcp]             = useState([])
   const [ladeFehler, setLadeFehler] = useState('')
@@ -81,6 +82,13 @@ export default function AiEmpfehlungenBereich({ clients = [], dispatcher, onOeff
     const abs = String(email.von || '').toLowerCase().trim()
     if (abs) { const n = [...new Set([...ignore, abs])]; setIgnore(n); speichereIgnore(n) }
     onDismissUnbekannt?.(email.uid, email.account)
+  }
+  // #22 – ausgeblendete (ignorierte) Mails + Rückweg: Absender wieder einblenden.
+  const ausgeblendet = (unbekannteEmails || []).filter(e => ignoreSet.has(String(e.von || '').toLowerCase().trim()))
+  function absenderWiederAnzeigen(email) {
+    const abs = String(email.von || '').toLowerCase().trim()
+    const n = ignore.filter(a => String(a).toLowerCase().trim() !== abs)
+    setIgnore(n); speichereIgnore(n)
   }
 
   const ladeMcp = useCallback(async () => {
@@ -174,6 +182,30 @@ export default function AiEmpfehlungenBereich({ clients = [], dispatcher, onOeff
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '8px', opacity: 0.85 }}>
                 {unwichtigUnbekannt.map(e => (
                   <UnbekanntCard key={`${e.account}:${e.uid}`} email={e} clients={clients} onAssign={onAssignEmail} onIgnore={() => ignoriereUnbekannt(e)} />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {ausgeblendet.length > 0 && (
+          <div style={{ marginBottom: '18px' }}>
+            <button
+              onClick={() => setZeigeAusgeblendet(v => !v)}
+              style={{ background: 'none', border: 'none', padding: '2px 0', cursor: 'pointer', fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+            >
+              <span aria-hidden="true">{zeigeAusgeblendet ? '▾' : '▸'}</span>
+              🚫 Ausgeblendet · ignorierte Absender ({ausgeblendet.length})
+            </button>
+            {zeigeAusgeblendet && (
+              <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {ausgeblendet.map(e => (
+                  <div key={`${e.account}:${e.uid}`} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: 'var(--text-muted)', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '6px 10px' }}>
+                    <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.betreff || '(kein Betreff)'} · {e.von}</span>
+                    <button onClick={() => absenderWiederAnzeigen(e)} style={{ background: 'none', border: '1px solid var(--border)', color: 'var(--accent)', padding: '3px 9px', borderRadius: '999px', fontSize: '11px', cursor: 'pointer', flexShrink: 0 }}>
+                      wieder anzeigen
+                    </button>
+                  </div>
                 ))}
               </div>
             )}
