@@ -221,8 +221,9 @@ function PosteingangKnopf() {
   )
 }
 
-export default function AiEmpfehlungenBereich({ clients = [], dispatcher, onOeffneMandant, onMailErledigt, unbekannteEmails = [], onAssignEmail, onDismissUnbekannt, emailVorlagen = [], aufgaben = [] }) {
+export default function AiEmpfehlungenBereich({ clients = [], dispatcher, onOeffneMandant, onMailErledigt, unbekannteEmails = [], onAssignEmail, onDismissUnbekannt, emailVorlagen = [], aufgaben = [], onRefresh }) {
   const [ignore, setIgnore]      = useState(ladeIgnore)
+  const [aktualisiert, setAktualisiert] = useState('')   // '' | 'laeuft' | 'ok'
   const [zeigeUnwichtig, setZeigeUnwichtig] = useState(false)
   const [zeigeAusgeblendet, setZeigeAusgeblendet] = useState(false)
   const generiert = useMemo(() => generiereVorgaenge(clients, ignore), [clients, ignore])
@@ -289,6 +290,15 @@ export default function AiEmpfehlungenBereich({ clients = [], dispatcher, onOeff
     return () => clearInterval(t)
   }, [ladeMcp, ladeDok])
 
+  // „Aktualisieren" lädt ALLES sichtbar neu: Mails (onRefresh=pollEmails) + MCP/Handy + Beleg-Freigaben.
+  async function aktualisieren() {
+    if (aktualisiert === 'laeuft') return
+    setAktualisiert('laeuft')
+    try { await Promise.all([Promise.resolve(onRefresh?.()), ladeMcp(), ladeDok()]) } catch { /* Feedback trotzdem */ }
+    setAktualisiert('ok')
+    setTimeout(() => setAktualisiert(''), 1800)
+  }
+
   // #29a – Beleg-Bündel freigeben / verwerfen (lokaler Ausführer liest draft.stand === 'freigegeben').
   async function dokFreigeben(item) {
     const dokumente = (item.draft?.dokumente || []).map(d => ({ ...d, freigabe: 'ablegen' }))
@@ -341,11 +351,12 @@ export default function AiEmpfehlungenBereich({ clients = [], dispatcher, onOeff
             </div>
           </div>
           <button
-            onClick={ladeMcp}
-            title="Neu laden"
-            style={{ background: 'var(--surface2)', border: '1px solid var(--border)', color: 'var(--text-secondary)', padding: '7px 12px', borderRadius: 'var(--radius-sm)', fontSize: '12px', cursor: 'pointer' }}
+            onClick={aktualisieren}
+            disabled={aktualisiert === 'laeuft'}
+            title="Mails, Handy-Meldungen und Freigaben neu laden"
+            style={{ background: 'var(--surface2)', border: '1px solid var(--border)', color: aktualisiert === 'ok' ? 'var(--green)' : 'var(--text-secondary)', padding: '7px 12px', borderRadius: 'var(--radius-sm)', fontSize: '12px', cursor: aktualisiert === 'laeuft' ? 'default' : 'pointer', opacity: aktualisiert === 'laeuft' ? 0.7 : 1, whiteSpace: 'nowrap' }}
           >
-            ↻ Aktualisieren
+            {aktualisiert === 'laeuft' ? '⏳ lädt …' : aktualisiert === 'ok' ? '✓ aktualisiert' : '↻ Aktualisieren'}
           </button>
         </div>
 
