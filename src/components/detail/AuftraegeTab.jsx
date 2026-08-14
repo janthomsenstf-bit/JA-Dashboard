@@ -4650,7 +4650,7 @@ function SerieErstellenPanel({ onCreate, onClose }) {
 }
 
 // ── Hauptkomponente ───────────────────────────────────────────────────────────
-export default function AuftraegeTab({ client, onUpdate, initialFilterTyp = 'alle', bereich = 'allgemein', onOpenEmail, emailVorlagen = [], emailSignaturen = [], onedriveTokens = null, onUpdateOnedriveTokens, onAddRueckfrage, onToggleRueckfrage, onDeleteRueckfrage, onUpdateRueckfrageAntwort, onUpdateRueckfrageBuchungskonto, onAddRueckfrageFromCheckliste }) {
+export default function AuftraegeTab({ client, onUpdate, initialFilterTyp = 'alle', bereich = 'allgemein', nurAuftragId = null, onClearNur, onOpenEmail, emailVorlagen = [], emailSignaturen = [], onedriveTokens = null, onUpdateOnedriveTokens, onAddRueckfrage, onToggleRueckfrage, onDeleteRueckfrage, onUpdateRueckfrageAntwort, onUpdateRueckfrageBuchungskonto, onAddRueckfrageFromCheckliste }) {
   const bereichCfg = BEREICH_CFG[bereich] ?? BEREICH_CFG.allgemein
 
   // WICHTIG (Datensicherheit): allAuftraege = die VOLLSTÄNDIGE Liste. Sie ist die
@@ -4678,6 +4678,8 @@ export default function AuftraegeTab({ client, onUpdate, initialFilterTyp = 'all
       else localStorage.removeItem(`sda-expanded-auftrag_${client.id}`)
     } catch {}
   }, [expandedId, client.id])
+  // Fokussierten Auftrag (aus dem Leistungen-Band) aufklappen – auch wenn der Reiter schon offen ist.
+  useEffect(() => { if (nurAuftragId) setExpandedId(nurAuftragId) }, [nurAuftragId])
   const [showBatch,          setShowBatch]          = useState(false)
   const [showSerieErstellen, setShowSerieErstellen] = useState(false)
 
@@ -4720,19 +4722,26 @@ export default function AuftraegeTab({ client, onUpdate, initialFilterTyp = 'all
     if (expandedId === id) setExpandedId(null)
   }
 
-  // Einzelaufträge filtern
-  const filteredEinzel = einzelauftraege
-    .filter(a => {
-      if (filterStatus === 'aktiv') return a.status !== 'erledigt'
-      if (filterStatus === 'alle')  return true
-      return a.status === filterStatus
-    })
-    .filter(a => filterTyp === 'alle' || a.typ === filterTyp)
+  // Einzel-Fokus: genau EIN Auftrag (Klick im Leistungen-Band) → überschreibt die Filter.
+  const nurEintrag = nurAuftragId ? auftraege.find(a => a.id === nurAuftragId) : null
+
+  // Einzelaufträge filtern – oder nur den fokussierten anzeigen
+  const filteredEinzel = nurEintrag
+    ? (nurEintrag.istSerie ? [] : [nurEintrag])
+    : einzelauftraege
+        .filter(a => {
+          if (filterStatus === 'aktiv') return a.status !== 'erledigt'
+          if (filterStatus === 'alle')  return true
+          return a.status === filterStatus
+        })
+        .filter(a => filterTyp === 'alle' || a.typ === filterTyp)
 
   // Serienaufträge: immer bei 'aktiv' und 'alle', ausblenden bei Einzelstatus-Filtern
-  const filteredSerien = (filterStatus === 'offen' || filterStatus === 'in_bearbeitung' || filterStatus === 'erledigt')
-    ? []
-    : serienauftraege.filter(a => filterTyp === 'alle' || a.typ === filterTyp)
+  const filteredSerien = nurEintrag
+    ? (nurEintrag.istSerie ? [nurEintrag] : [])
+    : (filterStatus === 'offen' || filterStatus === 'in_bearbeitung' || filterStatus === 'erledigt')
+        ? []
+        : serienauftraege.filter(a => filterTyp === 'alle' || a.typ === filterTyp)
 
   const counts = {
     aktiv:          einzelauftraege.filter(a => a.status !== 'erledigt').length,
@@ -4744,6 +4753,13 @@ export default function AuftraegeTab({ client, onUpdate, initialFilterTyp = 'all
 
   return (
     <div style={{ padding: '20px', overflowY: 'auto', height: '100%', boxSizing: 'border-box' }}>
+
+      {nurEintrag && (
+        <button onClick={() => onClearNur?.()}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', marginBottom: '12px', background: 'var(--surface2)', border: '1px solid var(--border)', color: 'var(--text-secondary)', padding: '6px 12px', borderRadius: '7px', fontSize: '12px', cursor: 'pointer' }}>
+          ← Alle {bereichCfg.title}
+        </button>
+      )}
 
       {/* ── Header ── */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px', flexWrap: 'wrap' }}>
@@ -4784,6 +4800,7 @@ export default function AuftraegeTab({ client, onUpdate, initialFilterTyp = 'all
       {showSerieErstellen && <SerieErstellenPanel onCreate={createSerienauftrag} onClose={() => setShowSerieErstellen(false)} />}
 
       {/* ── Status-Filter (gilt nur für Einzelaufträge) ── */}
+      {!nurEintrag && (
       <div style={{ display: 'flex', gap: '5px', marginBottom: '8px', flexWrap: 'wrap' }}>
         {[
           { key: 'aktiv',          label: `Aktiv (${counts.aktiv})` },
@@ -4798,9 +4815,10 @@ export default function AuftraegeTab({ client, onUpdate, initialFilterTyp = 'all
           </button>
         ))}
       </div>
+      )}
 
       {/* ── Typ-Filter (nur im allgemeinen Aufträge-Reiter; JA & Lohn sind einheitlich) ── */}
-      {bereich === 'allgemein' && (
+      {bereich === 'allgemein' && !nurEintrag && (
       <div style={{ display: 'flex', gap: '5px', marginBottom: '16px', flexWrap: 'wrap' }}>
         <button onClick={() => setFilterTyp('alle')}
           style={{

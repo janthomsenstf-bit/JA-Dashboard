@@ -92,11 +92,13 @@ export default function DetailView({
   const [auftraegeFilterTyp, setAuftraegeFilterTyp] = useState('alle')
   const [localPendingEmailId, setLocalPendingEmailId] = useState(null)  // für E-Mail-Öffnung aus Aufträge-Tab
   const [offeneGruppen, setOffeneGruppen] = useState(() => new Set())   // aufgeklappte Leistungs-Gruppen (rechtes Band)
+  const [nurLeistungId, setNurLeistungId] = useState(null)              // Einzel-Fokus: nur dieser Auftrag in der Mitte
   const toggleGruppe = (typ) => setOffeneGruppen(prev => { const n = new Set(prev); n.has(typ) ? n.delete(typ) : n.add(typ); return n })
-  // Klick auf ein Jahr: exakt diesen Auftrag vormerken (AuftraegeTab liest den Key
-  // beim Mounten) und in den passenden Reiter navigieren → richtiger Auftrag klappt auf.
+  // Klick auf ein Jahr: exakt diesen Auftrag fokussieren (nur er wird mittig gezeigt),
+  // vormerken (AuftraegeTab liest den Key beim Mounten) und in den passenden Reiter navigieren.
   const oeffneLeistung = (au) => {
     try { localStorage.setItem('sda-expanded-auftrag_' + client.id, au.id) } catch { /* ignore */ }
+    setNurLeistungId(au.id)
     navigateToAuftraegeTyp(au.typ)
   }
 
@@ -256,7 +258,7 @@ export default function DetailView({
             <button
               key={i}
               className={`tab-nav-btn${activeTab === i ? ' active' : ''}`}
-              onClick={() => setActiveTab(i)}
+              onClick={() => { setNurLeistungId(null); setActiveTab(i) }}
               title={tab.short}
               aria-current={activeTab === i ? 'page' : undefined}
             >
@@ -290,6 +292,8 @@ export default function DetailView({
               client={client}
               onUpdate={onUpdate}
               bereich="allgemein"
+              nurAuftragId={nurLeistungId}
+              onClearNur={() => setNurLeistungId(null)}
               initialFilterTyp={auftraegeFilterTyp}
               onOpenEmail={(emailId) => {
                 setLocalPendingEmailId(emailId)
@@ -314,6 +318,8 @@ export default function DetailView({
               client={client}
               onUpdate={onUpdate}
               bereich="jahresabschluss"
+              nurAuftragId={nurLeistungId}
+              onClearNur={() => setNurLeistungId(null)}
               onOpenEmail={(emailId) => {
                 setLocalPendingEmailId(emailId)
                 setActiveTab(TAB.nachrichten)
@@ -337,6 +343,8 @@ export default function DetailView({
               client={client}
               onUpdate={onUpdate}
               bereich="lohn"
+              nurAuftragId={nurLeistungId}
+              onClearNur={() => setNurLeistungId(null)}
               onOpenEmail={(emailId) => {
                 setLocalPendingEmailId(emailId)
                 setActiveTab(TAB.nachrichten)
@@ -450,7 +458,7 @@ export default function DetailView({
             )
           })}
           <button
-            onClick={() => setActiveTab(TAB.auftraege)}
+            onClick={() => { setNurLeistungId(null); setActiveTab(TAB.auftraege) }}
             title="Neue Leistung / neuen Auftrag anlegen"
             style={{ display: 'flex', alignItems: 'center', gap: '6px', width: '100%', textAlign: 'left', border: '1px dashed var(--border2)', background: 'transparent', cursor: 'pointer', padding: '7px 8px', borderRadius: '7px', fontSize: '11.5px', color: 'var(--text-muted)', marginTop: '6px' }}
           >
