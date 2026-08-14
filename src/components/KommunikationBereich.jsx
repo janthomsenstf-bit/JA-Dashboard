@@ -33,7 +33,8 @@ const FARBE = '#16a34a' // Farbwelt des Bereichs „Kommunikation"
 const KANAELE = [
   { key: 'email',    label: 'E-Mail',           icon: '✉️', aktiv: true },
   { key: 'website',  label: 'Website-Anfragen', icon: '🌐', aktiv: true },
-  { key: 'bot',      label: 'Posteingang (KI)', icon: '🤖', aktiv: true },
+  // #29b – „Posteingang (KI)" in AI-Empfehlungen aufgegangen; Kanal zurückgebaut.
+  //        Render-Zweig (kanal==='bot') bleibt erhalten → jederzeit reaktivierbar.
   { key: 'whatsapp', label: 'WhatsApp',         icon: '💬', aktiv: false },
 ]
 

@@ -1901,10 +1901,13 @@ export default function App() {
               >
                 💰 Honorar-Übersicht
               </button>
-              <BotInboxBadge
+              {/* #29b – „Posteingang (KI)" in AI-Empfehlungen aufgegangen; Sidebar-Einstieg
+                  zurückgebaut. Render-Zweig (selectedId === '__bot_inbox__') bleibt erhalten,
+                  daher jederzeit reaktivierbar (für die Einzel-Dokument-Korrektur). */}
+              {/* <BotInboxBadge
                 active={selectedId === '__bot_inbox__'}
                 onClick={() => setSelectedId('__bot_inbox__')}
-              />
+              /> */}
               <button
                 onClick={() => setSelectedId('__website_anfragen__')}
                 style={{
