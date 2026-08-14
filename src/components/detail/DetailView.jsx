@@ -5,7 +5,7 @@ import StandDerArbeitTab    from './StandDerArbeitTab.jsx'
 import AuftragTab           from './AuftragTab.jsx'
 import BeratungTab          from './BeratungTab.jsx'
 import KommunikationTab     from './KommunikationTab.jsx'
-import AuftraegeTab         from './AuftraegeTab.jsx'
+import AuftraegeTab, { AUFTRAGS_TYP_CFG } from './AuftraegeTab.jsx'
 import ImmobilienTab        from './ImmobilienTab.jsx'
 import HonorareTab          from './HonorareTab.jsx'
 import DokumenteTab         from './DokumenteTab.jsx'
@@ -383,6 +383,47 @@ export default function DetailView({
           )}
 
         </div>
+
+        {/* ── Leistungen (rechts) – Schritt 1: additiv, öffnet die jeweilige Akte ──
+            Listet die Aufträge dieses Mandanten. Klick nutzt die vorhandene
+            Navigation (JA/Lohn eigener Reiter, sonst gefilterter Aufträge-Reiter).
+            Links bleibt unverändert; unter 900px wird das Band ausgeblendet. */}
+        <aside className="leistungen-right" aria-label="Leistungen">
+          <div className="tab-nav-heading" style={{ padding: '0 4px 4px' }}>Leistungen</div>
+          {(client.auftraege || []).length === 0 && (
+            <div style={{ fontSize: '11px', color: 'var(--text-muted)', padding: '6px 8px', lineHeight: 1.5 }}>
+              Noch keine Leistungen angelegt.
+            </div>
+          )}
+          {(client.auftraege || []).map(au => {
+            const cfg   = AUFTRAGS_TYP_CFG[au.typ] || AUFTRAGS_TYP_CFG.freitext
+            const titel = au.bezeichnung || `${cfg.label}${au.jahr ? ' ' + au.jahr : ''}`
+            return (
+              <button
+                key={au.id}
+                onClick={() => navigateToAuftraegeTyp(au.typ)}
+                title={titel}
+                style={{ display: 'flex', alignItems: 'center', gap: '7px', width: '100%', textAlign: 'left', border: 'none', background: 'transparent', cursor: 'pointer', padding: '7px 8px', borderRadius: '7px', fontSize: '12px', color: au.status === 'erledigt' ? 'var(--text-muted)' : 'var(--text)' }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface2)' }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+              >
+                <span style={{ fontSize: '13px', flexShrink: 0 }} aria-hidden="true">{au.blockiert ? '🚧' : cfg.icon}</span>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{titel}</span>
+              </button>
+            )
+          })}
+          <button
+            onClick={() => setActiveTab(TAB.auftraege)}
+            title="Neue Leistung / neuen Auftrag anlegen"
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', width: '100%', textAlign: 'left', border: '1px dashed var(--border2)', background: 'transparent', cursor: 'pointer', padding: '7px 8px', borderRadius: '7px', fontSize: '11.5px', color: 'var(--text-muted)', marginTop: '6px' }}
+          >
+            ＋ neue Leistung
+          </button>
+        </aside>
+        <style>{`
+          .leistungen-right { width: 190px; flex-shrink: 0; border-left: 1px solid var(--border); background: var(--surface); overflow-y: auto; padding: 10px 8px; display: flex; flex-direction: column; gap: 2px; }
+          @media (max-width: 900px) { .leistungen-right { display: none } }
+        `}</style>
 
       </div>
 
