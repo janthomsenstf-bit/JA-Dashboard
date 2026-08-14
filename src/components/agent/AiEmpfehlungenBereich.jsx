@@ -1,20 +1,76 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState, useCallback } from 'react'
+import { supabase } from '../../utils/supabaseClient.js'
 import VorgangKarte from './VorgangKarte.jsx'
 import { generiereVorgaenge } from '../../utils/vorgangGenerator.js'
+import { makeVorgang } from '../../utils/vorgang.js'
 
 /**
- * AiEmpfehlungenBereich – die eigene „AI-Empfehlungen"-Liste (BP 1, live).
+ * AiEmpfehlungenBereich – die „AI-Empfehlungen"-Liste (BP 1 + MCP-Integration BP 5).
  *
- * Erkennt aus den vorhandenen Daten Vorgänge (rein lesend) und zeigt sie als
- * einheitliche VorgangKarte mit CTAs + „Alle ausführen". Die Ausführung läuft über
- * den injizierten `dispatcher` (App-eigene Setter → sicher gespeichert).
+ * Zeigt Vorgänge aus zwei Quellen als einheitliche VorgangKarte:
+ *   1) automatisch aus den vorhandenen Daten erkannt (rein lesend)
+ *   2) von außen gemeldet (MCP / Handy) über bot_inbox (intent 'ai_aktion')
  *
- * Props: clients, dispatcher, onOeffneMandant?
+ * Ausführung läuft immer über den injizierten `dispatcher` (App-eigene Setter →
+ * sichere Speicherung). MCP-Vorgänge werden nach dem Ausführen als verarbeitet
+ * markiert, damit sie nicht erneut erscheinen.
  */
+
+// bot_inbox-Zeile → Vorgang
+function rowZuVorgang(row) {
+  const d = row.draft || {}
+  const v = makeVorgang({
+    schwere: d.schwere || 'hinweis',
+    mandantId: row.client_id || null,
+    titel: row.raw_text || 'Vorgang',
+    feststellung: d.feststellung || '',
+    einschaetzung: d.einschaetzung || '',
+    empfehlung: d.empfehlung || '',
+    aktionen: Array.isArray(d.aktionen) ? d.aktionen : [],
+    quelle: d.quelle || { typ: 'mcp' },
+  })
+  v.botInboxId = row.id
+  v.vonMcp = true
+  v.mandantNameFallback = row.client_name || null
+  return v
+}
+
 export default function AiEmpfehlungenBereich({ clients = [], dispatcher, onOeffneMandant }) {
-  const vorgaenge = useMemo(() => generiereVorgaenge(clients), [clients])
-  const dringend = vorgaenge.filter(v => v.schwere === 'handlungsbedarf').length
+  const generiert = useMemo(() => generiereVorgaenge(clients), [clients])
+  const [mcp, setMcp]             = useState([])
+  const [ladeFehler, setLadeFehler] = useState('')
+
   const nameOf = (id) => clients.find(c => c.id === id)?.name ?? null
+
+  const ladeMcp = useCallback(async () => {
+    try {
+      const { data, error } = await supabase.from('bot_inbox')
+        .select('*').eq('intent', 'ai_aktion').eq('status', 'neu')
+        .order('created_at', { ascending: false }).limit(50)
+      if (error) { setLadeFehler(error.message); return }
+      setLadeFehler('')
+      setMcp((data || []).map(rowZuVorgang))
+    } catch (e) { setLadeFehler(e?.message || String(e)) }
+  }, [])
+
+  useEffect(() => {
+    ladeMcp()
+    const t = setInterval(ladeMcp, 45000)   // regelmäßig nachladen (Handy-Meldungen)
+    return () => clearInterval(t)
+  }, [ladeMcp])
+
+  async function markErledigt(botInboxId) {
+    if (!botInboxId) return
+    setMcp(prev => prev.filter(v => v.botInboxId !== botInboxId))
+    try {
+      await supabase.from('bot_inbox')
+        .update({ status: 'verarbeitet', confirmed_at: new Date().toISOString() })
+        .eq('id', botInboxId)
+    } catch { /* Anzeige wurde schon entfernt; stiller Fehler ok */ }
+  }
+
+  const vorgaenge = [...mcp, ...generiert]
+  const dringend = vorgaenge.filter(v => v.schwere === 'handlungsbedarf').length
 
   return (
     <div style={{ flex: 1, overflowY: 'auto', background: 'var(--bg)', minHeight: 0 }}>
@@ -22,18 +78,33 @@ export default function AiEmpfehlungenBereich({ clients = [], dispatcher, onOeff
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '11px' }}>
           <span style={{ fontSize: '22px' }} aria-hidden="true">🤖</span>
-          <div>
+          <div style={{ flex: 1 }}>
             <div style={{ fontSize: '17px', fontWeight: 800, color: 'var(--text)' }}>AI-Empfehlungen</div>
             <div style={{ fontSize: '12.5px', color: 'var(--text-muted)' }}>
-              {vorgaenge.length} Vorgang{vorgaenge.length !== 1 ? 'e' : ''}{dringend ? ` · ${dringend} mit Handlungsbedarf` : ''}
+              {vorgaenge.length} Vorgang{vorgaenge.length !== 1 ? 'e' : ''}
+              {dringend ? ` · ${dringend} mit Handlungsbedarf` : ''}
+              {mcp.length ? ` · ${mcp.length} vom Handy` : ''}
             </div>
           </div>
+          <button
+            onClick={ladeMcp}
+            title="Neu laden"
+            style={{ background: 'var(--surface2)', border: '1px solid var(--border)', color: 'var(--text-secondary)', padding: '7px 12px', borderRadius: 'var(--radius-sm)', fontSize: '12px', cursor: 'pointer' }}
+          >
+            ↻ Aktualisieren
+          </button>
         </div>
 
         <div style={{ fontSize: '12px', color: 'var(--text-muted)', margin: '10px 0 18px', lineHeight: 1.55 }}>
-          Automatisch erkannt aus deinen Daten (rein lesend). Aktionen legen erst nach deinem Klick etwas an;
-          außenwirksame Schritte (z. B. Mail senden) bleiben deiner Freigabe vorbehalten.
+          Automatisch erkannt aus deinen Daten und vom Handy gemeldet (über den MCP). Aktionen legen erst
+          nach deinem Klick etwas an; außenwirksame Schritte (z. B. Mail senden) bleiben deiner Freigabe vorbehalten.
         </div>
+
+        {ladeFehler && (
+          <div style={{ fontSize: '11.5px', color: 'var(--yellow)', background: 'var(--yellow-dim)', border: '1px solid var(--yellow)', borderRadius: 'var(--radius-sm)', padding: '8px 11px', marginBottom: '14px' }}>
+            Hinweis: Handy-Meldungen konnten nicht geladen werden ({ladeFehler}).
+          </div>
+        )}
 
         {vorgaenge.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '8vh 0', color: 'var(--text-muted)', fontSize: '14px' }}>
@@ -44,7 +115,17 @@ export default function AiEmpfehlungenBereich({ clients = [], dispatcher, onOeff
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             {vorgaenge.map(v => (
               <div key={v.id}>
-                <VorgangKarte vorgang={v} dispatcher={dispatcher} mandantName={nameOf(v.mandantId)} />
+                {v.vonMcp && (
+                  <div style={{ fontSize: '10.5px', fontWeight: 700, color: '#0d9488', marginBottom: '4px' }}>
+                    📱 Vom Handy gemeldet
+                  </div>
+                )}
+                <VorgangKarte
+                  vorgang={v}
+                  dispatcher={dispatcher}
+                  mandantName={nameOf(v.mandantId) || v.mandantNameFallback}
+                  onErledigt={() => { if (v.botInboxId) markErledigt(v.botInboxId) }}
+                />
                 {onOeffneMandant && v.mandantId && (
                   <button
                     onClick={() => onOeffneMandant(v.mandantId)}
