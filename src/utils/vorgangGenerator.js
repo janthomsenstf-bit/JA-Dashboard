@@ -34,30 +34,35 @@ function offeneEingehende(client) {
   })
 }
 
-export function generiereVorgaenge(clients) {
+export function generiereVorgaenge(clients, ignorierteAbsender = []) {
   const out = []
+  const ignoreSet = new Set((ignorierteAbsender || []).map(a => String(a).toLowerCase().trim()).filter(Boolean))
 
   for (const c of (clients || [])) {
     if (c.archiviert) continue
 
-    // 1) Unbeantwortete E-Mails
-    const offen = offeneEingehende(c)
+    // 1) Unbeantwortete E-Mails (ignorierte Absender ausgenommen)
+    const offen = offeneEingehende(c).filter(e => !ignoreSet.has(String(e.absender || '').toLowerCase().trim()))
     if (offen.length) {
       const neueste = offen[0]
       const alter = tageSeit(neueste.erstelltAm)
-      out.push(makeVorgang({
+      const v = makeVorgang({
         schwere: alter >= 3 ? 'handlungsbedarf' : 'hinweis',
         mandantId: c.id,
         titel: `Unbeantwortete E-Mail – ${c.name}`,
         quelle: { typ: 'mail', ref: neueste.id },
         feststellung: `${offen.length} unbeantwortete eingehende Nachricht${offen.length > 1 ? 'en' : ''}. Neueste: „${neueste.betreff || '(kein Betreff)'}“ von ${neueste.absender || 'unbekannt'}${alter > 0 ? `, vor ${alter} Tag${alter > 1 ? 'en' : ''}` : ''}.`,
         einschaetzung: alter >= 3 ? 'Seit mehreren Tagen ohne Antwort – sollte bald bearbeitet werden.' : 'Wartet auf eine Reaktion.',
-        empfehlung: 'Aufgabe zum Beantworten anlegen und zur Sicherheit wiedervorlegen.',
+        empfehlung: 'Aufgabe zum Beantworten anlegen und zur Sicherheit wiedervorlegen. Ist es Spam, unten „Verwerfen" oder „Absender ignorieren".',
         aktionen: [
           { id: 'aufgabe_anlegen', parameter: { mandantId: c.id, mandantName: c.name, titel: `E-Mail beantworten: ${neueste.betreff || '(kein Betreff)'}`, faelligkeit: plusTage(2), beschreibung: `Von ${neueste.absender || ''}` } },
           { id: 'wiedervorlage_anlegen', parameter: { mandantId: c.id, mandantName: c.name, bezug: `E-Mail ${c.name}`, faelligkeit: plusTage(5) } },
         ],
-      }))
+      })
+      // Merkmale fürs Verwerfen/Spam (rein darstellend, nicht Teil des Vorgang-Vertrags)
+      v._mailEventIds = offen.map(e => e.id)
+      v._absender = neueste.absender || null
+      out.push(v)
     }
 
     // 2) Offene Rückfragen

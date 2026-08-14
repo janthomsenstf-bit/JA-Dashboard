@@ -35,12 +35,29 @@ function rowZuVorgang(row) {
   return v
 }
 
-export default function AiEmpfehlungenBereich({ clients = [], dispatcher, onOeffneMandant }) {
-  const generiert = useMemo(() => generiereVorgaenge(clients), [clients])
+const IGNORE_KEY = 'ki-ignorierte-absender-v1'
+function ladeIgnore() { try { return JSON.parse(localStorage.getItem(IGNORE_KEY) || '[]') } catch { return [] } }
+function speichereIgnore(l) { try { localStorage.setItem(IGNORE_KEY, JSON.stringify(l)) } catch { /* ignore */ } }
+
+export default function AiEmpfehlungenBereich({ clients = [], dispatcher, onOeffneMandant, onMailErledigt }) {
+  const [ignore, setIgnore]      = useState(ladeIgnore)
+  const generiert = useMemo(() => generiereVorgaenge(clients, ignore), [clients, ignore])
   const [mcp, setMcp]             = useState([])
   const [ladeFehler, setLadeFehler] = useState('')
 
   const nameOf = (id) => clients.find(c => c.id === id)?.name ?? null
+
+  // Vorgang verwerfen: betroffene Mail(s) als erledigt markieren → kommt nicht wieder.
+  function verwerfen(v) {
+    if (v.vonMcp) { markErledigt(v.botInboxId); return }
+    if (Array.isArray(v._mailEventIds) && v._mailEventIds.length) onMailErledigt?.(v.mandantId, v._mailEventIds)
+  }
+  // Absender künftig ignorieren (Spam) + betroffene Mail(s) als erledigt markieren.
+  function absenderIgnorieren(v) {
+    const abs = String(v._absender || '').toLowerCase().trim()
+    if (abs) { const n = [...new Set([...ignore, abs])]; setIgnore(n); speichereIgnore(n) }
+    if (Array.isArray(v._mailEventIds) && v._mailEventIds.length) onMailErledigt?.(v.mandantId, v._mailEventIds)
+  }
 
   const ladeMcp = useCallback(async () => {
     try {
@@ -126,14 +143,35 @@ export default function AiEmpfehlungenBereich({ clients = [], dispatcher, onOeff
                   mandantName={nameOf(v.mandantId) || v.mandantNameFallback}
                   onErledigt={() => { if (v.botInboxId) markErledigt(v.botInboxId) }}
                 />
-                {onOeffneMandant && v.mandantId && (
-                  <button
-                    onClick={() => onOeffneMandant(v.mandantId)}
-                    style={{ marginTop: '5px', marginLeft: '2px', background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--accent)', fontSize: '11.5px' }}
-                  >
-                    → Mandant öffnen
-                  </button>
-                )}
+                <div style={{ marginTop: '5px', display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+                  {onOeffneMandant && v.mandantId && (
+                    <button
+                      onClick={() => onOeffneMandant(v.mandantId)}
+                      style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--accent)', fontSize: '11.5px' }}
+                    >
+                      → Mandant öffnen
+                    </button>
+                  )}
+                  <div style={{ flex: 1 }} />
+                  {(v.quelle?.typ === 'mail' || v.vonMcp) && (
+                    <button
+                      onClick={() => verwerfen(v)}
+                      title="Diese Empfehlung ausblenden – kommt nicht wieder"
+                      style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--text-muted)', fontSize: '11.5px' }}
+                    >
+                      ✕ Verwerfen
+                    </button>
+                  )}
+                  {v.quelle?.typ === 'mail' && v._absender && (
+                    <button
+                      onClick={() => absenderIgnorieren(v)}
+                      title={`Künftige E-Mails von ${v._absender} nicht mehr als Vorgang anzeigen`}
+                      style={{ background: 'none', border: '1px solid var(--border)', padding: '3px 9px', borderRadius: '999px', cursor: 'pointer', color: 'var(--text-secondary)', fontSize: '11px' }}
+                    >
+                      🚫 Als Spam · Absender ignorieren
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
           </div>

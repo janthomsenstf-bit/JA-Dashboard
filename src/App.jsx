@@ -1052,6 +1052,19 @@ export default function App() {
   }
 
   // ── Termine CRUD ──────────────────────────────────────────────────────────────
+  // Markiert eingehende Mail-Events als erledigt (für „Verwerfen"/„Spam" in AI-Empfehlungen).
+  function markMailErledigt(clientId, eventIds) {
+    const ids = new Set(eventIds || [])
+    if (!clientId || ids.size === 0) return
+    setClients(prev => prev.map(c => {
+      if (c.id !== clientId) return c
+      const evs = (c.kommunikation?.events ?? []).map(e =>
+        ids.has(e.id) ? { ...e, erledigtAm: e.erledigtAm || new Date().toISOString() } : e
+      )
+      return { ...c, kommunikation: { ...(c.kommunikation ?? { events: [] }), events: evs } }
+    }))
+  }
+
   function addTermin(t) { setTermine(prev => [...prev, t]) }
   function updateTermin(id, patch) { setTermine(prev => prev.map(t => t.id === id ? { ...t, ...patch } : t)) }
   function deleteTermin(id) { setTermine(prev => prev.filter(t => t.id !== id)) }
@@ -1671,6 +1684,7 @@ export default function App() {
                   stammdaten_aktualisieren: (p) => updateClient(p.mandantId, p.patch || {}),
                 })}
                 onOeffneMandant={(id) => { setDetailInitialTab(TAB.nachrichten); setSelectedId(id); wechselBereich('personen') }}
+                onMailErledigt={markMailErledigt}
               />
             )}
 
