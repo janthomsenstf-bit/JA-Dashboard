@@ -91,6 +91,14 @@ export default function DetailView({
   const [pendingAttachments, setPendingAttachments] = useState(null)
   const [auftraegeFilterTyp, setAuftraegeFilterTyp] = useState('alle')
   const [localPendingEmailId, setLocalPendingEmailId] = useState(null)  // für E-Mail-Öffnung aus Aufträge-Tab
+  const [offeneGruppen, setOffeneGruppen] = useState(() => new Set())   // aufgeklappte Leistungs-Gruppen (rechtes Band)
+  const toggleGruppe = (typ) => setOffeneGruppen(prev => { const n = new Set(prev); n.has(typ) ? n.delete(typ) : n.add(typ); return n })
+  // Klick auf ein Jahr: exakt diesen Auftrag vormerken (AuftraegeTab liest den Key
+  // beim Mounten) und in den passenden Reiter navigieren → richtiger Auftrag klappt auf.
+  const oeffneLeistung = (au) => {
+    try { localStorage.setItem('sda-expanded-auftrag_' + client.id, au.id) } catch { /* ignore */ }
+    navigateToAuftraegeTyp(au.typ)
+  }
 
   function handleSendAsAttachment(attachments) {
     setPendingAttachments(attachments)
@@ -108,6 +116,13 @@ export default function DetailView({
 
   const allNrs = [client.mandantennummer, client.mandantennummer2, client.mandantennummer3]
     .filter(Boolean)
+
+  // Leistungen (Aufträge) nach Typ gruppieren – für das rechte Band (aufklappbar).
+  const leistungsGruppen = (() => {
+    const g = {}
+    for (const au of (client.auftraege || [])) { (g[au.typ] = g[au.typ] || []).push(au) }
+    return Object.entries(g)
+  })()
 
   function handleEditSave(formData) {
     onUpdate(formData)
@@ -395,21 +410,43 @@ export default function DetailView({
               Noch keine Leistungen angelegt.
             </div>
           )}
-          {(client.auftraege || []).map(au => {
-            const cfg   = AUFTRAGS_TYP_CFG[au.typ] || AUFTRAGS_TYP_CFG.freitext
-            const titel = au.bezeichnung || `${cfg.label}${au.jahr ? ' ' + au.jahr : ''}`
+          {leistungsGruppen.map(([typ, list]) => {
+            const cfg  = AUFTRAGS_TYP_CFG[typ] || AUFTRAGS_TYP_CFG.freitext
+            const offen = offeneGruppen.has(typ)
             return (
-              <button
-                key={au.id}
-                onClick={() => navigateToAuftraegeTyp(au.typ)}
-                title={titel}
-                style={{ display: 'flex', alignItems: 'center', gap: '7px', width: '100%', textAlign: 'left', border: 'none', background: 'transparent', cursor: 'pointer', padding: '7px 8px', borderRadius: '7px', fontSize: '12px', color: au.status === 'erledigt' ? 'var(--text-muted)' : 'var(--text)' }}
-                onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface2)' }}
-                onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
-              >
-                <span style={{ fontSize: '13px', flexShrink: 0 }} aria-hidden="true">{au.blockiert ? '🚧' : cfg.icon}</span>
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{titel}</span>
-              </button>
+              <div key={typ}>
+                {/* Ordner-Kopf (Typ) – aufklappbar */}
+                <button
+                  onClick={() => toggleGruppe(typ)}
+                  title={cfg.label}
+                  style={{ display: 'flex', alignItems: 'center', gap: '7px', width: '100%', textAlign: 'left', border: 'none', background: 'transparent', cursor: 'pointer', padding: '7px 8px', borderRadius: '7px', fontSize: '12.5px', fontWeight: 600, color: 'var(--text)' }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface2)' }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+                >
+                  <span style={{ fontSize: '13px', flexShrink: 0 }} aria-hidden="true">{cfg.icon}</span>
+                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cfg.label}</span>
+                  <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{list.length}</span>
+                  <span style={{ fontSize: '9px', color: 'var(--text-muted)', width: '10px', textAlign: 'center' }} aria-hidden="true">{offen ? '▾' : '▸'}</span>
+                </button>
+                {/* Jahre / einzelne Aufträge */}
+                {offen && list.map(au => {
+                  const jahr  = au.abschlussJahr ?? au.jahr
+                  const label = jahr ? String(jahr) : (au.bezeichnung || 'Auftrag')
+                  return (
+                    <button
+                      key={au.id}
+                      onClick={() => oeffneLeistung(au)}
+                      title={au.bezeichnung || `${cfg.label} ${jahr ?? ''}`.trim()}
+                      style={{ display: 'flex', alignItems: 'center', gap: '6px', width: '100%', textAlign: 'left', border: 'none', background: 'transparent', cursor: 'pointer', padding: '6px 8px 6px 27px', borderRadius: '7px', fontSize: '12px', color: au.status === 'erledigt' ? 'var(--text-muted)' : 'var(--text)', textDecoration: au.status === 'erledigt' ? 'line-through' : 'none' }}
+                      onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface2)' }}
+                      onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+                    >
+                      {au.blockiert && <span aria-hidden="true">🚧</span>}
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{label}</span>
+                    </button>
+                  )
+                })}
+              </div>
             )
           })}
           <button
@@ -421,7 +458,7 @@ export default function DetailView({
           </button>
         </aside>
         <style>{`
-          .leistungen-right { width: 190px; flex-shrink: 0; border-left: 1px solid var(--border); background: var(--surface); overflow-y: auto; padding: 10px 8px; display: flex; flex-direction: column; gap: 2px; }
+          .leistungen-right { width: 236px; flex-shrink: 0; border-left: 1px solid var(--border); background: var(--surface); overflow-y: auto; padding: 10px 8px; display: flex; flex-direction: column; gap: 2px; }
           @media (max-width: 900px) { .leistungen-right { display: none } }
         `}</style>
 
