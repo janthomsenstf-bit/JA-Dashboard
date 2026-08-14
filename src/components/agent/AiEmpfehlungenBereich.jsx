@@ -3,6 +3,7 @@ import { supabase } from '../../utils/supabaseClient.js'
 import VorgangKarte from './VorgangKarte.jsx'
 import { generiereVorgaenge } from '../../utils/vorgangGenerator.js'
 import { makeVorgang } from '../../utils/vorgang.js'
+import { callAI, hasAiKey } from '../../utils/aiClient.js'
 
 /**
  * AiEmpfehlungenBereich – die „AI-Empfehlungen"-Liste (BP 1 + MCP-Integration BP 5).
@@ -240,6 +241,27 @@ export default function AiEmpfehlungenBereich({ clients = [], dispatcher, onOeff
 // ── Karte für eine unzugeordnete E-Mail (unbekannter Absender) ──────────────────
 function UnbekanntCard({ email, clients = [], onAssign, onIgnore }) {
   const [zielId, setZielId] = useState('')
+  const [zus, setZus]       = useState(null)   // { zusammenfassung, empfehlung }
+  const [laedt, setLaedt]   = useState(false)
+  const [fehler, setFehler] = useState('')
+
+  // #21 – KI-Zusammenfassung + Empfehlung, ERST auf Klick (kostenschonend).
+  async function zusammenfassen() {
+    if (laedt || zus) return
+    if (!hasAiKey()) { setFehler('Kein KI-Schlüssel hinterlegt (Stammdaten → ⚙️).'); return }
+    setLaedt(true); setFehler('')
+    try {
+      const res  = await fetch(`/api/get-email-content?uid=${encodeURIComponent(email.uid)}&account=${encodeURIComponent(email.account)}`)
+      const data = await res.json().catch(() => ({}))
+      const body = String(data.text || (data.html || '').replace(/<[^>]+>/g, ' ') || '').replace(/\s+/g, ' ').slice(0, 4000)
+      const sys  = 'Du bist die Assistenz eines deutschen Steuerberaters. Fasse die eingegangene E-Mail in 1–2 knappen Sätzen zusammen und gib eine kurze Handlungsempfehlung. Antworte AUSSCHLIESSLICH als JSON: {"zusammenfassung":"...","empfehlung":"..."}. Nichts erfinden. Deutsch.'
+      const user = `Von: ${email.vonName || ''} <${email.von || ''}>\nBetreff: ${email.betreff || ''}\n\n${body || '(kein Textinhalt abrufbar)'}`
+      const r = await callAI(sys, user, { maxTokens: 500 })
+      setZus({ zusammenfassung: r.zusammenfassung || r.text || '(keine Zusammenfassung)', empfehlung: r.empfehlung || '' })
+    } catch (e) { setFehler(e?.message || String(e)) }
+    finally { setLaedt(false) }
+  }
+
   const aktive = clients.filter(c => !c.archiviert).slice().sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')))
   const fmt = (d) => { if (!d) return ''; const x = new Date(d); return isNaN(x) ? '' : x.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit' }) }
   const datum = fmt(email.datum || email.empfangenAm)
@@ -249,6 +271,18 @@ function UnbekanntCard({ email, clients = [], onAssign, onIgnore }) {
       <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', marginTop: '2px' }}>
         von {email.vonName ? `${email.vonName} · ` : ''}{email.von || 'unbekannt'}{datum ? ` · ${datum}` : ''}
       </div>
+      {zus ? (
+        <div style={{ marginTop: '8px', fontSize: '12.5px', color: 'var(--text)', background: 'var(--surface2)', borderRadius: 'var(--radius-sm)', padding: '8px 10px', lineHeight: 1.5 }}>
+          <div>{zus.zusammenfassung}</div>
+          {zus.empfehlung && <div style={{ marginTop: '4px', color: 'var(--accent)' }}>→ {zus.empfehlung}</div>}
+        </div>
+      ) : (
+        <button onClick={zusammenfassen} disabled={laedt}
+          style={{ marginTop: '8px', background: 'none', border: 'none', padding: 0, cursor: laedt ? 'default' : 'pointer', color: 'var(--accent)', fontSize: '11.5px' }}>
+          {laedt ? '⏳ fasst zusammen …' : '🧾 Zusammenfassen (KI)'}
+        </button>
+      )}
+      {fehler && <div style={{ marginTop: '6px', fontSize: '11px', color: 'var(--red)' }}>{fehler}</div>}
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '10px' }}>
         <select value={zielId} onChange={e => setZielId(e.target.value)}
           style={{ flex: '1 1 180px', minWidth: 0, padding: '6px 9px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text)', fontSize: '12px' }}>
