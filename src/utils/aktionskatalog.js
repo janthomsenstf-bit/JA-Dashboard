@@ -156,8 +156,8 @@ export const AKTIONEN = [
   },
   {
     id: 'pruefpunkt_anlegen', label: 'Prüfpunkt anlegen', icon: '📊', kategorie: 'ja',
-    stufe: 'bestaetigen', umkehrbar: true, implementiert: false,
-    datenanschluss: "client.checklisten / standDerArbeit.offenePunkte",
+    stufe: 'bestaetigen', umkehrbar: true, implementiert: true,
+    datenanschluss: "addAufgabe (JA-Prüfpunkt, sichtbar in Aufgaben/Fristen)",
     params: [
       { key: 'mandantId', label: 'Mandant', required: true },
       { key: 'text', label: 'Prüfpunkt', required: true },

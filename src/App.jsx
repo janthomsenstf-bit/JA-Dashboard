@@ -1664,6 +1664,16 @@ export default function App() {
         const eigeneBereiche = ['ki_empfehlungen', 'personen', 'kommunikation', 'dokumente', 'uebersichten', 'prozesse', 'checklisten', 'leistungspool', 'ustreg']
         const zeigePlatzhalter = !eigeneBereiche.includes(hauptbereich)
         const offenerKlient = klientOffen ? clients.find(c => c.id === selectedId) : null
+        // Löst mandantId aus einem (evtl. per MCP gemeldeten) Namen auf – so werden
+        // Handy-Meldungen dem richtigen Mandanten zugeordnet.
+        const resolveMid = (p) => {
+          if (p.mandantId) return p.mandantId
+          const n = String(p.mandantName || '').toLowerCase().trim()
+          if (!n) return null
+          const aktive = clients.filter(c => !c.archiviert)
+          return (aktive.find(c => String(c.name || '').toLowerCase() === n)
+               || aktive.find(c => String(c.name || '').toLowerCase().includes(n)))?.id ?? null
+        }
 
         return (
           <>
@@ -1674,14 +1684,15 @@ export default function App() {
               <AiEmpfehlungenBereich
                 clients={clients}
                 dispatcher={erstelleDispatcher({
-                  aufgabe_anlegen:       (p) => addAufgabe({ typ: 'einmal', titel: p.titel, beschreibung: p.beschreibung ?? '', mandantId: p.mandantId ?? null, faellig: p.faelligkeit ? `${p.faelligkeit}T12:00:00` : null, erledigt: false }),
-                  frist_anlegen:         (p) => addAufgabe({ typ: 'einmal', titel: p.titel, mandantId: p.mandantId ?? null, faellig: p.faelligkeit ? `${p.faelligkeit}T12:00:00` : null, erledigt: false }),
-                  wiedervorlage_anlegen: (p) => addAufgabe({ typ: 'einmal', titel: `Wiedervorlage: ${p.bezug}`, mandantId: p.mandantId ?? null, faellig: p.faelligkeit ? `${p.faelligkeit}T12:00:00` : null, erledigt: false }),
-                  anruf_aufgabe:         (p) => addAufgabe({ typ: 'einmal', titel: `Anruf: ${p.worum}`, mandantId: p.mandantId ?? null, faellig: p.faelligkeit ? `${p.faelligkeit}T12:00:00` : null, erledigt: false }),
-                  rueckfrage_anlegen:    (p) => addRueckfrage(p.mandantId, p.text),
-                  notiz_anlegen:         (p) => updateClient(p.mandantId, { notizen: [clients.find(c => c.id === p.mandantId)?.notizen || '', p.text].filter(Boolean).join('\n') }),
-                  termin_anlegen:        (p) => addTermin({ id: 't_' + Date.now().toString(36), titel: p.titel, start: p.start, mandantId: p.mandantId ?? null }),
-                  stammdaten_aktualisieren: (p) => updateClient(p.mandantId, p.patch || {}),
+                  aufgabe_anlegen:       (p) => addAufgabe({ typ: 'einmal', titel: p.titel, beschreibung: p.beschreibung ?? '', mandantId: resolveMid(p), faellig: p.faelligkeit ? `${p.faelligkeit}T12:00:00` : null, erledigt: false }),
+                  frist_anlegen:         (p) => addAufgabe({ typ: 'einmal', titel: p.titel, mandantId: resolveMid(p), faellig: p.faelligkeit ? `${p.faelligkeit}T12:00:00` : null, erledigt: false }),
+                  wiedervorlage_anlegen: (p) => addAufgabe({ typ: 'einmal', titel: `Wiedervorlage: ${p.bezug}`, mandantId: resolveMid(p), faellig: p.faelligkeit ? `${p.faelligkeit}T12:00:00` : null, erledigt: false }),
+                  anruf_aufgabe:         (p) => addAufgabe({ typ: 'einmal', titel: `Anruf: ${p.worum}`, mandantId: resolveMid(p), faellig: p.faelligkeit ? `${p.faelligkeit}T12:00:00` : null, erledigt: false }),
+                  rueckfrage_anlegen:    (p) => { const mid = resolveMid(p); if (mid) addRueckfrage(mid, p.text) },
+                  pruefpunkt_anlegen:    (p) => addAufgabe({ typ: 'einmal', titel: `JA-Prüfpunkt: ${p.text}`, beschreibung: p.jahr ? `Jahresabschluss ${p.jahr}` : '', mandantId: resolveMid(p), faellig: null, erledigt: false }),
+                  notiz_anlegen:         (p) => { const mid = resolveMid(p); if (mid) updateClient(mid, { notizen: [clients.find(c => c.id === mid)?.notizen || '', p.text].filter(Boolean).join('\n') }) },
+                  termin_anlegen:        (p) => addTermin({ id: 't_' + Date.now().toString(36), titel: p.titel, start: p.start, mandantId: resolveMid(p) }),
+                  stammdaten_aktualisieren: (p) => { const mid = resolveMid(p); if (mid) updateClient(mid, p.patch || {}) },
                 })}
                 onOeffneMandant={(id) => { setDetailInitialTab(TAB.nachrichten); setSelectedId(id); wechselBereich('personen') }}
                 onMailErledigt={markMailErledigt}
