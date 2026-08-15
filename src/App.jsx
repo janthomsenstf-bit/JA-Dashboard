@@ -2055,9 +2055,12 @@ export default function App() {
             <div style={{ flex: 1, overflowY: 'auto' }}>
               <StartseiteHome
                 clients={clients}
+                aufgaben={aufgabenListe}
                 onSelectClient={(id) => { setDetailInitialTab(0); setSelectedId(id) }}
                 onSelectClientAtKomm={openClientAtKomm}
                 onUpdateClient={updateClient}
+                onRefresh={pollEmails}
+                onOeffneEingang={() => wechselBereich('ki_empfehlungen')}
               />
             </div>
           )}

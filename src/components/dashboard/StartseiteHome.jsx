@@ -1,5 +1,6 @@
-import { useMemo } from 'react'
-import StatusBadge from '../shared/StatusBadge.jsx'
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
+import { supabase } from '../../utils/supabaseClient.js'
+import { callAI, hasAiKey } from '../../utils/aiClient.js'
 import { getOpenRueckfragen, getUpcomingDeadlines, fmtDate } from '../../utils/search.js'
 
 // ── Hilfsfunktionen ───────────────────────────────────────────────────────────
@@ -35,306 +36,376 @@ function truncate(str, max) {
   return s.length > max ? s.slice(0, max) + '…' : s
 }
 
-function isToday(iso) {
-  if (!iso) return false
-  const d = new Date(iso)
+function heuteStr() {
   const n = new Date()
-  return d.getDate() === n.getDate() && d.getMonth() === n.getMonth() && d.getFullYear() === n.getFullYear()
+  return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`
+}
+function tag10(iso) { return String(iso || '').slice(0, 10) }
+function initials(name) {
+  const parts = String(name || '?').trim().split(/\s+/)
+  return ((parts[0]?.[0] || '') + (parts[1]?.[0] || '')).toUpperCase() || '?'
+}
+const AVATAR_COLORS = ['#2f6df0', '#c67c12', '#1f9d5f', '#8b5cf6', '#e5484d', '#0891b2']
+function avatarColor(id) {
+  let h = 0; const s = String(id || '')
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0
+  return AVATAR_COLORS[h % AVATAR_COLORS.length]
 }
 
-// ── E-Mail-Karte ──────────────────────────────────────────────────────────────
+// ── Große E-Mail-Karte mit KI-Zusammenfassung (einmal erzeugt + gecacht) ────────
 
-function EmailCard({ client, event, onOpen, onErledigt }) {
+function EmailCard({ client, event, onOpen, onErledigt, onCacheSummary }) {
+  const [sum, setSum]     = useState(event.kiZusammenfassung || null)
+  const [emp, setEmp]     = useState(event.kiEmpfehlung || '')
+  const [laedt, setLaedt] = useState(false)
+  const triedRef = useRef(false)
   const sehrNeu = isSehrNeu(event.erstelltAm)
+  const col = avatarColor(client.id)
 
-  return (
-    <div style={{
-      background: 'var(--surface)',
-      border: `1px solid ${sehrNeu ? 'rgba(37,99,235,0.35)' : 'var(--border)'}`,
-      borderLeft: `3px solid ${sehrNeu ? 'var(--accent)' : 'var(--border2)'}`,
-      borderRadius: 'var(--radius)',
-      padding: '14px 16px',
-      display: 'flex', flexDirection: 'column', gap: '6px',
-      boxShadow: sehrNeu ? '0 0 0 3px rgba(37,99,235,0.06)' : 'none',
-      transition: 'box-shadow 0.15s',
-    }}>
-      {/* Kopfzeile */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-        {sehrNeu && (
-          <span style={{
-            fontSize: '9px', fontWeight: 800, padding: '2px 7px', borderRadius: '99px',
-            background: 'var(--accent)', color: '#fff', letterSpacing: '0.08em',
-            textTransform: 'uppercase', flexShrink: 0,
-          }}>
-            ● NEU
-          </span>
-        )}
-        <span style={{ fontSize: '13px', fontWeight: 700, flex: 1, minWidth: 0 }}>
-          {client.name}
-        </span>
-        <span style={{ fontSize: '11px', color: 'var(--text-muted)', flexShrink: 0 }}>
-          {relTime(event.erstelltAm)}
-        </span>
-      </div>
-
-      {/* Absender */}
-      {event.absender && (
-        <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-          Von: {event.absender}
-        </div>
-      )}
-
-      {/* Betreff */}
-      <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text)' }}>
-        {truncate(event.betreff || '(kein Betreff)', 80)}
-      </div>
-
-      {/* Vorschautext */}
-      {event.text && (
-        <div style={{
-          fontSize: '11px', color: 'var(--text-secondary)',
-          lineHeight: '1.5',
-          padding: '6px 10px',
-          background: 'var(--surface2)',
-          borderRadius: 'var(--radius-sm)',
-          borderLeft: '2px solid var(--border2)',
-        }}>
-          „{truncate(event.text, 120)}"
-        </div>
-      )}
-
-      {/* Aktions-Buttons */}
-      <div style={{ display: 'flex', gap: '8px', marginTop: '4px', alignItems: 'center' }}>
-        <button
-          className="btn btn-primary btn-sm"
-          onClick={onOpen}
-          style={{ fontSize: '11px' }}
-        >
-          ✉️ Öffnen &amp; antworten
-        </button>
-        <button
-          className="btn btn-ghost btn-sm"
-          onClick={onErledigt}
-          style={{ fontSize: '11px', color: 'var(--green)' }}
-        >
-          ✓ Als erledigt markieren
-        </button>
-        <StatusBadge client={client} size="sm" />
-      </div>
-    </div>
-  )
-}
-
-// ── Kompakt-Widget (Rückfragen / Fristen) ─────────────────────────────────────
-
-function KompaktWidget({ icon, title, count, children, emptyText }) {
-  return (
-    <div style={{
-      background: 'var(--surface)', border: '1px solid var(--border)',
-      borderRadius: 'var(--radius-lg)', overflow: 'hidden', flex: 1, minWidth: 0,
-    }}>
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: '8px',
-        padding: '10px 14px', background: 'var(--surface2)',
-        borderBottom: '1px solid var(--border)',
-      }}>
-        <span>{icon}</span>
-        <span style={{ fontSize: '12px', fontWeight: 700, flex: 1 }}>{title}</span>
-        {count > 0 && (
-          <span style={{
-            fontSize: '10px', fontWeight: 700, padding: '1px 7px', borderRadius: '20px',
-            background: 'var(--accent-dim)', color: 'var(--accent)',
-          }}>
-            {count}
-          </span>
-        )}
-      </div>
-      <div>
-        {count === 0
-          ? <div style={{ padding: '12px 14px', fontSize: '11px', color: 'var(--text-muted)' }}>{emptyText}</div>
-          : children
+  useEffect(() => {
+    if (sum || triedRef.current || !hasAiKey()) return
+    triedRef.current = true
+    setLaedt(true)
+    ;(async () => {
+      try {
+        let body = event.text
+        if (!body && event.sourceUid) {
+          const res  = await fetch(`/api/get-email-content?uid=${encodeURIComponent(event.sourceUid)}&account=${encodeURIComponent(event.sourceAccount || 'hostinger')}`)
+          const data = await res.json().catch(() => ({}))
+          body = String(data.text || (data.html || '').replace(/<[^>]+>/g, ' ') || '').replace(/\s+/g, ' ').slice(0, 4000)
         }
+        const sys  = 'Du bist die Assistenz eines deutschen Steuerberaters. Fasse die eingegangene E-Mail in 1–2 knappen Sätzen zusammen (worum geht es) und gib eine kurze Handlungsempfehlung. Antworte AUSSCHLIESSLICH als JSON: {"zusammenfassung":"...","empfehlung":"..."}. Nichts erfinden. Deutsch.'
+        const user = `Von: ${event.absender || ''}\nBetreff: ${event.betreff || ''}\n\n${body || '(kein Textinhalt abrufbar)'}`
+        const r = await callAI(sys, user, { maxTokens: 400 })
+        const z = r.zusammenfassung || r.text || ''
+        const e = r.empfehlung || ''
+        if (z) { setSum(z); setEmp(e); onCacheSummary?.(client.id, event.id, z, e) }
+      } catch { /* Fallback: Betreff bleibt sichtbar */ }
+      finally { setLaedt(false) }
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  return (
+    <div style={{
+      display: 'flex', gap: '15px', padding: '16px 18px',
+      background: 'var(--surface)',
+      border: `1px solid ${sehrNeu ? 'var(--accent)' : 'var(--border)'}`,
+      borderRadius: 'var(--radius)',
+      boxShadow: sehrNeu ? '0 0 0 3px var(--accent-dim)' : 'var(--shadow)',
+    }}>
+      <div style={{ width: '42px', height: '42px', borderRadius: '11px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '15px', fontWeight: 800, color: '#fff', background: col }}>
+        {initials(client.name)}
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '9px', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '14.5px', fontWeight: 750 }}>{client.name}</span>
+          {sehrNeu && <span style={{ fontSize: '9px', fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', background: 'var(--accent)', color: '#fff', padding: '2px 8px', borderRadius: '20px' }}>● neu</span>}
+          <span style={{ fontSize: '11.5px', color: 'var(--text-muted)', marginLeft: 'auto' }}>{relTime(event.erstelltAm)}</span>
+        </div>
+        {event.absender && <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>{event.absender}</div>}
+
+        {sum ? (
+          <div style={{ fontSize: '13.5px', color: 'var(--text)', lineHeight: 1.55, marginTop: '8px', padding: '10px 12px', background: 'var(--surface2)', borderLeft: '2px solid var(--accent)', borderRadius: 'var(--radius-sm)' }}>
+            <span style={{ display: 'block', fontSize: '9.5px', fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--accent)', marginBottom: '4px' }}>🧾 Zusammenfassung</span>
+            {sum}
+          </div>
+        ) : (
+          <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '8px', padding: '10px 12px', background: 'var(--surface2)', borderLeft: '2px solid var(--border2)', borderRadius: 'var(--radius-sm)' }}>
+            {laedt ? '🧾 fasst zusammen …' : truncate(event.betreff || '(kein Betreff)', 90)}
+          </div>
+        )}
+        {emp && <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', marginTop: '8px' }}>→ {emp}</div>}
+
+        <div style={{ display: 'flex', gap: '9px', marginTop: '11px', flexWrap: 'wrap', alignItems: 'center' }}>
+          <button className="btn btn-primary btn-sm" onClick={onOpen} style={{ fontSize: '11.5px' }}>✉️ Öffnen &amp; antworten</button>
+          <button className="btn btn-ghost btn-sm" onClick={onErledigt} style={{ fontSize: '11.5px', color: 'var(--green)' }}>✓ Erledigt</button>
+        </div>
       </div>
     </div>
   )
 }
 
-function KompaktRow({ label, meta, onClick }) {
+// ── KPI-Kachel ──────────────────────────────────────────────────────────────
+
+function Kpi({ icon, value, label, tone, sub, onClick }) {
+  const col = tone === 'crit' ? 'var(--red)' : tone === 'warn' ? 'var(--yellow)' : tone === 'ok' ? 'var(--accent)' : 'var(--text)'
+  const stripe = tone === 'crit' ? 'var(--red)' : tone === 'warn' ? 'var(--yellow)' : tone === 'ok' ? 'var(--accent)' : 'transparent'
   return (
-    <div
-      onClick={onClick}
-      style={{
-        display: 'flex', alignItems: 'center', gap: '8px',
-        padding: '8px 14px', cursor: 'pointer', fontSize: '12px',
-        borderBottom: '1px solid var(--border)',
-        transition: 'background 0.1s',
-      }}
-      onMouseEnter={e => e.currentTarget.style.background = 'var(--surface2)'}
-      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-    >
-      <span style={{ flex: 1, fontWeight: 600 }}>{label}</span>
-      <span style={{ fontSize: '10px', color: 'var(--text-muted)', flexShrink: 0 }}>{meta}</span>
+    <div onClick={onClick} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderLeft: `3px solid ${stripe}`, borderRadius: 'var(--radius)', padding: '12px 13px', boxShadow: 'var(--shadow)', cursor: onClick ? 'pointer' : 'default' }}>
+      <div style={{ fontSize: '15px' }}>{icon}</div>
+      <div style={{ fontSize: '24px', fontWeight: 800, lineHeight: 1.1, marginTop: '5px', color: col, fontVariantNumeric: 'tabular-nums' }}>{value}</div>
+      <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '1px' }}>{label}</div>
+      {sub && <div style={{ fontSize: '10.5px', fontWeight: 600, marginTop: '4px', color: col }}>{sub}</div>}
+    </div>
+  )
+}
+
+// ── Kompaktzeile / Widget ─────────────────────────────────────────────────────
+
+function SekEyebrow({ children, note }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px', marginBottom: '11px' }}>
+      <span style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.09em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>{children}</span>
+      {note && <span style={{ fontSize: '11.5px', color: 'var(--text-muted)', marginLeft: 'auto' }}>{note}</span>}
     </div>
   )
 }
 
 // ── Hauptkomponente ───────────────────────────────────────────────────────────
 
-export default function StartseiteHome({ clients, onSelectClient, onSelectClientAtKomm, onUpdateClient }) {
+export default function StartseiteHome({ clients, aufgaben = [], onSelectClient, onSelectClientAtKomm, onUpdateClient, onRefresh, onOeffneEingang }) {
   const activeClients = useMemo(() => clients.filter(c => !c.archiviert), [clients])
+  const [botKarten, setBotKarten] = useState([])   // bot_inbox: Handy-Meldungen + Beleg-Freigaben
+  const [aktualisiert, setAktualisiert] = useState('')
 
-  // Alle offenen eingehenden E-Mails (Mandant + Event)
+  // Offene eingehende E-Mails (Mandant + Event), neueste zuerst
   const offeneEmails = useMemo(() => {
     const result = []
     for (const c of activeClients) {
       const events = c.kommunikation?.events ?? []
       for (const e of events) {
-        if (e.typ === 'eingehend' && isEmailOpen(e, events)) {
-          result.push({ client: c, event: e })
-        }
+        if (e.typ === 'eingehend' && isEmailOpen(e, events)) result.push({ client: c, event: e })
       }
     }
     return result.sort((a, b) => new Date(b.event.erstelltAm) - new Date(a.event.erstelltAm))
   }, [activeClients])
 
-  // Statistik
-  const stats = useMemo(() => {
-    const mandantenMitEmail = new Set(offeneEmails.map(x => x.client.id)).size
-    const heuteCount = offeneEmails.filter(x => isToday(x.event.erstelltAm)).length
-    return { total: offeneEmails.length, mandanten: mandantenMitEmail, heute: heuteCount }
-  }, [offeneEmails])
+  const neueMails = useMemo(() => offeneEmails.filter(x => isSehrNeu(x.event.erstelltAm)).length, [offeneEmails])
 
-  // Offene Rückfragen
+  // Offene Rückfragen (warten auf Mandant)
   const offeneRQ = useMemo(() =>
-    activeClients
-      .map(c => ({ client: c, count: getOpenRueckfragen(c).length }))
-      .filter(x => x.count > 0)
-      .sort((a, b) => b.count - a.count)
+    activeClients.map(c => ({ client: c, count: getOpenRueckfragen(c).length })).filter(x => x.count > 0).sort((a, b) => b.count - a.count)
   , [activeClients])
+  const rqGesamt = useMemo(() => offeneRQ.reduce((s, x) => s + x.count, 0), [offeneRQ])
 
   // Fristen (30 Tage)
   const fristen = useMemo(() =>
-    activeClients
-      .flatMap(c => getUpcomingDeadlines(c, 30).map(d => ({ ...d, client: c })))
-      .sort((a, b) => new Date(a.date) - new Date(b.date))
+    activeClients.flatMap(c => getUpcomingDeadlines(c, 30).map(d => ({ ...d, client: c }))).sort((a, b) => new Date(a.date) - new Date(b.date))
   , [activeClients])
+
+  // Aufgaben: überfällig / heute fällig
+  const heute = heuteStr()
+  const offeneAufgaben = useMemo(() => (aufgaben || []).filter(a => a && !a.erledigt && a.faellig), [aufgaben])
+  const ueberfaellig = useMemo(() => offeneAufgaben.filter(a => tag10(a.faellig) < heute), [offeneAufgaben, heute])
+  const faelligHeute = useMemo(() => offeneAufgaben.filter(a => tag10(a.faellig) === heute), [offeneAufgaben, heute])
+
+  const nameOf = useCallback((id) => activeClients.find(c => c.id === id)?.name || null, [activeClients])
+
+  // „Heute dran": überfällige + heute fällige Aufgaben, nach Datum
+  const heuteDran = useMemo(() => {
+    const rows = [
+      ...ueberfaellig.map(a => ({ id: a.id, titel: a.titel || 'Aufgabe', mandantId: a.mandantId, datum: a.faellig, ueb: true })),
+      ...faelligHeute.map(a => ({ id: a.id, titel: a.titel || 'Aufgabe', mandantId: a.mandantId, datum: a.faellig, ueb: false })),
+    ]
+    return rows.sort((a, b) => new Date(a.datum) - new Date(b.datum))
+  }, [ueberfaellig, faelligHeute])
+
+  // bot_inbox: Handy-Meldungen (ai_aktion) + Beleg-Freigaben (dokument_ablage)
+  const ladeBot = useCallback(async () => {
+    try {
+      const { data } = await supabase.from('bot_inbox').select('*').eq('status', 'neu')
+        .in('intent', ['ai_aktion', 'dokument_ablage']).order('created_at', { ascending: false }).limit(40)
+      setBotKarten(data || [])
+    } catch { /* still */ }
+  }, [])
+  useEffect(() => { ladeBot(); const t = setInterval(ladeBot, 45000); return () => clearInterval(t) }, [ladeBot])
+
+  const handyKarten = botKarten.filter(k => k.intent === 'ai_aktion')
+  const belegKarten = botKarten.filter(k => k.intent === 'dokument_ablage')
+
+  // Mandanten-Radar: „offen"-Score je Mandant (Rückfragen + offene Mails + überfällige Aufgaben)
+  const radar = useMemo(() => {
+    const map = new Map()
+    const add = (id, n) => { if (!id) return; map.set(id, (map.get(id) || 0) + n) }
+    offeneRQ.forEach(x => add(x.client.id, x.count))
+    offeneEmails.forEach(x => add(x.client.id, 1))
+    ueberfaellig.forEach(a => add(a.mandantId, 1))
+    return [...map.entries()].map(([id, n]) => ({ client: activeClients.find(c => c.id === id), n })).filter(x => x.client).sort((a, b) => b.n - a.n).slice(0, 6)
+  }, [offeneRQ, offeneEmails, ueberfaellig, activeClients])
+  const radarMax = radar[0]?.n || 1
+
+  // KI-Zusammenfassung dauerhaft am Event speichern (einmal erzeugen, dann sofort da)
+  const cacheSummary = useCallback((clientId, eventId, z, e) => {
+    const c = clients.find(x => x.id === clientId)
+    if (!c) return
+    const komm = c.kommunikation ?? { events: [] }
+    const events = (komm.events ?? []).map(ev => ev.id === eventId ? { ...ev, kiZusammenfassung: z, kiEmpfehlung: e } : ev)
+    onUpdateClient?.(clientId, { kommunikation: { ...komm, events } })
+  }, [clients, onUpdateClient])
 
   function handleErledigt(client, event) {
     const komm   = client.kommunikation ?? { events: [] }
-    const events = (komm.events ?? []).map(e =>
-      e.id === event.id ? { ...e, erledigtAm: new Date().toISOString() } : e
-    )
+    const events = (komm.events ?? []).map(e => e.id === event.id ? { ...e, erledigtAm: new Date().toISOString() } : e)
     onUpdateClient(client.id, { kommunikation: { ...komm, events } })
   }
 
+  async function aktualisieren() {
+    if (aktualisiert === 'laeuft') return
+    setAktualisiert('laeuft')
+    try { await Promise.all([Promise.resolve(onRefresh?.()), ladeBot()]) } catch { /* egal */ }
+    setAktualisiert('ok'); setTimeout(() => setAktualisiert(''), 1800)
+  }
+
+  const jetzt = new Date()
+  const dranGesamt = ueberfaellig.length + faelligHeute.length
+  const brennt = ueberfaellig.length + neueMails
+  const lagebild = brennt > 0
+    ? <><span style={{ color: 'var(--red)', fontWeight: 700 }}>{brennt} {brennt === 1 ? 'Sache' : 'Dinge'}</span> {brennt === 1 ? 'braucht' : 'brauchen'} dich zuerst.</>
+    : 'Nichts Dringendes — alles im grünen Bereich. 👍'
+
+  const top3 = offeneEmails.slice(0, 3)
+  const feld = { fontSize: '12.5px', fontWeight: 600, cursor: 'pointer', borderRadius: 'var(--radius-sm)', padding: '8px 13px', border: '1px solid var(--border2)', background: 'var(--surface)', color: 'var(--text-secondary)' }
+
   return (
-    <div style={{ padding: '24px', overflowY: 'auto', height: '100%', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+    <div style={{ padding: '24px', maxWidth: '1040px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '26px' }}>
 
-      {/* ── Titel + Stats ── */}
-      <div>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: '12px', marginBottom: '12px' }}>
-          <h2 style={{ margin: 0, fontSize: '17px', fontWeight: 800 }}>🏠 Cockpit</h2>
-          <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-            {activeClients.length} aktive Mandate
-          </span>
+      {/* ── Lagebild ── */}
+      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: '16px', flexWrap: 'wrap' }}>
+        <div>
+          <div style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '0.09em', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
+            {jetzt.toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
+          </div>
+          <h2 style={{ margin: '4px 0 2px', fontSize: '25px', fontWeight: 800, letterSpacing: '-0.01em' }}>🏠 Cockpit</h2>
+          <div style={{ fontSize: '14.5px', color: 'var(--text-secondary)' }}>{lagebild}</div>
         </div>
+        <button onClick={aktualisieren} disabled={aktualisiert === 'laeuft'}
+          style={{ ...feld, color: aktualisiert === 'ok' ? 'var(--green)' : 'var(--text-secondary)', opacity: aktualisiert === 'laeuft' ? 0.7 : 1 }}>
+          {aktualisiert === 'laeuft' ? '⏳ lädt …' : aktualisiert === 'ok' ? '✓ aktualisiert' : '↻ Aktualisieren'}
+        </button>
+      </div>
 
-        {/* Stat-Chips */}
-        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-          {[
-            { icon: '📧', label: 'Neue Nachrichten', value: stats.total, color: stats.total > 0 ? 'var(--accent)' : 'var(--text-muted)', bg: stats.total > 0 ? 'var(--accent-dim)' : 'var(--surface2)' },
-            { icon: '👥', label: 'Mandanten', value: stats.mandanten, color: 'var(--text-secondary)', bg: 'var(--surface2)' },
-            { icon: '📅', label: 'Heute eingegangen', value: stats.heute, color: stats.heute > 0 ? 'var(--green)' : 'var(--text-muted)', bg: stats.heute > 0 ? 'rgba(22,163,74,0.08)' : 'var(--surface2)' },
-          ].map((s, i) => (
-            <div key={i} style={{
-              display: 'flex', alignItems: 'center', gap: '6px',
-              padding: '6px 14px', borderRadius: '20px',
-              background: s.bg, border: '1px solid var(--border)',
-              fontSize: '12px',
-            }}>
-              <span>{s.icon}</span>
-              <span style={{ fontWeight: 800, color: s.color }}>{s.value}</span>
-              <span style={{ color: 'var(--text-muted)' }}>{s.label}</span>
+      {/* ── 1) Posteingang (groß, oben) ── */}
+      <div>
+        <SekEyebrow note={<button onClick={onOeffneEingang} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--accent)', fontSize: '11.5px', fontWeight: 600 }}>→ zum vollen Eingang</button>}>
+          📥 Posteingang{offeneEmails.length ? ` · ${offeneEmails.length} unbeantwortet${neueMails ? `, ${neueMails} neu` : ''}` : ''}
+        </SekEyebrow>
+        {offeneEmails.length === 0 ? (
+          <div style={{ padding: '28px', textAlign: 'center', borderRadius: 'var(--radius-lg)', border: '1px dashed var(--border)', color: 'var(--text-muted)', fontSize: '13px' }}>
+            ✓ Keine offenen E-Mails — alles beantwortet
+          </div>
+        ) : (
+          <>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '11px' }}>
+              {top3.map(({ client, event }) => (
+                <EmailCard key={`${client.id}-${event.id}`} client={client} event={event}
+                  onOpen={() => onSelectClientAtKomm(client.id)}
+                  onErledigt={() => handleErledigt(client, event)}
+                  onCacheSummary={cacheSummary} />
+              ))}
             </div>
-          ))}
+            {offeneEmails.length > 3 && (
+              <div style={{ textAlign: 'center', marginTop: '11px' }}>
+                <button onClick={onOeffneEingang} style={feld}>{offeneEmails.length - 3} weitere unbeantwortete Mails anzeigen</button>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* ── 2) KPI-Ampel ── */}
+      <div>
+        <SekEyebrow note="jede Kachel führt zum Detail">Auf einen Blick</SekEyebrow>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px' }}>
+          <Kpi icon="⏳" value={ueberfaellig.length} label="Überfällig" tone={ueberfaellig.length ? 'crit' : 'calm'} sub={ueberfaellig.length ? 'sofort ansehen' : ''} />
+          <Kpi icon="📅" value={faelligHeute.length} label="Heute fällig" tone={faelligHeute.length ? 'warn' : 'calm'} />
+          <Kpi icon="📥" value={offeneEmails.length} label="Unbeantw. Mails" tone={offeneEmails.length ? 'ok' : 'calm'} sub={neueMails ? `${neueMails} ganz neu` : ''} onClick={onOeffneEingang} />
+          <Kpi icon="❓" value={rqGesamt} label="Wartet auf Mandant" tone="calm" />
+          <Kpi icon="📁" value={belegKarten.length} label="Belege z. Freigabe" tone={belegKarten.length ? 'ok' : 'calm'} onClick={onOeffneEingang} />
         </div>
       </div>
 
-      {/* ── Offene E-Mails ── */}
-      <div>
-        <div style={{
-          fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)',
-          textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '10px',
-        }}>
-          📥 Offene E-Mails
-          {offeneEmails.length > 0 && (
-            <span style={{
-              marginLeft: '8px', fontSize: '10px', padding: '1px 7px', borderRadius: '99px',
-              background: 'var(--accent)', color: '#fff', fontWeight: 700,
-            }}>
-              {offeneEmails.length}
-            </span>
-          )}
+      {/* ── 3) Heute dran ── */}
+      {heuteDran.length > 0 && (
+        <div>
+          <SekEyebrow note="nach Dringlichkeit">Heute dran</SekEyebrow>
+          <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow)', overflow: 'hidden' }}>
+            {heuteDran.slice(0, 6).map((r, i) => (
+              <div key={r.id || i} onClick={() => r.mandantId && onSelectClient(r.mandantId)}
+                style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 15px', borderBottom: i < Math.min(heuteDran.length, 6) - 1 ? '1px solid var(--border)' : 'none', borderLeft: `3px solid ${r.ueb ? 'var(--red)' : 'var(--yellow)'}`, cursor: r.mandantId ? 'pointer' : 'default' }}>
+                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: r.ueb ? 'var(--red)' : 'var(--yellow)', flexShrink: 0 }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: '13.5px', fontWeight: 650, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.titel}</div>
+                  {nameOf(r.mandantId) && <div style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>{nameOf(r.mandantId)}</div>}
+                </div>
+                <span style={{ fontSize: '11px', fontWeight: 700, padding: '3px 9px', borderRadius: '20px', whiteSpace: 'nowrap', background: r.ueb ? 'var(--red-dim, var(--surface2))' : 'var(--surface2)', color: r.ueb ? 'var(--red)' : 'var(--yellow)' }}>
+                  {r.ueb ? 'überfällig' : 'heute'}
+                </span>
+              </div>
+            ))}
+            {dranGesamt > 6 && <div style={{ padding: '8px 15px', fontSize: '11px', color: 'var(--text-muted)' }}>… und {dranGesamt - 6} weitere</div>}
+          </div>
         </div>
+      )}
 
-        {offeneEmails.length === 0 ? (
-          <div style={{
-            padding: '28px', textAlign: 'center', borderRadius: 'var(--radius-lg)',
-            border: '1px dashed var(--border)', color: 'var(--text-muted)', fontSize: '13px',
-          }}>
-            ✓ Keine offenen E-Mails — alles erledigt
+      {/* ── 4) Weitere Eingänge (Handy + Belege) ── */}
+      {(handyKarten.length > 0 || belegKarten.length > 0) && (
+        <div>
+          <SekEyebrow note={<button onClick={onOeffneEingang} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--accent)', fontSize: '11.5px', fontWeight: 600 }}>→ zum vollen Eingang</button>}>Weitere Eingänge</SekEyebrow>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '10px' }}>
+            {handyKarten.slice(0, 2).map(k => (
+              <div key={k.id} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow)', padding: '12px 13px' }}>
+                <span style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--yellow)' }}>vom Handy</span>
+                <div style={{ fontSize: '13px', fontWeight: 650, marginTop: '4px' }}>{truncate(k.raw_text || 'Meldung', 70)}</div>
+                {k.client_name && <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', marginTop: '2px' }}>{k.client_name}</div>}
+              </div>
+            ))}
+            {belegKarten.slice(0, 2).map(k => (
+              <div key={k.id} onClick={onOeffneEingang} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow)', padding: '12px 13px', cursor: 'pointer' }}>
+                <span style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--green)' }}>Belege zur Freigabe</span>
+                <div style={{ fontSize: '13px', fontWeight: 650, marginTop: '4px' }}>{k.client_name || 'Ohne Mandant'} · {(k.draft?.dokumente || []).length} Dok.</div>
+                <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', marginTop: '2px' }}>{truncate(k.raw_text || '', 60)}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── 5) Mandanten-Radar ── */}
+      {radar.length > 0 && (
+        <div>
+          <SekEyebrow note="wer viel offen hat, wer ruhig ist">Mandanten-Radar</SekEyebrow>
+          <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow)', padding: '15px 16px', display: 'flex', flexDirection: 'column', gap: '9px' }}>
+            {radar.map(({ client, n }) => {
+              const pct = Math.max(12, Math.round((n / radarMax) * 100))
+              const col = n >= radarMax * 0.75 ? 'var(--red)' : n >= radarMax * 0.4 ? 'var(--yellow)' : 'var(--accent)'
+              return (
+                <div key={client.id} onClick={() => onSelectClient(client.id)} style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer' }}>
+                  <span style={{ width: '190px', flexShrink: 0, fontSize: '12.5px', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{client.name}</span>
+                  <div style={{ flex: 1, height: '9px', background: 'var(--surface2)', borderRadius: '20px', overflow: 'hidden' }}>
+                    <div style={{ width: `${pct}%`, height: '100%', borderRadius: '20px', background: col }} />
+                  </div>
+                  <span style={{ width: '70px', textAlign: 'right', flexShrink: 0, fontSize: '11px', color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>{n} offen</span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── 6) Fristen (30 Tage) ── */}
+      <div>
+        <SekEyebrow note="nächste 30 Tage">Fristen</SekEyebrow>
+        {fristen.length === 0 ? (
+          <div style={{ padding: '18px', textAlign: 'center', borderRadius: 'var(--radius-lg)', border: '1px dashed var(--border)', color: 'var(--text-muted)', fontSize: '12.5px' }}>
+            Keine Fristen in den nächsten 30 Tagen
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {offeneEmails.map(({ client, event }) => (
-              <EmailCard
-                key={`${client.id}-${event.id}`}
-                client={client}
-                event={event}
-                onOpen={() => onSelectClientAtKomm(client.id)}
-                onErledigt={() => handleErledigt(client, event)}
-              />
+          <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow)', padding: '4px 16px' }}>
+            {fristen.slice(0, 8).map((item, i) => (
+              <div key={i} onClick={() => onSelectClient(item.client.id)} style={{ display: 'flex', gap: '13px', padding: '10px 0', borderBottom: i < Math.min(fristen.length, 8) - 1 ? '1px solid var(--border)' : 'none', cursor: 'pointer' }}>
+                <div style={{ width: '92px', flexShrink: 0, fontSize: '11.5px', fontWeight: 700, color: 'var(--text-secondary)' }}>{fmtDate(item.date)}</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: '13px', fontWeight: 600 }}>{item.label}</div>
+                  <div style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>{item.client.name}</div>
+                </div>
+              </div>
             ))}
+            {fristen.length > 8 && <div style={{ padding: '8px 0', fontSize: '11px', color: 'var(--text-muted)' }}>+ {fristen.length - 8} weitere</div>}
           </div>
         )}
       </div>
 
-      {/* ── Kompakt-Widgets: Rückfragen + Fristen ── */}
-      <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap' }}>
-
-        <KompaktWidget icon="❓" title="Offene Rückfragen" count={offeneRQ.length} emptyText="Keine offenen Rückfragen">
-          {offeneRQ.slice(0, 6).map(({ client, count }) => (
-            <KompaktRow
-              key={client.id}
-              label={client.name}
-              meta={`${count} offen`}
-              onClick={() => onSelectClient(client.id)}
-            />
-          ))}
-          {offeneRQ.length > 6 && (
-            <div style={{ padding: '6px 14px', fontSize: '10px', color: 'var(--text-muted)' }}>
-              + {offeneRQ.length - 6} weitere
-            </div>
-          )}
-        </KompaktWidget>
-
-        <KompaktWidget icon="📅" title="Fristen (30 Tage)" count={fristen.length} emptyText="Keine Fristen in den nächsten 30 Tagen">
-          {fristen.slice(0, 6).map((item, i) => (
-            <KompaktRow
-              key={i}
-              label={item.client.name}
-              meta={`${item.label}: ${fmtDate(item.date)}`}
-              onClick={() => onSelectClient(item.client.id)}
-            />
-          ))}
-          {fristen.length > 6 && (
-            <div style={{ padding: '6px 14px', fontSize: '10px', color: 'var(--text-muted)' }}>
-              + {fristen.length - 6} weitere
-            </div>
-          )}
-        </KompaktWidget>
-
-      </div>
     </div>
   )
 }
