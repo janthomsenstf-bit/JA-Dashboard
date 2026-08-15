@@ -571,6 +571,7 @@ export default function AiEmpfehlungenBereich({ clients = [], dispatcher, onOeff
 function UnbekanntCard({ email, clients = [], emailVorlagen = [], onAssign, onIgnore }) {
   const [zielId, setZielId] = useState('')
   const [auftragId, setAuftragId] = useState('')   // #24 – optional an eine Akte/Auftrag andocken
+  const [speichernKontakt, setSpeichernKontakt] = useState(true)   // Absender in Stammdaten übernehmen
   const [body, setBody]     = useState(null)
   const [attachments, setAttachments] = useState(null) // #25 – null=noch nicht geladen, []=keine
   const [erk, setErk]       = useState({})             // #25 – Dateiname → { typ, erkannt, empfehlung }
@@ -778,13 +779,14 @@ function UnbekanntCard({ email, clients = [], emailVorlagen = [], onAssign, onIg
             {zielAuftraege.map(a => <option key={a.id} value={a.id}>{auftragLabel(a)}</option>)}
           </select>
         )}
-        <button disabled={!zielId} onClick={() => {
-            if (!zielId) return
-            const mandant = aktive.find(c => c.id === zielId)?.name || 'diesem Mandanten'
-            const wer = email.vonName ? `${email.vonName} (${email.von})` : email.von
-            const speichern = window.confirm(`Soll ich ${wer} bei „${mandant}" in den Stammdaten speichern?\n\nDann werden diese und künftige E-Mails von dieser Adresse automatisch zugeordnet.`)
-            onAssign?.(email.uid, email.account, zielId, auftragId || undefined, speichern)
-          }}
+        {zielId && (
+          <label title="Speichert den Absender als Kontakt beim Mandanten – künftige Mails werden dann automatisch zugeordnet."
+            style={{ flexBasis: '100%', display: 'flex', alignItems: 'center', gap: '7px', fontSize: '11.5px', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+            <input type="checkbox" checked={speichernKontakt} onChange={e => setSpeichernKontakt(e.target.checked)} style={{ cursor: 'pointer' }} />
+            Absender {email.vonName ? `„${email.vonName}" ` : ''}in Stammdaten speichern (künftige Mails automatisch zuordnen)
+          </label>
+        )}
+        <button disabled={!zielId} onClick={() => { if (zielId) onAssign?.(email.uid, email.account, zielId, auftragId || undefined, speichernKontakt) }}
           style={{ background: zielId ? 'var(--accent)' : 'var(--surface2)', color: zielId ? '#fff' : 'var(--text-muted)', border: '1px solid var(--accent)', padding: '6px 13px', borderRadius: 'var(--radius-sm)', fontSize: '12px', fontWeight: 700, cursor: zielId ? 'pointer' : 'default', opacity: zielId ? 1 : 0.6 }}>
           Zuordnen
         </button>
