@@ -2890,6 +2890,16 @@ function EmailDetailPanel({
     ...extra,
   })
 
+  // Horizontale Aktionsleiste (oben) – kompakte Buttons.
+  const topBtn = (active = false, color) => ({
+    display: 'inline-flex', alignItems: 'center', gap: '5px',
+    padding: '6px 11px', borderRadius: '8px', fontSize: '12px', fontWeight: 600,
+    cursor: 'pointer', whiteSpace: 'nowrap', transition: 'all 0.15s',
+    border: '1px solid ' + (active ? 'rgba(37,99,235,0.35)' : 'var(--border)'),
+    background: active ? 'rgba(37,99,235,0.1)' : 'var(--surface)',
+    color: color || (active ? 'var(--accent)' : 'var(--text-secondary)'),
+  })
+
   return (
     <>
       {!inline && <div onClick={onClose} style={{
@@ -2948,15 +2958,15 @@ function EmailDetailPanel({
           }}>✕</button>
         </div>
 
-        {/* ═══ Two-Column Body ═══ */}
-        <div style={{ display: 'flex', flexDirection: isNarrow ? 'column' : 'row', flex: 1, overflow: 'hidden', minHeight: 0 }}>
+        {/* ═══ Einspaltiger Body: E-Mail volle Breite, alles scrollt gemeinsam ═══ */}
+        <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflowY: 'auto', minHeight: 0 }}>
 
-          {/* ─── LEFT COLUMN: E-Mail Content ─── */}
-          <div style={{ flex: 7, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
+          {/* ─── E-Mail-Inhalt (volle Breite) ─── */}
+          <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
 
             {/* Email Header */}
-            <div style={{ padding: '20px 24px 16px', flexShrink: 0 }}>
-              <div style={{ fontSize: '18px', fontWeight: 700, lineHeight: 1.3, marginBottom: '12px', color: 'var(--text)' }}>
+            <div style={{ padding: '16px 24px 10px', flexShrink: 0 }}>
+              <div style={{ fontSize: '18px', fontWeight: 700, lineHeight: 1.3, marginBottom: '10px', color: 'var(--text)' }}>
                 {entry.betreff || '(kein Betreff)'}
               </div>
               <div style={{ fontSize: '13px', color: 'var(--text-muted)', display: 'flex', flexWrap: 'wrap', gap: '16px', lineHeight: 1.6 }}>
@@ -2967,8 +2977,30 @@ function EmailDetailPanel({
               </div>
             </div>
 
+            {/* ── Horizontale Aktionsleiste (oben, statt Seitenspalte) ── */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', padding: '0 24px 12px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+              {entry.typ === 'eingehend' && (
+                <>
+                  <button onClick={handleReply} style={topBtn(true)}>↩ Antworten</button>
+                  <button onClick={handleReplyAll} style={topBtn()}>↩↩ Allen antworten</button>
+                </>
+              )}
+              <button onClick={handleForward} style={topBtn()}>→ Weiterleiten</button>
+              {entry.status === 'entwurf' && (
+                <button onClick={() => { sendFromHistory(entry); onClose() }} style={topBtn(true)}>📤 Jetzt senden</button>
+              )}
+              {onQuickAction && (
+                <SchnellaktionMenu typConfig={TYP_CONFIG} vorlagen={emailVorlagen} onAction={onQuickAction} onVorlage={onQuickVorlage} variant="full" />
+              )}
+              <span style={{ width: '1px', height: '20px', background: 'var(--border)', margin: '0 2px' }} />
+              <button onClick={() => setActionForm(actionForm === 'aufgabe' ? null : 'aufgabe')} style={topBtn(actionForm === 'aufgabe')}>📌 Aufgabe</button>
+              <button onClick={() => setActionForm(actionForm === 'notiz' ? null : 'notiz')} style={topBtn(actionForm === 'notiz')}>📝 Notiz</button>
+              <button onClick={() => setActionForm(actionForm === 'erinnerung' ? null : 'erinnerung')} style={topBtn(actionForm === 'erinnerung')}>🔔 Erinnerung</button>
+              {!entry.erledigtAm && <button onClick={handleErledigt} style={topBtn(false, 'var(--green)')}>✓ Erledigt</button>}
+            </div>
+
             {/* Email Content */}
-            <div style={{ flex: 1, overflowY: 'auto', padding: '0 24px 20px', ...(replyMode ? { maxHeight: '35%' } : {}) }}>
+            <div style={{ padding: '14px 24px 20px' }}>
               {contentLoading[entry.id] && <div style={{ color: 'var(--text-muted)', fontSize: '13px', padding: '20px 0' }}>⏳ E-Mail-Inhalt wird geladen…</div>}
               {contentError[entry.id] && !entry.text && (
                 <div style={{ fontSize: '12px', color: 'var(--text-muted)', padding: '10px 14px', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '10px', marginBottom: '12px', display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -3223,14 +3255,10 @@ function EmailDetailPanel({
             )}
           </div>
 
-          {/* ─── RIGHT COLUMN: Sidebar ─── */}
+          {/* ─── Sekundär-Sektion (volle Breite, unter der E-Mail): Zuordnung, Anhänge, KI ─── */}
           <div style={{
-            flex: isNarrow ? 'none' : 3,
-            minWidth: isNarrow ? undefined : '260px',
-            maxWidth: isNarrow ? undefined : '340px',
-            borderLeft: isNarrow ? 'none' : '1px solid var(--border)',
-            borderTop: isNarrow ? '1px solid var(--border)' : 'none',
-            overflowY: 'auto',
+            flexShrink: 0,
+            borderTop: '1px solid var(--border)',
             display: 'flex', flexDirection: 'column',
             background: 'rgba(0,0,0,0.015)',
           }}>
@@ -3242,48 +3270,9 @@ function EmailDetailPanel({
               </div>
             )}
 
-            {/* ── Aktionen ── */}
-            <div style={{ padding: '16px 16px 12px' }}>
-              <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-muted)', marginBottom: '10px' }}>
-                Aktionen
-              </div>
+            {/* ── Zuordnung & mehr (Primär-Aktionen sind jetzt oben in der Leiste) ── */}
+            <div style={{ padding: '14px 16px 12px' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                {entry.typ === 'eingehend' && (
-                  <>
-                    <button onClick={handleReply} style={sideBtn({ background: 'rgba(37,99,235,0.08)', color: 'var(--accent)', fontWeight: 600, border: '1px solid rgba(37,99,235,0.2)' })}>
-                      ↩ Antworten
-                    </button>
-                    <button onClick={handleReplyAll} style={sideBtn()}>↩↩ Allen antworten</button>
-                  </>
-                )}
-                <button onClick={handleForward} style={sideBtn()}>→ Weiterleiten</button>
-                {entry.status === 'entwurf' && (
-                  <button onClick={() => { sendFromHistory(entry); onClose() }} style={sideBtn({ background: 'rgba(37,99,235,0.08)', color: 'var(--accent)', fontWeight: 600, border: '1px solid rgba(37,99,235,0.2)' })}>
-                    📤 Jetzt senden
-                  </button>
-                )}
-
-                {onQuickAction && (
-                  <SchnellaktionMenu typConfig={TYP_CONFIG} vorlagen={emailVorlagen} onAction={onQuickAction} onVorlage={onQuickVorlage} variant="full" />
-                )}
-
-                <div style={{ borderTop: '1px solid var(--border)', margin: '6px 0' }} />
-
-                <button onClick={() => setActionForm(actionForm === 'aufgabe' ? null : 'aufgabe')}
-                  style={sideBtn(actionForm === 'aufgabe' ? { background: 'rgba(37,99,235,0.1)', border: '1px solid rgba(37,99,235,0.3)' } : {})}>
-                  📌 Aufgabe erstellen
-                </button>
-                <button onClick={() => setActionForm(actionForm === 'notiz' ? null : 'notiz')}
-                  style={sideBtn(actionForm === 'notiz' ? { background: 'rgba(249,115,22,0.1)', border: '1px solid rgba(249,115,22,0.3)' } : {})}>
-                  📝 Notiz speichern
-                </button>
-                <button onClick={() => setActionForm(actionForm === 'erinnerung' ? null : 'erinnerung')}
-                  style={sideBtn(actionForm === 'erinnerung' ? { background: 'rgba(249,115,22,0.1)', border: '1px solid rgba(249,115,22,0.3)' } : {})}>
-                  🔔 Erinnerung setzen
-                </button>
-
-                <div style={{ borderTop: '1px solid var(--border)', margin: '6px 0' }} />
-
                 {/* ── Auftrag zuordnen ── */}
                 {(() => {
                   const auftraege = (client.auftraege ?? []).filter(a => a.status !== 'erledigt')
@@ -3333,9 +3322,6 @@ function EmailDetailPanel({
 
                 <div style={{ borderTop: '1px solid var(--border)', margin: '6px 0' }} />
 
-                {!entry.erledigtAm && (
-                  <button onClick={handleErledigt} style={sideBtn({ color: 'var(--green)' })}>✓ Als erledigt markieren</button>
-                )}
                 <button onClick={handleLoadEditor} style={sideBtn()}>✏️ Im Editor öffnen</button>
 
                 <div style={{ borderTop: '1px solid var(--border)', margin: '6px 0' }} />
