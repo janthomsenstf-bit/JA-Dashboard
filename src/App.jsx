@@ -1427,12 +1427,13 @@ export default function App() {
           clients={clients}
           onedriveTokens={onedriveTokens}
           onUpdateOnedriveTokens={setOnedriveTokens}
-          onSelect={id => { setDetailInitialTab(0); setSelectedId(id) }}
-          onSelectWithTab={(id, tab) => { setDetailInitialTab(tab ?? 0); setSelectedId(id) }}
+          onSelect={id => { setDetailInitialTab(0); setSelectedId(id); wechselBereich('personen') }}
+          onSelectWithTab={(id, tab) => { setDetailInitialTab(tab ?? 0); setSelectedId(id); wechselBereich('personen') }}
           onOpenEmail={(id, emailId) => {
             setPendingOpenEmailId(emailId)
             setDetailInitialTab(TAB.nachrichten)
             setSelectedId(id)
+            wechselBereich('personen')
           }}
         />
 
@@ -1582,6 +1583,8 @@ export default function App() {
       {/* ── Hauptnavigation ── */}
       <HauptNavigation
         aktiv={hauptbereich}
+        cockpitAktiv={hauptbereich === 'personen' && !selectedId}
+        onStart={() => { setSelectedId(null); wechselBereich('personen') }}
         onWechsel={key => {
           wechselBereich(key)
           // Im Bereich „Personen" immer auf der Übersicht starten
@@ -2077,7 +2080,7 @@ export default function App() {
         <CommandPalette
           clients={clients}
           onClose={() => setCmdPaletteOpen(false)}
-          onSelectClient={id => { setSelectedId(id); setCmdPaletteOpen(false) }}
+          onSelectClient={id => { setSelectedId(id); wechselBereich('personen'); setCmdPaletteOpen(false) }}
           onNewClient={() => { setShowNewModal(true); setCmdPaletteOpen(false) }}
         />
       )}

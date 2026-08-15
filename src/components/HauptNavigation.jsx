@@ -25,7 +25,7 @@ export function bereichCfg(key) {
   return HAUPTBEREICHE.find(b => b.key === key) ?? HAUPTBEREICHE[0]
 }
 
-export default function HauptNavigation({ aktiv, onWechsel }) {
+export default function HauptNavigation({ aktiv, onWechsel, onStart, cockpitAktiv = false }) {
   return (
     <nav
       aria-label="Hauptnavigation"
@@ -39,8 +39,32 @@ export default function HauptNavigation({ aktiv, onWechsel }) {
         borderBottom: '1px solid var(--border)',
       }}
     >
+      {/* Start / Cockpit – springt immer zur Übersichts-Startseite */}
+      <button
+        onClick={() => onStart?.()}
+        title="Zur Startseite (Cockpit)"
+        aria-current={cockpitAktiv ? 'page' : undefined}
+        style={{
+          display: 'inline-flex', alignItems: 'center', gap: '8px',
+          padding: '9px 14px', borderRadius: '10px', border: '1px solid',
+          borderColor: cockpitAktiv ? '#2f6df055' : 'transparent',
+          background: cockpitAktiv ? '#2f6df014' : 'transparent',
+          color: cockpitAktiv ? '#2f6df0' : 'var(--text-muted)',
+          fontSize: '13px', fontWeight: cockpitAktiv ? 700 : 500,
+          cursor: 'pointer', whiteSpace: 'nowrap',
+          transition: 'background 0.18s ease, color 0.18s ease, border-color 0.18s ease',
+        }}
+        onMouseEnter={e => { if (cockpitAktiv) return; e.currentTarget.style.background = 'var(--surface2)'; e.currentTarget.style.color = 'var(--text)' }}
+        onMouseLeave={e => { if (cockpitAktiv) return; e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-muted)' }}
+      >
+        <span style={{ fontSize: '15px', lineHeight: 1 }} aria-hidden="true">🏠</span>
+        Start
+      </button>
+      <span style={{ width: '1px', height: '22px', background: 'var(--border)', margin: '0 4px' }} aria-hidden="true" />
+
       {HAUPTBEREICHE.map(b => {
-        const istAktiv = aktiv === b.key
+        // Auf der Cockpit-Startseite ist „Personen" nicht als aktiv markiert (Start übernimmt).
+        const istAktiv = aktiv === b.key && !(b.key === 'personen' && cockpitAktiv)
         return (
           <button
             key={b.key}
