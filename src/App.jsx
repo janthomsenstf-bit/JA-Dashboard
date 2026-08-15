@@ -829,27 +829,40 @@ export default function App() {
 
   // ── E-Mail einem Mandanten manuell zuordnen ───────────────────────────────────
   function assignEmail(emailUid, emailAccount, clientId, saveContact, auftragId) {
-    const email = unbekannteEmailsRef.current.find(e => e.uid === emailUid && e.account === emailAccount)
-    if (!email) return
-    const event = buildIncomingEvent(email)
-    if (auftragId) event.auftragId = auftragId   // #24 – Mail direkt an eine Akte/Auftrag haengen
+    const primary = unbekannteEmailsRef.current.find(e => e.uid === emailUid && e.account === emailAccount)
+    if (!primary) return
+    const vonAddr = String(primary.von || '').toLowerCase().trim()
+    // Beim Speichern in die Stammdaten: ALLE aktuell unzugeordneten Mails desselben
+    // Absenders gleich mitnehmen (künftige ordnet pollEmails über den Kontakt-Index zu).
+    const targets = (saveContact && vonAddr)
+      ? unbekannteEmailsRef.current.filter(e => String(e.von || '').toLowerCase().trim() === vonAddr)
+      : [primary]
+    const isPrimary = (e) => e.uid === primary.uid && e.account === primary.account
+    const events = targets.map(e => {
+      const ev = buildIncomingEvent(e)
+      if (auftragId && isPrimary(e)) ev.auftragId = auftragId   // #24 – nur die gewählte Mail an die Akte hängen
+      return ev
+    })
+    const idxPrimary = targets.findIndex(isPrimary)
+    const primaryEvent = events[idxPrimary >= 0 ? idxPrimary : 0]
     setClients(prev => prev.map(c => {
       if (c.id !== clientId) return c
       const komm = c.kommunikation ?? { events: [] }
-      const newKontakte = saveContact && !( c.kontakte ?? []).some(k => k.email?.toLowerCase() === email.von?.toLowerCase())
-        ? [...(c.kontakte ?? []), { id: 'p' + Date.now().toString(36), name: email.vonName || '', rolle: '', email: email.von, telefon: '' }]
+      const newKontakte = (saveContact && vonAddr && !(c.kontakte ?? []).some(k => k.email?.toLowerCase() === vonAddr))
+        ? [...(c.kontakte ?? []), { id: 'p' + Date.now().toString(36), name: primary.vonName || '', rolle: '', email: primary.von, telefon: '' }]
         : c.kontakte ?? []
       // Optional: additive Verknuepfung (art 'mail') am gewaehlten Auftrag – EIN Container, kein Zweitsystem.
       const auftraege = auftragId
         ? verknuepfungAnhaengen({
             auftraege: c.auftraege,
             zielId: auftragId,
-            eintrag: mkVerknuepfung({ art: 'mail', betreff: email.betreff || '', absender: email.von || '', datum: email.datum || null, eventId: event.id }),
+            eintrag: mkVerknuepfung({ art: 'mail', betreff: primary.betreff || '', absender: primary.von || '', datum: primary.datum || null, eventId: primaryEvent.id }),
           }).auftraege
         : c.auftraege
-      return { ...c, kommunikation: { ...komm, events: [event, ...komm.events] }, kontakte: newKontakte, auftraege }
+      return { ...c, kommunikation: { ...komm, events: [...events, ...komm.events] }, kontakte: newKontakte, auftraege }
     }))
-    setUnbekannteEmails(prev => prev.filter(e => !(e.uid === emailUid && e.account === emailAccount)))
+    const rmSet = new Set(targets.map(e => `${e.account}:${e.uid}`))
+    setUnbekannteEmails(prev => prev.filter(e => !rmSet.has(`${e.account}:${e.uid}`)))
   }
 
   function assignAllFromAddress(vonAddress, clientId, saveContact) {
@@ -1713,7 +1726,7 @@ export default function App() {
                 onOeffneMandant={(id) => { setDetailInitialTab(TAB.nachrichten); setSelectedId(id); wechselBereich('personen') }}
                 onMailErledigt={markMailErledigt}
                 unbekannteEmails={unbekannteEmails}
-                onAssignEmail={(uid, account, clientId, auftragId) => assignEmail(uid, account, clientId, false, auftragId)}
+                onAssignEmail={(uid, account, clientId, auftragId, saveContact) => assignEmail(uid, account, clientId, !!saveContact, auftragId)}
                 onDismissUnbekannt={(uid, account) => setUnbekannteEmails(prev => prev.filter(e => !(e.uid === uid && e.account === account)))}
                 emailVorlagen={emailVorlagen}
                 aufgaben={aufgabenListe}

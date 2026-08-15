@@ -778,7 +778,13 @@ function UnbekanntCard({ email, clients = [], emailVorlagen = [], onAssign, onIg
             {zielAuftraege.map(a => <option key={a.id} value={a.id}>{auftragLabel(a)}</option>)}
           </select>
         )}
-        <button disabled={!zielId} onClick={() => { if (zielId) onAssign?.(email.uid, email.account, zielId, auftragId || undefined) }}
+        <button disabled={!zielId} onClick={() => {
+            if (!zielId) return
+            const mandant = aktive.find(c => c.id === zielId)?.name || 'diesem Mandanten'
+            const wer = email.vonName ? `${email.vonName} (${email.von})` : email.von
+            const speichern = window.confirm(`Soll ich ${wer} bei „${mandant}" in den Stammdaten speichern?\n\nDann werden diese und künftige E-Mails von dieser Adresse automatisch zugeordnet.`)
+            onAssign?.(email.uid, email.account, zielId, auftragId || undefined, speichern)
+          }}
           style={{ background: zielId ? 'var(--accent)' : 'var(--surface2)', color: zielId ? '#fff' : 'var(--text-muted)', border: '1px solid var(--accent)', padding: '6px 13px', borderRadius: 'var(--radius-sm)', fontSize: '12px', fontWeight: 700, cursor: zielId ? 'pointer' : 'default', opacity: zielId ? 1 : 0.6 }}>
           Zuordnen
         </button>
