@@ -382,6 +382,8 @@ export default function App() {
   // Beim Öffnen landet man auf „Personen" (Mandantenübersicht). Der zuletzt gewählte
   // Bereich wird zwar weiter gespeichert, bestimmt aber nicht mehr die Landung.
   const [hauptbereich, setHauptbereich] = useState('personen')
+  // Cockpit-Startseite vs. Mandantenliste – beide leben im Bereich „personen".
+  const [zeigeStartseite, setZeigeStartseite] = useState(true)
   const wechselBereich = (key) => {
     setHauptbereich(key)
     try { localStorage.setItem('spielbuch-hauptbereich', key) } catch {}
@@ -1583,12 +1585,12 @@ export default function App() {
       {/* ── Hauptnavigation ── */}
       <HauptNavigation
         aktiv={hauptbereich}
-        cockpitAktiv={hauptbereich === 'personen' && !selectedId}
-        onStart={() => { setSelectedId(null); wechselBereich('personen') }}
+        cockpitAktiv={hauptbereich === 'personen' && !selectedId && zeigeStartseite}
+        onStart={() => { setZeigeStartseite(true); setSelectedId(null); wechselBereich('personen') }}
         onWechsel={key => {
           wechselBereich(key)
-          // Im Bereich „Personen" immer auf der Übersicht starten
-          if (key === 'personen') setSelectedId(null)
+          // „Personen" zeigt die Mandantenliste (nicht das Cockpit)
+          if (key === 'personen') { setZeigeStartseite(false); setSelectedId(null) }
         }}
       />
 
@@ -1719,7 +1721,20 @@ export default function App() {
               />
             )}
 
-            {zeigeUebersicht && (
+            {zeigeUebersicht && zeigeStartseite && (
+              <div style={{ flex: 1, overflowY: 'auto' }}>
+                <StartseiteHome
+                  clients={clients}
+                  aufgaben={aufgabenListe}
+                  onSelectClient={(id) => { setDetailInitialTab(0); setSelectedId(id) }}
+                  onSelectClientAtKomm={openClientAtKomm}
+                  onUpdateClient={updateClient}
+                  onRefresh={pollEmails}
+                  onOeffneEingang={() => wechselBereich('ki_empfehlungen')}
+                />
+              </div>
+            )}
+            {zeigeUebersicht && !zeigeStartseite && (
               <PersonenBereich
                 clients={clients}
                 onOpen={(id, tab) => { setDetailInitialTab(tab ?? 0); setSelectedId(id) }}
@@ -2054,19 +2069,7 @@ export default function App() {
               pendingOpenEmailId={pendingOpenEmailId}
               onClearPendingOpenEmailId={() => setPendingOpenEmailId(null)}
             />
-          ) : (
-            <div style={{ flex: 1, overflowY: 'auto' }}>
-              <StartseiteHome
-                clients={clients}
-                aufgaben={aufgabenListe}
-                onSelectClient={(id) => { setDetailInitialTab(0); setSelectedId(id) }}
-                onSelectClientAtKomm={openClientAtKomm}
-                onUpdateClient={updateClient}
-                onRefresh={pollEmails}
-                onOeffneEingang={() => wechselBereich('ki_empfehlungen')}
-              />
-            </div>
-          )}
+          ) : null}
         </div>
 
         {/* col-calendar entfernt – Termine-Logik bleibt erhalten für spätere Nutzung */}
