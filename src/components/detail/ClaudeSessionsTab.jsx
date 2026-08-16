@@ -1,26 +1,53 @@
 /**
  * ClaudeSessionsTab – Sitzungen der Claude-Desktop-App am Mandanten hinterlegen.
  *
- * Hintergrund: In Cowork lässt sich zu jeder Sitzung die Sitzungs-ID kopieren.
- * Die Desktop-App registriert unter Windows den Protokoll-Handler `claude://`
- * und kennt die Route `claude://resume?session=<UUID>` – damit springt ein Klick
- * direkt in genau diese Sitzung, ohne in der App danach zu suchen/scrollen.
+ * Hintergrund: Zu jeder Sitzung lässt sich der Link kopieren. Die Desktop-App
+ * registriert unter Windows den Protokoll-Handler `claude://` und kennt zwei
+ * Sprungziele:
+ *   • Cloud-/Cowork-Sitzung (ID beginnt mit cse_ bzw. session_):
+ *       claude://code/<id>            – aus https://claude.ai/cowork/<id>
+ *   • lokale CLI-Sitzung (ID ist eine UUID):
+ *       claude://resume?session=<uuid>
+ * Beide Formen werden hier erkannt; zusätzlich bleibt der Web-Link als Rückfall.
  *
  * Gespeichert wird additiv in client.claudeSessions (Array) – kein bestehendes
  * Feld wird angefasst, migrateClient behält unbekannte Felder ohnehin bei.
  */
 import { useState } from 'react'
 
-const UUID_RE = /[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/
+const UUID_RE  = /[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/
+const CLOUD_RE = /(?:cse|session)_((?:staging_)?[A-Za-z0-9]{1,64})/
 
-// Akzeptiert rohe ID, kompletten claude://-Link oder irgendwo eingebettete UUID.
-function extractSessionId(raw) {
-  const m = String(raw ?? '').match(UUID_RE)
-  return m ? m[0].toLowerCase() : null
+/**
+ * Erkennt aus Rohtext (kopierter Link, nackte ID) die Sitzung.
+ * → { typ: 'cloud'|'lokal', sessionId } oder null
+ */
+function parseSession(raw) {
+  const text = String(raw ?? '').trim()
+  const cloud = text.match(CLOUD_RE)
+  if (cloud) return { typ: 'cloud', sessionId: 'cse_' + cloud[1] }   // session_… wird auf cse_… normalisiert
+  const uuid = text.match(UUID_RE)
+  if (uuid) return { typ: 'lokal', sessionId: uuid[0].toLowerCase() }
+  return null
 }
 
-function resumeUrl(sessionId) {
-  return 'claude://resume?session=' + encodeURIComponent(sessionId)
+// Alt-Einträge ohne typ-Feld anhand der ID einordnen.
+function typVon(s) {
+  return s.typ ?? (/^(?:cse|session)_/.test(s.sessionId ?? '') ? 'cloud' : 'lokal')
+}
+
+// Sprung in die Desktop-App.
+function appUrl(s) {
+  return typVon(s) === 'cloud'
+    ? 'claude://code/' + encodeURIComponent(s.sessionId)
+    : 'claude://resume?session=' + encodeURIComponent(s.sessionId)
+}
+
+// Rückfall: dieselbe Sitzung im Browser (nur für Cloud-/Cowork-Sitzungen).
+function webUrl(s) {
+  return typVon(s) === 'cloud'
+    ? 'https://claude.ai/cowork/' + encodeURIComponent(s.sessionId)
+    : null
 }
 
 function fmtDatum(iso) {
@@ -52,11 +79,12 @@ export default function ClaudeSessionsTab({ client, onUpdate }) {
 
   function hinzufuegen() {
     setFehler('')
-    const sid = extractSessionId(neuId)
-    if (!sid) {
-      setFehler('Keine gültige Sitzungs-ID erkannt. Erwartet wird eine UUID wie 92916e8c-46c0-4135-a6c0-984925eaa6e5 – ein kopierter claude://-Link funktioniert genauso.')
+    const parsed = parseSession(neuId)
+    if (!parsed) {
+      setFehler('Keine Sitzung erkannt. Erwartet wird der kopierte Link (z.B. https://claude.ai/cowork/cse_…), die ID selbst oder – bei lokalen CLI-Sitzungen – eine UUID.')
       return
     }
+    const sid = parsed.sessionId
     if (sessions.some(s => s.sessionId === sid)) {
       setFehler('Diese Sitzungs-ID ist bei diesem Mandanten bereits hinterlegt.')
       return
@@ -65,6 +93,7 @@ export default function ClaudeSessionsTab({ client, onUpdate }) {
       id:               'cs' + Date.now().toString(36),
       label:            neuLabel.trim() || 'Sitzung',
       sessionId:        sid,
+      typ:              parsed.typ,
       notiz:            neuNotiz.trim(),
       angelegtAm:       new Date().toISOString(),
       zuletztGeoeffnet: null,
@@ -114,8 +143,8 @@ export default function ClaudeSessionsTab({ client, onUpdate }) {
         </span>
       </div>
       <p style={{ margin: '0 0 16px', fontSize: '12.5px', color: 'var(--text-muted)', lineHeight: 1.6 }}>
-        Sitzungs-ID in Cowork kopieren, hier einfügen – ein Klick auf den Eintrag öffnet
-        genau diese Sitzung in der Claude-Desktop-App (<span className="mono">claude://resume</span>).
+        Link oder ID der Sitzung in Cowork kopieren, hier einfügen – ein Klick auf den Eintrag öffnet
+        genau diese Sitzung in der Claude-Desktop-App.
       </p>
 
       {toast && (
@@ -163,7 +192,7 @@ export default function ClaudeSessionsTab({ client, onUpdate }) {
             ) : (
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                 <a
-                  href={resumeUrl(s.sessionId)}
+                  href={appUrl(s)}
                   onClick={() => merkeGeoeffnet(s.id)}
                   title="In der Claude-Desktop-App öffnen"
                   style={{
@@ -195,7 +224,7 @@ export default function ClaudeSessionsTab({ client, onUpdate }) {
                 <div style={{ display: 'flex', gap: '5px', flexShrink: 0 }}>
                   <a
                     className="btn btn-sm"
-                    href={resumeUrl(s.sessionId)}
+                    href={appUrl(s)}
                     onClick={() => merkeGeoeffnet(s.id)}
                     style={{ textDecoration: 'none' }}
                   >
@@ -206,6 +235,16 @@ export default function ClaudeSessionsTab({ client, onUpdate }) {
                     onClick={() => kopieren(s.sessionId, 'Sitzungs-ID')}
                     title="Sitzungs-ID kopieren"
                   >📋</button>
+                  {webUrl(s) && (
+                    <a
+                      className="btn btn-ghost btn-sm"
+                      href={webUrl(s)}
+                      target="_blank"
+                      rel="noreferrer"
+                      title="Rückfall: Sitzung im Browser öffnen"
+                      style={{ textDecoration: 'none' }}
+                    >🌐</a>
+                  )}
                   <button
                     className="btn btn-ghost btn-sm"
                     onClick={() => { setEditId(s.id); setEditLabel(s.label ?? ''); setEditNotiz(s.notiz ?? '') }}
@@ -254,7 +293,7 @@ export default function ClaudeSessionsTab({ client, onUpdate }) {
             value={neuId}
             onChange={e => { setNeuId(e.target.value); setFehler('') }}
             onKeyDown={e => { if (e.key === 'Enter') hinzufuegen() }}
-            placeholder="Sitzungs-ID oder claude://resume?session=… einfügen"
+            placeholder="Link oder ID einfügen, z.B. https://claude.ai/cowork/cse_…"
             style={{ fontSize: '12.5px' }}
           />
           <input
@@ -276,7 +315,7 @@ export default function ClaudeSessionsTab({ client, onUpdate }) {
       <p style={{ marginTop: '14px', fontSize: '11.5px', color: 'var(--text-muted)', lineHeight: 1.6 }}>
         Hinweis: Der Sprung funktioniert nur auf einem Rechner mit installierter
         Claude-Desktop-App – sie registriert den <span className="mono">claude://</span>-Handler.
-        Der Browser fragt beim ersten Mal, ob er die App öffnen darf.
+        Der Browser fragt beim ersten Mal, ob er die App öffnen darf. Tut sich nichts, führt 🌐 dieselbe Sitzung im Browser auf.
       </p>
     </div>
   )
