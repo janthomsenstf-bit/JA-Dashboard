@@ -18,7 +18,7 @@ import StartseiteHome        from './components/dashboard/StartseiteHome.jsx'
 import CommandPalette        from './components/CommandPalette.jsx'
 import { supabase } from './utils/supabaseClient.js'
 import { cloudLoadAll, cloudSave, cloudSaveNow, cloudSnapshot, migrateLocalStorageToCloud } from './utils/cloudStorage.js'
-import { mergeClientsInto } from './utils/clientMerge.js'
+import { mergeClientsInto, mergeClient } from './utils/clientMerge.js'
 import { mkVerknuepfung, verknuepfungAnhaengen } from './utils/verknuepfung.js'
 import { saveSessionState, loadSessionState, clearSessionState } from './utils/sessionPersistence.js'
 import LoginPage from './components/LoginPage.jsx'
@@ -1076,6 +1076,28 @@ export default function App() {
     if (selectedId === id) setSelectedId(null)
   }
 
+  // Zwei Mandanten verlustfrei zusammenführen: dropId → keepId.
+  // keep gewinnt bei Skalaren (Name/Nummer …); alle Listen (Aufträge, Kontakte, Rückfragen,
+  // Nachrichten, Honorare …) werden VEREINIGT – es geht nichts verloren. Vorher: Backup-Snapshot.
+  function mergeClients(keepId, dropId) {
+    if (!keepId || !dropId || keepId === dropId) return
+    const cs = clientsRef.current ?? clients
+    const keep = cs.find(c => c.id === keepId)
+    const drop = cs.find(c => c.id === dropId)
+    if (!keep || !drop) return
+    // 1) Sicherheits-Snapshot (reversibel über Daten-Rettung)
+    cloudSnapshot(STORAGE_KEY, slimForCloud(cs)).catch(() => {})
+    // 2) verlustfrei vereinen + Duplikat entfernen
+    const merged = mergeClient(keep, drop)
+    const neu = cs.filter(c => c.id !== dropId).map(c => c.id === keepId ? merged : c)
+    setClients(neu)
+    cloudSaveNow(STORAGE_KEY, slimForCloud(neu)).catch(() => {})
+    // 3) globale Referenzen vom Duplikat auf den behaltenen Mandanten umhängen
+    setAufgabenListe(prev => prev.map(a => a.mandantId === dropId ? { ...a, mandantId: keepId } : a))
+    setTermine(prev => prev.map(t => t.mandantId === dropId ? { ...t, mandantId: keepId } : t))
+    if (selectedId === dropId) setSelectedId(keepId)
+  }
+
   // ── Termine CRUD ──────────────────────────────────────────────────────────────
   // Markiert eingehende Mail-Events als erledigt (für „Verwerfen"/„Spam" in AI-Empfehlungen).
   function markMailErledigt(clientId, eventIds) {
@@ -2041,6 +2063,8 @@ export default function App() {
           ) : selectedClient ? (
             <DetailView
               client={selectedClient}
+              clients={clients}
+              onMergeClient={(dropId) => mergeClients(selectedClient.id, dropId)}
               initialTab={detailInitialTab}
               onTabChange={setDetailInitialTab}
               onUpdate={(patch) => updateClient(selectedClient.id, patch)}

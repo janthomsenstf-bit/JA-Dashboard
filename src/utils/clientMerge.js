@@ -25,7 +25,7 @@ function unionById(base, inc) {
   return add.length ? [...b, ...add] : b
 }
 
-function mergeClient(base, inc) {
+export function mergeClient(base, inc) {
   if (!base) return inc
   if (!inc) return base
   const out = { ...inc, ...base }   // aktuelle Skalare gewinnen, im Backup vorhandene fehlende Felder ergänzen

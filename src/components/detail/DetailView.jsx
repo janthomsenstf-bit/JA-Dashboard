@@ -44,6 +44,8 @@ const TAB_NAV = [
 
 export default function DetailView({
   client,
+  clients = [],
+  onMergeClient,
   initialTab = 0,
   onTabChange,
   onUpdate,
@@ -91,6 +93,8 @@ export default function DetailView({
   }
 
   const [showEdit, setShowEdit]               = useState(false)
+  const [showMerge, setShowMerge]             = useState(false)
+  const [mergeDropId, setMergeDropId]         = useState('')
   const [pendingAttachments, setPendingAttachments] = useState(null)
   const [auftraegeFilterTyp, setAuftraegeFilterTyp] = useState('alle')
   const [localPendingEmailId, setLocalPendingEmailId] = useState(null)  // für E-Mail-Öffnung aus Aufträge-Tab
@@ -180,6 +184,15 @@ export default function DetailView({
                 style={{ color: '#16a34a', borderColor: 'rgba(22,163,74,0.3)' }}
               >
                 ✅ Abschließen
+              </button>
+            )}
+            {onMergeClient && (
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={() => { setMergeDropId(''); setShowMerge(true) }}
+                title="Ein doppelt angelegtes Duplikat in diesen Mandanten zusammenführen (verlustfrei, mit Backup)"
+              >
+                🔀 Zusammenführen
               </button>
             )}
             <button
@@ -493,6 +506,44 @@ export default function DetailView({
           onClose={() => setShowEdit(false)}
           onSubmit={handleEditSave}
         />
+      )}
+
+      {/* Zusammenführen-Modal */}
+      {showMerge && (
+        <div onClick={() => setShowMerge(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1900, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '14px', width: '100%', maxWidth: '460px', padding: '20px 22px', boxShadow: '0 16px 64px rgba(0,0,0,0.4)' }}>
+            <div style={{ fontSize: '16px', fontWeight: 800, marginBottom: '4px' }}>🔀 Mandanten zusammenführen</div>
+            <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', lineHeight: 1.55, marginBottom: '14px' }}>
+              Alle Daten des Duplikats (Aufträge, Kontakte, Rückfragen, Nachrichten, Honorare …) werden in <strong>{client.name}</strong> übernommen. Nichts wird gelöscht; ein Backup wird automatisch angelegt (Daten-Rettung).
+            </div>
+            <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', marginBottom: '6px' }}>Behalten</div>
+            <div style={{ padding: '9px 12px', borderRadius: '9px', background: 'var(--surface2)', border: '1px solid var(--border)', fontSize: '13px', fontWeight: 600, marginBottom: '12px' }}>
+              ✓ {client.name}{client.mandantennummer ? ` (${client.mandantennummer})` : ''}
+            </div>
+            <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', marginBottom: '6px' }}>Duplikat, das hier hineinwandert</div>
+            <select value={mergeDropId} onChange={e => setMergeDropId(e.target.value)} className="input"
+              style={{ width: '100%', fontSize: '13px', padding: '9px 11px', borderRadius: '9px', marginBottom: '16px', boxSizing: 'border-box' }}>
+              <option value="">— Duplikat wählen …</option>
+              {clients.filter(c => c.id !== client.id && !c.archiviert).slice().sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''))).map(c => (
+                <option key={c.id} value={c.id}>{c.name}{c.mandantennummer ? ` (${c.mandantennummer})` : ''}</option>
+              ))}
+            </select>
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+              <button className="btn btn-ghost btn-sm" onClick={() => setShowMerge(false)}>Abbrechen</button>
+              <button className="btn btn-primary btn-sm" disabled={!mergeDropId}
+                onClick={() => {
+                  const drop = clients.find(c => c.id === mergeDropId)
+                  if (!drop) return
+                  if (window.confirm(`„${drop.name}"${drop.mandantennummer ? ` (${drop.mandantennummer})` : ''} in „${client.name}" zusammenführen? Das Duplikat wird danach entfernt (Backup wird angelegt).`)) {
+                    onMergeClient?.(mergeDropId)
+                    setShowMerge(false)
+                  }
+                }}>
+                Zusammenführen
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
