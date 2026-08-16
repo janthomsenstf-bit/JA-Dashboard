@@ -9,6 +9,7 @@ import AuftraegeTab, { AUFTRAGS_TYP_CFG } from './AuftraegeTab.jsx'
 import ImmobilienTab        from './ImmobilienTab.jsx'
 import HonorareTab          from './HonorareTab.jsx'
 import DokumenteTab         from './DokumenteTab.jsx'
+import ClaudeSessionsTab from './ClaudeSessionsTab.jsx'
 import NewClientModal       from '../NewClientModal.jsx'
 import MobileBottomNav      from '../MobileBottomNav.jsx'
 
@@ -24,6 +25,7 @@ export const TAB = {
   honorare:        7,
   beratung:        8,
   historie:        9,
+  claude:          10,
 }
 
 const TAB_NAV = [
@@ -37,6 +39,7 @@ const TAB_NAV = [
   { icon: '💰', short: 'Honorare'        },  // 7
   { icon: '🧠', short: 'Beratung'        },  // 8
   { icon: '📊', short: 'Historie'        },  // 9
+  { icon: '✨', short: 'Claude'          },  // 10
 ]
 
 export default function DetailView({
@@ -403,6 +406,10 @@ export default function DetailView({
 
           {activeTab === TAB.historie && (
             <StandDerArbeitTab key={client.id} client={client} onUpdate={onUpdate} />
+          )}
+
+          {activeTab === TAB.claude && (
+            <ClaudeSessionsTab key={client.id} client={client} onUpdate={onUpdate} />
           )}
 
         </div>
