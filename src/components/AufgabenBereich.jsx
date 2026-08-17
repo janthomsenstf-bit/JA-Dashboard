@@ -1,26 +1,27 @@
 import { useState, useMemo } from 'react'
+import { alleFristen, fristenGruppen, QUELLE_CFG } from '../utils/fristen.js'
 
 /**
- * Bereich „Übersichten" – das persönliche Arbeits-Cockpit.
+ * Bereich „Aufgaben" – hier laufen alle Dinge mit Datum zusammen.
  *
- * Führt die vorhandenen Bausteine zusammen:
- *  · Aufgaben-Übersicht (bestehende Ansicht, unverändert)
- *  · Kalender (bestehende Ansicht, unverändert)
- *  · Honorar-Übersicht (bestehende Ansicht, unverändert)
+ * Zwei Ansichten:
+ *  · Cockpit  – Kennzahlen + chronologische Agenda (der Überblick)
+ *  · Aufgaben – die vollständige Auftrags-/Fristen-Übersicht (das Arbeitstier)
  *
- * Neu ist die gemeinsame Startseite: Kennzahlen und eine chronologische
- * Agenda, die Aufgaben, Fristen und Termine in EINER Liste zusammenführt.
+ * Kalender und Honorare sind eigene Hauptmenüpunkte und liegen nicht mehr hier.
+ *
+ * Die Agenda kommt aus `utils/fristen.js` – derselben Quelle, aus der auch die
+ * Startseite speist. So zeigen beide dieselbe Wahrheit, statt jeweils eine
+ * eigene unvollständige Auswahl zu treffen.
  *
  * Rein lesend – es werden nur vorhandene Daten ausgewertet.
  */
 
-const FARBE = '#7c3aed' // Farbwelt des Bereichs „Übersichten"
+const FARBE = '#7c3aed' // Farbwelt des Bereichs „Aufgaben"
 
 const ANSICHTEN = [
   { key: 'cockpit',  label: 'Cockpit',   icon: '🎛' },
   { key: 'aufgaben', label: 'Aufgaben',  icon: '📋' },
-  { key: 'kalender', label: 'Kalender',  icon: '📅' },
-  { key: 'honorare', label: 'Honorare',  icon: '💰' },
 ]
 
 // ── Zeit-Helfer ───────────────────────────────────────────────────────────────
@@ -46,81 +47,27 @@ function tagLabel(diff) {
   return null
 }
 
-/**
- * Führt Aufgaben (Aufträge mit Frist), Fristen und Termine zu EINER
- * chronologischen Liste zusammen – der Kern des Cockpits.
- */
-function agendaBauen(clients, termine) {
-  const eintraege = []
-
-  clients.filter(c => !c.archiviert).forEach(c => {
-    ;(c.auftraege ?? []).forEach(a => {
-      if (a.istSerie) return
-      const datum = a.eiligBis || a.frist
-      if (!datum) return
-      eintraege.push({
-        id: `a_${c.id}_${a.id}`,
-        art: a.eilig ? 'eilig' : 'aufgabe',
-        datum,
-        titel: a.bezeichnung || a.typ || 'Auftrag',
-        mandant: c.name,
-        mandantId: c.id,
-        erledigt: a.status === 'erledigt',
-        auftragId: a.id,
-      })
-    })
-  })
-
-  ;(termine ?? []).forEach(t => {
-    if (!t.datum) return
-    const c = clients.find(x => x.id === t.mandantId)
-    eintraege.push({
-      id: `t_${t.id}`,
-      art: 'termin',
-      datum: t.datum,
-      uhrzeit: t.uhrzeit ?? '',
-      titel: t.titel || t.beschreibung || 'Termin',
-      mandant: c?.name ?? '',
-      mandantId: t.mandantId ?? null,
-      erledigt: !!t.erledigt,
-    })
-  })
-
-  return eintraege.sort((a, b) => new Date(a.datum) - new Date(b.datum))
-}
-
-const ART_CFG = {
-  eilig:   { icon: '🔥', label: 'Eilig',  farbe: '#ef4444' },
-  aufgabe: { icon: '📋', label: 'Frist',  farbe: '#2563eb' },
-  termin:  { icon: '📅', label: 'Termin', farbe: '#16a34a' },
-}
-
-export default function UebersichtenBereich({
+export default function AufgabenBereich({
   clients = [],
   termine = [],
+  aufgabenListe = [],
   onOeffneMandant,
-  slotAufgaben,   // bestehende Aufgaben-Übersicht
-  slotKalender,   // bestehender Kalender
-  slotHonorare,   // bestehende Honorar-Übersicht
+  onOeffneBereich,   // springt in einen anderen Hauptmenüpunkt (Kalender/Honorare)
+  slotAufgaben,      // bestehende Auftrags-/Fristen-Übersicht
 }) {
   const [ansicht, setAnsicht] = useState(() => {
-    try { return localStorage.getItem('uebersichten-ansicht') || 'cockpit' } catch { return 'cockpit' }
+    try { return localStorage.getItem('aufgaben-ansicht') || 'cockpit' } catch { return 'cockpit' }
   })
-  const wechsel = a => { setAnsicht(a); try { localStorage.setItem('uebersichten-ansicht', a) } catch {} }
+  const wechsel = a => { setAnsicht(a); try { localStorage.setItem('aufgaben-ansicht', a) } catch {} }
 
-  const agenda = useMemo(() => agendaBauen(clients, termine), [clients, termine])
+  // EINE Quelle für alles mit Datum: Aufträge, auto-Fristen, manuelle Aufgaben,
+  // Termine und Erinnerungen.
+  const agenda = useMemo(
+    () => alleFristen({ clients, aufgabenListe, termine, tageVor: 60, tageNach: 90 }),
+    [clients, aufgabenListe, termine],
+  )
 
-  const gruppen = useMemo(() => {
-    const offen = agenda.filter(e => !e.erledigt)
-    const mitDiff = offen.map(e => ({ ...e, diff: tageBis(e.datum) })).filter(e => e.diff !== null)
-    return {
-      ueberfaellig: mitDiff.filter(e => e.diff < 0),
-      heute:        mitDiff.filter(e => e.diff === 0),
-      woche:        mitDiff.filter(e => e.diff > 0 && e.diff <= 7),
-      demnaechst:   mitDiff.filter(e => e.diff > 7 && e.diff <= 30),
-      erledigt:     agenda.filter(e => e.erledigt).length,
-    }
-  }, [agenda])
+  const gruppen = useMemo(() => fristenGruppen(agenda), [agenda])
 
   // Honorar-Kennzahlen aus vorhandenen Auftragsdaten (rein lesend)
   const honorar = useMemo(() => {
@@ -141,8 +88,7 @@ export default function UebersichtenBereich({
 
   // Agenda für die nächsten 14 Tage (inkl. Überfälligem)
   const agendaListe = useMemo(() => {
-    const offen = agenda.filter(e => !e.erledigt)
-      .map(e => ({ ...e, diff: tageBis(e.datum) }))
+    const offen = agenda
       .filter(e => e.diff !== null && e.diff <= 14)
       .sort((a, b) => a.diff - b.diff)
     const nachTag = new Map()
@@ -161,7 +107,7 @@ export default function UebersichtenBereich({
       <div style={{ padding: '14px 20px 0', background: 'var(--surface)', borderBottom: '1px solid var(--border)' }}>
         <nav aria-label="Pfad" style={{ display: 'flex', gap: '7px', fontSize: '12px', color: 'var(--text-muted)', marginBottom: '12px' }}>
           <span>Spielbuch</span><span style={{ opacity: 0.5 }}>›</span>
-          <span style={{ color: FARBE, fontWeight: 700 }}>Übersichten</span>
+          <span style={{ color: FARBE, fontWeight: 700 }}>Aufgaben</span>
         </nav>
         <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
           {ANSICHTEN.map(a => {
@@ -214,8 +160,8 @@ export default function UebersichtenBereich({
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '15px 18px', borderBottom: '1px solid var(--border)' }}>
                   <span style={{ fontSize: '17px' }} aria-hidden="true">🎯</span>
                   <strong style={{ fontSize: '14px', color: 'var(--text)' }}>Agenda</strong>
-                  <span style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>Aufgaben, Fristen und Termine gemeinsam</span>
-                  <button onClick={() => wechsel('kalender')}
+                  <span style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>Aufträge, Fristen, Aufgaben, Termine und Erinnerungen gemeinsam</span>
+                  <button onClick={() => onOeffneBereich?.('kalender')}
                     style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: FARBE, fontSize: '12px', fontWeight: 700 }}>
                     Kalender →
                   </button>
@@ -252,10 +198,10 @@ export default function UebersichtenBereich({
                       </div>
 
                       {items.map(e => {
-                        const cfg = ART_CFG[e.art] ?? ART_CFG.aufgabe
+                        const cfg = QUELLE_CFG[e.eilig ? 'eilig' : e.quelle] ?? QUELLE_CFG.aufgabe
                         return (
                           <div key={e.id}
-                            onClick={() => e.mandantId && onOeffneMandant?.(e.mandantId, e.art === 'termin' ? 0 : 1)}
+                            onClick={() => e.mandantId && onOeffneMandant?.(e.mandantId, e.quelle === 'auftrag' ? 1 : 0)}
                             style={{
                               display: 'flex', alignItems: 'center', gap: '11px',
                               padding: '11px 18px', borderBottom: '1px solid var(--border)',
@@ -271,9 +217,9 @@ export default function UebersichtenBereich({
                               <span style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                 {e.titel}
                               </span>
-                              {e.mandant && (
+                              {(e.mandantName || e.uhrzeit) && (
                                 <span style={{ display: 'block', fontSize: '11.5px', color: 'var(--text-muted)', marginTop: '1px' }}>
-                                  {e.mandant}{e.uhrzeit ? ` · ${e.uhrzeit}` : ''}
+                                  {[e.mandantName, e.uhrzeit].filter(Boolean).join(' · ')}
                                 </span>
                               )}
                             </span>
@@ -295,7 +241,7 @@ export default function UebersichtenBereich({
                   <div style={{ display: 'flex', alignItems: 'center', gap: '9px', marginBottom: '15px' }}>
                     <span style={{ fontSize: '17px' }} aria-hidden="true">💰</span>
                     <strong style={{ fontSize: '14px', color: 'var(--text)' }}>Honorare</strong>
-                    <button onClick={() => wechsel('honorare')}
+                    <button onClick={() => onOeffneBereich?.('honorare')}
                       style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', color: FARBE, fontSize: '12px', fontWeight: 700 }}>
                       Details →
                     </button>
@@ -332,20 +278,10 @@ export default function UebersichtenBereich({
         </div>
       )}
 
-      {/* ── Bestehende Ansichten, unverändert ── */}
+      {/* ── Vollständige Auftrags-/Fristen-Übersicht (unverändert) ── */}
       {ansicht === 'aufgaben' && (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}>
           {slotAufgaben ?? <Leer text="Aufgaben-Übersicht ist hier nicht verfügbar." />}
-        </div>
-      )}
-      {ansicht === 'kalender' && (
-        <div style={{ flex: 1, overflowY: 'auto', minHeight: 0, padding: '18px 20px 40px' }}>
-          {slotKalender ?? <Leer text="Kalender ist hier nicht verfügbar." />}
-        </div>
-      )}
-      {ansicht === 'honorare' && (
-        <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
-          {slotHonorare ?? <Leer text="Honorar-Übersicht ist hier nicht verfügbar." />}
         </div>
       )}
     </div>

@@ -10,6 +10,7 @@ import ImmobilienTab        from './ImmobilienTab.jsx'
 import HonorareTab          from './HonorareTab.jsx'
 import DokumenteTab         from './DokumenteTab.jsx'
 import ClaudeSessionsTab from './ClaudeSessionsTab.jsx'
+import TermineSection       from './TermineSection.jsx'
 import NewClientModal       from '../NewClientModal.jsx'
 import MobileBottomNav      from '../MobileBottomNav.jsx'
 
@@ -288,18 +289,28 @@ export default function DetailView({
         <div style={{ flex: 1, overflowY: 'auto', minWidth: 0 }}>
 
           {activeTab === TAB.mandant && (
-            <AuftragTab
-              key={client.id}
-              client={client}
-              onUpdate={onUpdate}
-              claudeApiKey={claudeApiKey}
-              onUpdateClaudeApiKey={onUpdateClaudeApiKey}
-              emailSignaturen={emailSignaturen}
-              onedriveTokens={onedriveTokens}
-              onUpdateOnedriveTokens={onUpdateOnedriveTokens}
-              onNavigateToTab={setActiveTab}
-              onNavigateToAuftraegeTyp={navigateToAuftraegeTyp}
-            />
+            <>
+              <AuftragTab
+                key={client.id}
+                client={client}
+                onUpdate={onUpdate}
+                claudeApiKey={claudeApiKey}
+                onUpdateClaudeApiKey={onUpdateClaudeApiKey}
+                emailSignaturen={emailSignaturen}
+                onedriveTokens={onedriveTokens}
+                onUpdateOnedriveTokens={onUpdateOnedriveTokens}
+                onNavigateToTab={setActiveTab}
+                onNavigateToAuftraegeTyp={navigateToAuftraegeTyp}
+              />
+              {/* Termine des Mandanten – waren bisher nur im Kalender sichtbar. */}
+              <TermineSection
+                client={client}
+                termine={termine}
+                onAdd={onAddTermin}
+                onUpdate={onUpdateTermin}
+                onDelete={onDeleteTermin}
+              />
+            </>
           )}
 
           {activeTab === TAB.auftraege && (

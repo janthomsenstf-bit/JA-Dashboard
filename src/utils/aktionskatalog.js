@@ -66,7 +66,7 @@ export const AKTIONEN = [
   {
     id: 'wiedervorlage_anlegen', label: 'Wiedervorlage', icon: '🔔', kategorie: 'wiedervorlage',
     stufe: 'bestaetigen', umkehrbar: true, implementiert: true,
-    datenanschluss: "addAufgabe(…)/Wiedervorlage-Feld (BotInbox/AuftraegeTab)",
+    datenanschluss: "Auftrag beim Mandanten (wie BotInbox) · ohne Mandant: addAufgabe(…)",
     params: [
       { key: 'bezug', label: 'Worum', required: true },
       { key: 'faelligkeit', label: 'Datum (YYYY-MM-DD)', required: true },
@@ -107,7 +107,8 @@ export const AKTIONEN = [
     datenanschluss: "addTermin(t) → termine",
     params: [
       { key: 'titel', label: 'Titel', required: true },
-      { key: 'start', label: 'Start (ISO)', required: true },
+      { key: 'datum', label: 'Datum (JJJJ-MM-TT)', required: true },
+      { key: 'uhrzeit', label: 'Uhrzeit (HH:MM)', required: false },
       { key: 'mandantId', label: 'Mandant', required: false },
     ],
   },

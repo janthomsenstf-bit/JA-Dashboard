@@ -29,13 +29,13 @@ import BotInbox, { BotInboxBadge } from './components/BotInbox.jsx'
 import WebsiteAnfragen from './components/WebsiteAnfragen.jsx'
 import ZeiterfassungView from './components/ZeiterfassungView.jsx'
 import DatenRettung from './components/DatenRettung.jsx'
-import { AUFTRAGS_TYP_CFG, WORKFLOW_CONFIGS } from './components/detail/AuftraegeTab.jsx'
+import { AUFTRAGS_TYP_CFG, WORKFLOW_CONFIGS, mkAuftrag } from './components/detail/AuftraegeTab.jsx'
 import HauptNavigation from './components/HauptNavigation.jsx'
 import BereichPlatzhalter from './components/BereichPlatzhalter.jsx'
 import PersonenBereich from './components/PersonenBereich.jsx'
 import KommunikationBereich from './components/KommunikationBereich.jsx'
 import DokumenteBereich from './components/DokumenteBereich.jsx'
-import UebersichtenBereich from './components/UebersichtenBereich.jsx'
+import AufgabenBereich from './components/AufgabenBereich.jsx'
 import ProzesseBereich from './components/ProzesseBereich.jsx'
 import ChecklistenBereich from './components/ChecklistenBereich.jsx'
 import LeistungspoolBereich from './components/LeistungspoolBereich.jsx'
@@ -1376,8 +1376,15 @@ export default function App() {
     />
   )
 
-  // Aufgaben-, Kalender- und Honorar-Ansicht einmalig erzeugen – werden im
-  // bisherigen Arbeitsbereich UND im Bereich „Übersichten" verwendet.
+  // Aufgaben-, Auftrags-, Kalender- und Honorar-Ansicht einmalig erzeugen –
+  // werden im bisherigen Arbeitsbereich UND in den eigenen Hauptmenüpunkten
+  // verwendet.
+  const oeffneAuftrag = (clientId, auftragId) => {
+    localStorage.setItem('sda-expanded-auftrag_' + clientId, auftragId)
+    setDetailInitialTab(TAB.auftraege)
+    setSelectedId(clientId)
+  }
+
   const aufgabenEl = (
     <GlobalTodoView
       clients={clients}
@@ -1386,11 +1393,22 @@ export default function App() {
       onAddAufgabe={addAufgabe}
       onUpdateClient={updateClient}
       onSelectClient={id => setSelectedId(id)}
-      onNavigateToAuftrag={(clientId, auftragId) => {
-        localStorage.setItem('sda-expanded-auftrag_' + clientId, auftragId)
-        setDetailInitialTab(1)
-        setSelectedId(clientId)
-      }}
+      onNavigateToAuftrag={oeffneAuftrag}
+    />
+  )
+
+  // Gleiche Ansicht, fest auf die Quelle „Aufträge" gestellt – eigener
+  // Menüpunkt, aber KEINE zweite Auftragslogik.
+  const auftraegeEl = (
+    <GlobalTodoView
+      modus="auftraege"
+      clients={clients}
+      aufgabenListe={aufgabenListe}
+      onUpdateAufgabe={updateAufgabe}
+      onAddAufgabe={addAufgabe}
+      onUpdateClient={updateClient}
+      onSelectClient={id => setSelectedId(id)}
+      onNavigateToAuftrag={oeffneAuftrag}
     />
   )
 
@@ -1736,7 +1754,7 @@ export default function App() {
         const klientOffen = hauptbereich === 'personen' && !!selectedId && clients.some(c => c.id === selectedId)
         const zeigeUebersicht = hauptbereich === 'personen' && !klientOffen
         const zeigeArbeitsbereich = klientOffen
-        const eigeneBereiche = ['ki_empfehlungen', 'personen', 'kommunikation', 'dokumente', 'uebersichten', 'prozesse', 'checklisten', 'leistungspool', 'ustreg']
+        const eigeneBereiche = ['ki_empfehlungen', 'personen', 'kommunikation', 'dokumente', 'aufgaben', 'auftraege', 'kalender', 'honorare', 'prozesse', 'checklisten', 'leistungspool', 'ustreg']
         const zeigePlatzhalter = !eigeneBereiche.includes(hauptbereich)
         const offenerKlient = klientOffen ? clients.find(c => c.id === selectedId) : null
         // Löst mandantId aus einem (evtl. per MCP gemeldeten) Namen auf – so werden
@@ -1761,12 +1779,41 @@ export default function App() {
                 dispatcher={erstelleDispatcher({
                   aufgabe_anlegen:       (p) => addAufgabe({ typ: 'einmal', titel: p.titel, beschreibung: p.beschreibung ?? '', mandantId: resolveMid(p), faellig: p.faelligkeit ? `${p.faelligkeit}T12:00:00` : null, erledigt: false }),
                   frist_anlegen:         (p) => addAufgabe({ typ: 'einmal', titel: p.titel, mandantId: resolveMid(p), faellig: p.faelligkeit ? `${p.faelligkeit}T12:00:00` : null, erledigt: false }),
-                  wiedervorlage_anlegen: (p) => addAufgabe({ typ: 'einmal', titel: `Wiedervorlage: ${p.bezug}`, mandantId: resolveMid(p), faellig: p.faelligkeit ? `${p.faelligkeit}T12:00:00` : null, erledigt: false }),
+                  // Eine Wiedervorlage landet dort, wo sie auch der Posteingang ablegt:
+                  // als Auftrag beim Mandanten. Ohne erkannten Mandanten bleibt sie
+                  // eine kanzleiweite Aufgabe.
+                  wiedervorlage_anlegen: (p) => {
+                    const mid = resolveMid(p)
+                    const c   = mid ? clients.find(x => x.id === mid) : null
+                    if (!c) {
+                      addAufgabe({ typ: 'einmal', titel: `Wiedervorlage: ${p.bezug}`, mandantId: null, faellig: p.faelligkeit ? `${p.faelligkeit}T12:00:00` : null, erledigt: false })
+                      return
+                    }
+                    const au = mkAuftrag('freitext')
+                    au.bezeichnung = `Wiedervorlage: ${p.bezug}`
+                    au.frist       = p.faelligkeit ?? ''
+                    updateClient(mid, { auftraege: [au, ...(c.auftraege ?? [])] })
+                  },
                   anruf_aufgabe:         (p) => addAufgabe({ typ: 'einmal', titel: `Anruf: ${p.worum}`, mandantId: resolveMid(p), faellig: p.faelligkeit ? `${p.faelligkeit}T12:00:00` : null, erledigt: false }),
                   rueckfrage_anlegen:    (p) => { const mid = resolveMid(p); if (mid) addRueckfrage(mid, p.text) },
                   pruefpunkt_anlegen:    (p) => addAufgabe({ typ: 'einmal', titel: `JA-Prüfpunkt: ${p.text}`, beschreibung: p.jahr ? `Jahresabschluss ${p.jahr}` : '', mandantId: resolveMid(p), faellig: null, erledigt: false }),
                   notiz_anlegen:         (p) => { const mid = resolveMid(p); if (mid) updateClient(mid, { notizen: [clients.find(c => c.id === mid)?.notizen || '', p.text].filter(Boolean).join('\n') }) },
-                  termin_anlegen:        (p) => addTermin({ id: 't_' + Date.now().toString(36), titel: p.titel, start: p.start, mandantId: resolveMid(p) }),
+                  // Kalender und Mandanten-Termine lesen `datum`/`uhrzeit` – vorher
+                  // wurde `start` geschrieben, dadurch waren so angelegte Termine unsichtbar.
+                  termin_anlegen:        (p) => {
+                    const roh = String(p.datum || p.start || '')
+                    if (!roh) return
+                    addTermin({
+                      id:        't_' + Date.now().toString(36),
+                      art:       p.art || 'erinnerung',
+                      titel:     p.titel,
+                      datum:     roh.slice(0, 10),
+                      uhrzeit:   p.uhrzeit || (roh.length > 10 ? roh.slice(11, 16) : ''),
+                      mandantId: resolveMid(p),
+                      erledigt:  false,
+                      createdAt: new Date().toISOString(),
+                    })
+                  },
                   stammdaten_aktualisieren: (p) => { const mid = resolveMid(p); if (mid) updateClient(mid, p.patch || {}) },
                   auftrag_blockieren:    (p) => { const mid = resolveMid(p); const c = clients.find(x => x.id === mid); if (mid && c && p.auftragId) updateClient(mid, { auftraege: (c.auftraege || []).map(a => a.id === p.auftragId ? { ...a, blockiert: true, blockGrund: p.grund || '', blockiertAm: new Date().toISOString() } : a) }) },
                 })}
@@ -1786,6 +1833,7 @@ export default function App() {
                 <StartseiteHome
                   clients={clients}
                   aufgaben={aufgabenListe}
+                  termine={termine}
                   onSelectClient={(id) => { setDetailInitialTab(0); setSelectedId(id) }}
                   onSelectClientAtKomm={openClientAtKomm}
                   onUpdateClient={updateClient}
@@ -1879,20 +1927,41 @@ export default function App() {
               />
             )}
 
-            {/* Bereich „Übersichten" – Cockpit aus vorhandenen Bausteinen */}
-            {hauptbereich === 'uebersichten' && (
-              <UebersichtenBereich
+            {/* Bereich „Aufgaben" – hier laufen alle Dinge mit Datum zusammen */}
+            {hauptbereich === 'aufgaben' && (
+              <AufgabenBereich
                 clients={clients}
                 termine={termine}
+                aufgabenListe={aufgabenListe}
                 onOeffneMandant={(id, tab) => {
                   setDetailInitialTab(tab ?? 0)
                   setSelectedId(id)
                   wechselBereich('personen')
                 }}
+                onOeffneBereich={wechselBereich}
                 slotAufgaben={aufgabenEl}
-                slotKalender={kalenderEl}
-                slotHonorare={honorareEl}
               />
+            )}
+
+            {/* Bereich „Aufträge" – nur die echten Aufträge aller Mandanten */}
+            {hauptbereich === 'auftraege' && (
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}>
+                {auftraegeEl}
+              </div>
+            )}
+
+            {/* Bereich „Kalender" – bestehende Kalenderansicht, jetzt eigenständig */}
+            {hauptbereich === 'kalender' && (
+              <div style={{ flex: 1, overflowY: 'auto', minHeight: 0, padding: '18px 20px 40px', background: 'var(--bg)' }}>
+                {kalenderEl}
+              </div>
+            )}
+
+            {/* Bereich „Honorare" – bestehende Honorarübersicht, jetzt eigenständig */}
+            {hauptbereich === 'honorare' && (
+              <div style={{ flex: 1, overflowY: 'auto', minHeight: 0, background: 'var(--bg)' }}>
+                {honorareEl}
+              </div>
             )}
 
             {/* Brotkrumen über der Mandanten-Detailansicht */}
