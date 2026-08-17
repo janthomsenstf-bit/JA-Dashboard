@@ -18,6 +18,12 @@ function isEmailOpen(incomingEvent, allEvents) {
   )
 }
 
+// Zeitpunkt, nach dem der Posteingang sortiert: eine gerade zugeordnete Mail
+// zählt ab ihrer Zuordnung, nicht ab ihrem (womöglich alten) Empfangsdatum.
+function eingangsZeit(event) {
+  return event.zugeordnetAm || event.erstelltAm
+}
+
 function isSehrNeu(iso) {
   return Date.now() - new Date(iso).getTime() < 2 * 60 * 60 * 1000
 }
@@ -68,7 +74,8 @@ function EmailCard({ client, event, onOpen, onErledigt, onCacheSummary, onAufgab
   const [aFaellig, setAFaellig] = useState('')
   const [aGemerkt, setAGemerkt] = useState('')   // Bestätigung an der Karte
   const triedRef = useRef(false)
-  const sehrNeu = isSehrNeu(event.erstelltAm)
+  const geradeZugeordnet = !!event.zugeordnetAm && isSehrNeu(event.zugeordnetAm)
+  const sehrNeu = isSehrNeu(eingangsZeit(event))
   const col = avatarColor(client.id)
 
   useEffect(() => {
@@ -133,8 +140,14 @@ function EmailCard({ client, event, onOpen, onErledigt, onCacheSummary, onAufgab
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '9px', flexWrap: 'wrap' }}>
           <span style={{ fontSize: '14.5px', fontWeight: 750 }}>{client.name}</span>
-          {sehrNeu && <span style={{ fontSize: '9px', fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', background: 'var(--accent)', color: '#fff', padding: '2px 8px', borderRadius: '20px' }}>● neu</span>}
-          <span style={{ fontSize: '11.5px', color: 'var(--text-muted)', marginLeft: 'auto' }}>{relTime(event.erstelltAm)}</span>
+          {sehrNeu && (
+            <span style={{ fontSize: '9px', fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', background: 'var(--accent)', color: '#fff', padding: '2px 8px', borderRadius: '20px' }}>
+              {geradeZugeordnet ? '● zugeordnet' : '● neu'}
+            </span>
+          )}
+          <span style={{ fontSize: '11.5px', color: 'var(--text-muted)', marginLeft: 'auto' }}>
+            {geradeZugeordnet ? `eingegangen ${relTime(event.erstelltAm)}` : relTime(event.erstelltAm)}
+          </span>
         </div>
         {event.absender && <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>{event.absender}</div>}
 
@@ -250,10 +263,10 @@ export default function StartseiteHome({
         if (e.typ === 'eingehend' && isEmailOpen(e, events)) result.push({ client: c, event: e })
       }
     }
-    return result.sort((a, b) => new Date(b.event.erstelltAm) - new Date(a.event.erstelltAm))
+    return result.sort((a, b) => new Date(eingangsZeit(b.event)) - new Date(eingangsZeit(a.event)))
   }, [activeClients])
 
-  const neueMails = useMemo(() => offeneEmails.filter(x => isSehrNeu(x.event.erstelltAm)).length, [offeneEmails])
+  const neueMails = useMemo(() => offeneEmails.filter(x => isSehrNeu(eingangsZeit(x.event))).length, [offeneEmails])
 
   // Offene Rückfragen (warten auf Mandant)
   const offeneRQ = useMemo(() =>

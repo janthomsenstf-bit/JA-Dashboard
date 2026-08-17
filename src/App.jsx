@@ -840,8 +840,13 @@ export default function App() {
       ? unbekannteEmailsRef.current.filter(e => String(e.von || '').toLowerCase().trim() === vonAddr)
       : [primary]
     const isPrimary = (e) => e.uid === primary.uid && e.account === primary.account
+    const jetzt = new Date().toISOString()
     const events = targets.map(e => {
       const ev = buildIncomingEvent(e)
+      // Zeitpunkt der Zuordnung mitschreiben: danach sortiert der Posteingang,
+      // damit eine gerade zugeordnete (womöglich alte) Mail oben landet und
+      // nicht nach Empfangsdatum unter den Tisch fällt.
+      ev.zugeordnetAm = jetzt
       if (auftragId && isPrimary(e)) ev.auftragId = auftragId   // #24 – nur die gewählte Mail an die Akte hängen
       return ev
     })
@@ -870,7 +875,8 @@ export default function App() {
   function assignAllFromAddress(vonAddress, clientId, saveContact) {
     const matching = unbekannteEmailsRef.current.filter(e => e.von?.toLowerCase() === vonAddress.toLowerCase())
     if (!matching.length) return
-    const newEvents = matching.map(email => buildIncomingEvent(email))
+    const zugeordnetAm = new Date().toISOString()
+    const newEvents = matching.map(email => ({ ...buildIncomingEvent(email), zugeordnetAm }))
     setClients(prev => prev.map(c => {
       if (c.id !== clientId) return c
       const komm = c.kommunikation ?? { events: [] }
