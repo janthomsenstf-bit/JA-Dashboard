@@ -1751,7 +1751,6 @@ export default function App() {
                 onAssignEmail={(uid, account, clientId, auftragId, saveContact) => assignEmail(uid, account, clientId, !!saveContact, auftragId)}
                 onDismissUnbekannt={(uid, account) => setUnbekannteEmails(prev => prev.filter(e => !(e.uid === uid && e.account === account)))}
                 emailVorlagen={emailVorlagen}
-                aufgaben={aufgabenListe}
                 onRefresh={pollEmails}
               />
             )}
@@ -1766,6 +1765,10 @@ export default function App() {
                   onUpdateClient={updateClient}
                   onRefresh={pollEmails}
                   onOeffneEingang={() => wechselBereich('ki_empfehlungen')}
+                  unbekannteEmails={unbekannteEmails}
+                  onAssignEmail={(uid, account, clientId, auftragId, saveContact) => assignEmail(uid, account, clientId, !!saveContact, auftragId)}
+                  onDismissUnbekannt={(uid, account) => setUnbekannteEmails(prev => prev.filter(e => !(e.uid === uid && e.account === account)))}
+                  emailVorlagen={emailVorlagen}
                 />
               </div>
             )}

@@ -2,6 +2,11 @@ import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { supabase } from '../../utils/supabaseClient.js'
 import { callAI, hasAiKey } from '../../utils/aiClient.js'
 import { getOpenRueckfragen, getUpcomingDeadlines, fmtDate } from '../../utils/search.js'
+import { ladeIgnore, speichereIgnore, absenderKey, istWahrscheinlichUnwichtig } from '../../utils/unbekannteMails.js'
+import SchnellMeldung   from '../agent/SchnellMeldung.jsx'
+import PosteingangKnopf from '../agent/PosteingangKnopf.jsx'
+import UnbekanntCard    from '../agent/UnbekanntCard.jsx'
+import BelegFreigabeKarte, { belegEntscheiden } from '../agent/BelegFreigabeKarte.jsx'
 
 // ── Hilfsfunktionen ───────────────────────────────────────────────────────────
 
@@ -152,12 +157,28 @@ function SekEyebrow({ children, note }) {
   )
 }
 
+// Trennt die beiden Zonen: oben was entschieden werden will, unten was nur informiert.
+function ZonenTitel({ children }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '11px', marginTop: '6px' }}>
+      <span style={{ fontSize: '12.5px', fontWeight: 800, letterSpacing: '0.02em', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>{children}</span>
+      <span style={{ flex: 1, height: '1px', background: 'var(--border)' }} />
+    </div>
+  )
+}
+
 // ── Hauptkomponente ───────────────────────────────────────────────────────────
 
-export default function StartseiteHome({ clients, aufgaben = [], onSelectClient, onSelectClientAtKomm, onUpdateClient, onRefresh, onOeffneEingang }) {
+export default function StartseiteHome({
+  clients, aufgaben = [], onSelectClient, onSelectClientAtKomm, onUpdateClient, onRefresh, onOeffneEingang,
+  unbekannteEmails = [], onAssignEmail, onDismissUnbekannt, emailVorlagen = [],
+}) {
   const activeClients = useMemo(() => clients.filter(c => !c.archiviert), [clients])
   const [botKarten, setBotKarten] = useState([])   // bot_inbox: Handy-Meldungen + Beleg-Freigaben
   const [aktualisiert, setAktualisiert] = useState('')
+  const [ignore, setIgnore]           = useState(ladeIgnore)
+  const [alleUnbekannt, setAlleUnbekannt] = useState(false)   // Top 3 oder alle zeigen
+  const [belegFehler, setBelegFehler] = useState('')
 
   // Offene eingehende E-Mails (Mandant + Event), neueste zuerst
   const offeneEmails = useMemo(() => {
@@ -225,6 +246,37 @@ export default function StartseiteHome({ clients, aufgaben = [], onSelectClient,
   }, [offeneRQ, offeneEmails, ueberfaellig, activeClients])
   const radarMax = radar[0]?.n || 1
 
+  // ── Unzugeordnete Mails: ignorierte Absender raus, Bulk-Absender nach hinten ──
+  const ignoreSet = useMemo(() => new Set(ignore.map(a => String(a).toLowerCase().trim())), [ignore])
+  const unbekannt = useMemo(
+    () => (unbekannteEmails || []).filter(e => !ignoreSet.has(absenderKey(e))),
+    [unbekannteEmails, ignoreSet])
+  // Wichtige zuerst – so steht oben nie ein Newsletter vor einer Mandantenmail.
+  const unbekanntSortiert = useMemo(() => {
+    const wichtig  = unbekannt.filter(e => !istWahrscheinlichUnwichtig(e))
+    const unwichtig = unbekannt.filter(e =>  istWahrscheinlichUnwichtig(e))
+    return [...wichtig, ...unwichtig]
+  }, [unbekannt])
+  const unbekanntWichtig = useMemo(() => unbekannt.filter(e => !istWahrscheinlichUnwichtig(e)).length, [unbekannt])
+
+  function ignoriereUnbekannt(email) {
+    const abs = absenderKey(email)
+    if (abs) { const n = [...new Set([...ignore, abs])]; setIgnore(n); speichereIgnore(n) }
+    onDismissUnbekannt?.(email.uid, email.account)
+  }
+
+  // ── Beleg-Freigabe: Karte sofort ausblenden, dann schreiben ──
+  async function belegFreigeben(item) {
+    setBotKarten(prev => prev.filter(k => k.id !== item.id))
+    const fehler = await belegEntscheiden(item, 'ablegen')
+    if (fehler) { setBelegFehler(fehler); ladeBot() }
+  }
+  async function belegVerwerfen(item) {
+    setBotKarten(prev => prev.filter(k => k.id !== item.id))
+    const fehler = await belegEntscheiden(item, 'verworfen')
+    if (fehler) { setBelegFehler(fehler); ladeBot() }
+  }
+
   // KI-Zusammenfassung dauerhaft am Event speichern (einmal erzeugen, dann sofort da)
   const cacheSummary = useCallback((clientId, eventId, z, e) => {
     const c = clients.find(x => x.id === clientId)
@@ -275,6 +327,14 @@ export default function StartseiteHome({ clients, aufgaben = [], onSelectClient,
         </button>
       </div>
 
+      {/* ── Werkzeugleiste: schnell melden + Posteingang-Lauf starten ── */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        <SchnellMeldung clients={clients} onGemeldet={ladeBot} />
+        <PosteingangKnopf />
+      </div>
+
+      <ZonenTitel>Zu entscheiden</ZonenTitel>
+
       {/* ── 1) Posteingang (groß, oben) ── */}
       <div>
         <SekEyebrow note={<button onClick={onOeffneEingang} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--accent)', fontSize: '11.5px', fontWeight: 600 }}>→ zum vollen Eingang</button>}>
@@ -302,6 +362,52 @@ export default function StartseiteHome({ clients, aufgaben = [], onSelectClient,
           </>
         )}
       </div>
+
+      {/* ── 1b) Unzugeordnete Mails – zuordnen, zusammenfassen, antworten ── */}
+      {unbekannt.length > 0 && (
+        <div>
+          <SekEyebrow note={unbekanntWichtig ? `${unbekanntWichtig} davon wichtig` : 'nur Bulk-Absender'}>
+            📥 Unzugeordnet · {unbekannt.length} Mail{unbekannt.length !== 1 ? 's' : ''}
+          </SekEyebrow>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {(alleUnbekannt ? unbekanntSortiert : unbekanntSortiert.slice(0, 3)).map(e => (
+              <UnbekanntCard
+                key={`${e.account}:${e.uid}`}
+                email={e}
+                clients={clients}
+                emailVorlagen={emailVorlagen}
+                onAssign={onAssignEmail}
+                onIgnore={() => ignoriereUnbekannt(e)}
+              />
+            ))}
+          </div>
+          {unbekanntSortiert.length > 3 && (
+            <div style={{ textAlign: 'center', marginTop: '11px' }}>
+              <button onClick={() => setAlleUnbekannt(v => !v)} style={feld}>
+                {alleUnbekannt ? 'weniger anzeigen' : `${unbekanntSortiert.length - 3} weitere unzugeordnete ${unbekanntSortiert.length - 3 === 1 ? 'Mail' : 'Mails'} anzeigen`}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── 1c) Belege zur Freigabe – direkt entscheiden ── */}
+      {belegKarten.length > 0 && (
+        <div>
+          <SekEyebrow note="aus dem Posteingang-Lauf">📁 Belege zur Freigabe · {belegKarten.length}</SekEyebrow>
+          {belegFehler && (
+            <div style={{ marginBottom: '9px', fontSize: '12px', color: 'var(--red)' }}>⚠ {belegFehler}</div>
+          )}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {belegKarten.map(item => (
+              <BelegFreigabeKarte key={item.id} item={item}
+                onFreigeben={belegFreigeben} onVerwerfen={belegVerwerfen} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      <ZonenTitel>Im Blick</ZonenTitel>
 
       {/* ── 2) KPI-Ampel ── */}
       <div>
@@ -339,7 +445,7 @@ export default function StartseiteHome({ clients, aufgaben = [], onSelectClient,
       )}
 
       {/* ── 4) Weitere Eingänge (Handy + Belege) ── */}
-      {(handyKarten.length > 0 || belegKarten.length > 0) && (
+      {handyKarten.length > 0 && (
         <div>
           <SekEyebrow note={<button onClick={onOeffneEingang} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--accent)', fontSize: '11.5px', fontWeight: 600 }}>→ zum vollen Eingang</button>}>Weitere Eingänge</SekEyebrow>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '10px' }}>
@@ -348,13 +454,6 @@ export default function StartseiteHome({ clients, aufgaben = [], onSelectClient,
                 <span style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--yellow)' }}>vom Handy</span>
                 <div style={{ fontSize: '13px', fontWeight: 650, marginTop: '4px' }}>{truncate(k.raw_text || 'Meldung', 70)}</div>
                 {k.client_name && <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', marginTop: '2px' }}>{k.client_name}</div>}
-              </div>
-            ))}
-            {belegKarten.slice(0, 2).map(k => (
-              <div key={k.id} onClick={onOeffneEingang} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow)', padding: '12px 13px', cursor: 'pointer' }}>
-                <span style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--green)' }}>Belege zur Freigabe</span>
-                <div style={{ fontSize: '13px', fontWeight: 650, marginTop: '4px' }}>{k.client_name || 'Ohne Mandant'} · {(k.draft?.dokumente || []).length} Dok.</div>
-                <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', marginTop: '2px' }}>{truncate(k.raw_text || '', 60)}</div>
               </div>
             ))}
           </div>
