@@ -289,8 +289,10 @@ export const JAC2_CSS = `
    Beipackzettel. Unter 1000px stapelt es. */
 .jac2 .modzwei{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:18px;align-items:start}
 @media(max-width:1000px){.jac2 .modzwei{grid-template-columns:1fr}}
-/* Im schmaleren Feld sind sieben Spalten zu viel – hoechstens drei. */
-.jac2 .modzwei .grid{grid-template-columns:repeat(auto-fit,minmax(210px,1fr))}
+/* Hoechstens zwei Felder nebeneinander – bei vier wird die Maske unruhig und
+   die Beschriftungen brechen um. Unter 640 px einspaltig. */
+.jac2 .modzwei .grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+@media(max-width:640px){.jac2 .modzwei .grid{grid-template-columns:1fr}}
 .jac2 .modinfo{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-top:14px}
 .jac2 .modinfo__t{font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink2);
   margin:0 0 8px;display:flex;align-items:center;gap:8px}
