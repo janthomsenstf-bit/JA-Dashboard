@@ -27,36 +27,81 @@ export function istNummerVergeben(clients = [], nummer) {
 }
 
 /**
- * Vorschlag = höchste vergebene Nummer + 1.
- * Lücken werden absichtlich nicht gefüllt – in der Kanzlei sind sie meist
- * gewollt (aufgegebene Mandate), eine wiederverwendete Nummer wäre riskant.
- * Rückgabe: { vorschlag, hoechste, anzahl } – vorschlag ist '' wenn es noch
- * keine einzige numerische Nummer gibt (dann schlägt nichts vor).
+ * Vorschlag für die nächste Nummer – bewusst INNERHALB des Nummernkreises,
+ * in dem die Kanzlei arbeitet.
+ *
+ * Hintergrund: Neben den laufenden Mandantennummern (z. B. 10xxx) gibt es
+ * vereinzelt Nummern in ganz anderen Bereichen (z. B. 7xxxx für Sonderfälle).
+ * Ein globales „höchste + 1" würde daran hängenbleiben und den Nummernkreis
+ * verlassen. Deshalb wird zuerst der Zehntausender-Block gesucht, in dem die
+ * meisten Mandanten liegen; vorgeschlagen wird die nächste freie Nummer dort.
+ *
+ * Lücken werden nur gefüllt, wenn der Block oben zu Ende ist – eine
+ * wiederverwendete Nummer ist sonst riskanter als eine übersprungene.
+ *
+ * Rückgabe: { vorschlag, hoechste, anzahl, block, ausserhalb }
+ *   block      – Label des gewählten Bereichs, z. B. „10.000er"
+ *   ausserhalb – wie viele Nummern außerhalb dieses Bereichs liegen
  */
 export function naechsteFreieNummer(clients = []) {
-  let hoechsteWert = -1
-  let hoechsteText = ''
-  let anzahl = 0
-
+  const alle = []
   for (const c of clients) {
     for (const f of FELDER) {
       const roh = String(c?.[f] ?? '').trim()
-      if (!/^\d+$/.test(roh)) continue
-      anzahl++
-      const wert = parseInt(roh, 10)
-      if (wert > hoechsteWert) { hoechsteWert = wert; hoechsteText = roh }
+      if (/^\d+$/.test(roh)) alle.push({ roh, wert: parseInt(roh, 10) })
     }
   }
+  if (alle.length === 0) return { vorschlag: '', hoechste: '', anzahl: 0, block: '', ausserhalb: 0 }
 
-  if (hoechsteWert < 0) return { vorschlag: '', hoechste: '', anzahl: 0 }
+  // Zehntausender-Blöcke zählen – der am dichtesten belegte gewinnt,
+  // bei Gleichstand der niedrigere (die Kanzlei wächst nach oben).
+  const proBlock = new Map()
+  for (const n of alle) {
+    const b = Math.floor(n.wert / 10000)
+    proBlock.set(b, (proBlock.get(b) || 0) + 1)
+  }
+  let block = null, bestesN = -1
+  for (const [b, n] of [...proBlock.entries()].sort((a, b2) => a[0] - b2[0])) {
+    if (n > bestesN) { bestesN = n; block = b }
+  }
 
-  // Stellenzahl der höchsten Nummer halten (führende Nullen bleiben erhalten)
-  const naechste = String(hoechsteWert + 1)
-  const vorschlag = naechste.length < hoechsteText.length
-    ? naechste.padStart(hoechsteText.length, '0')
-    : naechste
+  const imBlock = alle.filter(n => Math.floor(n.wert / 10000) === block)
+  const belegt  = new Set(imBlock.map(n => n.wert))
+  const hoechsteImBlock = imBlock.reduce((a, b) => (b.wert > a.wert ? b : a))
 
-  return { vorschlag, hoechste: hoechsteText, anzahl }
+  const untergrenze = block * 10000
+  const obergrenze  = untergrenze + 9999
+
+  // Regelfall: eins über der höchsten Nummer des Blocks.
+  let kandidat = hoechsteImBlock.wert + 1
+  // Block oben voll → erste Lücke von unten suchen.
+  if (kandidat > obergrenze) {
+    kandidat = null
+    for (let i = untergrenze; i <= obergrenze; i++) {
+      if (!belegt.has(i)) { kandidat = i; break }
+    }
+    if (kandidat === null) return { vorschlag: '', hoechste: hoechsteImBlock.roh, anzahl: alle.length, block: blockLabel(block), ausserhalb: alle.length - imBlock.length }
+  }
+
+  // Stellenzahl der höchsten Nummer im Block halten (führende Nullen bleiben)
+  const text = String(kandidat)
+  const vorschlag = text.length < hoechsteImBlock.roh.length
+    ? text.padStart(hoechsteImBlock.roh.length, '0')
+    : text
+
+  return {
+    vorschlag,
+    hoechste:   hoechsteImBlock.roh,
+    anzahl:     alle.length,
+    block:      blockLabel(block),
+    ausserhalb: alle.length - imBlock.length,
+  }
+}
+
+// 1 → „10.000er", 7 → „70.000er", 0 → „unter 10.000"
+function blockLabel(block) {
+  if (block === 0) return 'unter 10.000'
+  return `${(block * 10000).toLocaleString('de-DE')}er`
 }
 
 /**

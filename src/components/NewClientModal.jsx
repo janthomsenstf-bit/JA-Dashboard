@@ -134,7 +134,8 @@ export default function NewClientModal({ onClose, onSubmit, initialData = null, 
                   Vorschlag {nummernVorschlag.vorschlag}
                 </button>
                 <span style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>
-                  höchste vergebene: {nummernVorschlag.hoechste}
+                  höchste im {nummernVorschlag.block}-Bereich: {nummernVorschlag.hoechste}
+                  {nummernVorschlag.ausserhalb > 0 && ` · ${nummernVorschlag.ausserhalb} Nummer${nummernVorschlag.ausserhalb === 1 ? '' : 'n'} außerhalb nicht berücksichtigt`}
                 </span>
               </div>
             )}

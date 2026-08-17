@@ -11,6 +11,9 @@ export default function UnbekanntCard({ email, clients = [], emailVorlagen = [],
   const [auftragId, setAuftragId] = useState('')   // #24 – optional an eine Akte/Auftrag andocken
   const [speichernKontakt, setSpeichernKontakt] = useState(true)   // Absender in Stammdaten übernehmen
   const [body, setBody]     = useState(null)
+  const [bodyLesbar, setBodyLesbar] = useState(null)   // gleicher Inhalt, aber mit Absätzen – zum Lesen
+  const [zeigeText, setZeigeText]   = useState(false)
+  const [ladeText, setLadeText]     = useState(false)
   const [attachments, setAttachments] = useState(null) // #25 – null=noch nicht geladen, []=keine
   const [erk, setErk]       = useState({})             // #25 – Dateiname → { typ, erkannt, empfehlung }
   const [zus, setZus]       = useState(null)   // { zusammenfassung, empfehlung }
@@ -24,10 +27,25 @@ export default function UnbekanntCard({ email, clients = [], emailVorlagen = [],
     if (body != null) return body
     const res  = await fetch(`/api/get-email-content?uid=${encodeURIComponent(email.uid)}&account=${encodeURIComponent(email.account)}`)
     const data = await res.json().catch(() => ({}))
-    const b = String(data.text || (data.html || '').replace(/<[^>]+>/g, ' ') || '').replace(/\s+/g, ' ').slice(0, 4000)
+    const roh = String(data.text || (data.html || '').replace(/<[^>]+>/g, ' ') || '')
+    const b = roh.replace(/\s+/g, ' ').slice(0, 4000)   // für die KI: kompakt
     setBody(b)
+    // fürs Lesen: Absätze behalten, nur überzählige Leerzeilen zusammenziehen
+    const lesbar = roh.replace(/\r\n/g, '\n').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim()
+    setBodyLesbar(lesbar.slice(0, 8000))
     setAttachments(Array.isArray(data.attachments) ? data.attachments : [])   // #25 – Anhänge aus derselben Antwort
     return b
+  }
+
+  // Mailtext ein-/ausklappen. Lädt beim ersten Mal nach – kostet keine KI.
+  async function textUmschalten() {
+    if (zeigeText) { setZeigeText(false); return }
+    setZeigeText(true)
+    if (bodyLesbar != null) return
+    setLadeText(true); setFehler('')
+    try { await holeBody() }
+    catch (e) { setFehler('Mailtext nicht abrufbar: ' + (e?.message || String(e))) }
+    finally { setLadeText(false) }
   }
 
   // #21 – KI-Zusammenfassung + Empfehlung, ERST auf Klick (kostenschonend).
@@ -180,6 +198,26 @@ export default function UnbekanntCard({ email, clients = [], emailVorlagen = [],
       )}
       {attachments != null && attachments.length === 0 && (
         <div style={{ marginTop: '8px', fontSize: '11.5px', color: 'var(--text-muted)' }}>📎 keine Anhänge</div>
+      )}
+      {/* Reinschauen: Originaltext der Mail, ohne KI */}
+      <div style={{ marginTop: '8px' }}>
+        <button onClick={textUmschalten} disabled={ladeText}
+          style={{ background: 'none', border: 'none', padding: 0, cursor: ladeText ? 'default' : 'pointer', color: 'var(--accent)', fontSize: '11.5px', fontWeight: 600 }}>
+          {ladeText ? '⏳ lädt Mailtext …' : zeigeText ? '📄 Mailtext ausblenden' : '📄 Mail lesen'}
+        </button>
+      </div>
+      {zeigeText && !ladeText && (
+        <div style={{
+          marginTop: '7px', padding: '11px 13px', background: 'var(--surface2)',
+          border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
+          fontSize: '12.5px', lineHeight: 1.55, color: 'var(--text)',
+          whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+          maxHeight: '320px', overflowY: 'auto',
+        }}>
+          {bodyLesbar
+            ? <>{bodyLesbar}{bodyLesbar.length >= 8000 && <div style={{ marginTop: '8px', fontSize: '11px', color: 'var(--text-muted)' }}>… gekürzt – der Rest steht in der Mail selbst</div>}</>
+            : <span style={{ color: 'var(--text-muted)' }}>(kein Textinhalt abrufbar)</span>}
+        </div>
       )}
       {fehler && <div style={{ marginTop: '6px', fontSize: '11px', color: 'var(--red)' }}>{fehler}</div>}
       {(!zus || !antwort || attachments === null) && (
