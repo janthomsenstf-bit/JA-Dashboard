@@ -15,6 +15,26 @@ export const num = v => {
 }
 export const tage = (a, b) => Math.round((b - a) / 86400000) + 1
 
+/*
+ * Vorjahresvergleich. Seit der SuSa-Import die S-/H-Spalten auswertet, stehen
+ * Habenkonten (Erlöse, Verbindlichkeiten) negativ in den Werten. Ein Vergleich
+ * über das Vorzeichen dreht dann die Aussage um: eine Verbindlichkeit, die von
+ * -30.290 auf -41.880 wächst, ist ein PLUS von 38 % und kein Minus. Verglichen
+ * werden deshalb BETRÄGE. Ein Wechsel von Soll auf Haben wird getrennt gemeldet,
+ * weil er immer erklärungsbedürftig ist.
+ *
+ * betrag    Veränderung des Betrags (negativ = geschrumpft)
+ * prozent   dieselbe Veränderung in Prozent, null ohne Vorjahreswert
+ * vzWechsel Konto ist von Soll auf Haben gekippt (oder umgekehrt)
+ */
+export function vjAbweichung(saldo, vorjahr) {
+  const s = num(saldo), v = num(vorjahr)
+  const vzWechsel = !!(s && v && Math.sign(s) !== Math.sign(v))
+  const betrag = Math.abs(s) - Math.abs(v)
+  const prozent = v ? Math.round(betrag / Math.abs(v) * 1000) / 10 : null
+  return { betrag, prozent, vzWechsel }
+}
+
 // Stichtag (31.12. des Wirtschaftsjahres) – von der Komponente setzbar.
 let _stichtag = new Date('2025-12-31')
 export const setStichtag = (jahr) => { const j = parseInt(jahr, 10); if (j >= 2000 && j <= 2100) _stichtag = new Date(j + '-12-31') }
@@ -115,6 +135,36 @@ export const GEWST_KONTEN = {
   '03': { gewst: '4320', rueck: '0956', aufloesung: '2283', vorjahr: '2281', forderung: '1540', verb: '1737', bank: '1200' },
   '04': { gewst: '7610', rueck: '3035', aufloesung: '7643', vorjahr: '7641', forderung: '1435', verb: '3701', bank: '1800' },
 }
+
+// Häusliches Arbeitszimmer: DATEV-Konten je Kontenrahmen (Dok. 5361124).
+// aufwand  = Aufwendungen häusliches Arbeitszimmer (abziehbarer Anteil),
+// nichtAbz = nicht abziehbarer Anteil (Umbuchung bei Deckelung),
+// gegen    = Privateinlage (die Kosten werden privat getragen).
+export const AZ_KONTEN = {
+  '03': { aufwand: '4288', nichtAbz: '4289', gegen: '1890' },
+  '04': { aufwand: '6348', nichtAbz: '6349', gegen: '2180' },
+}
+
+// Kostenarten des Arbeitszimmers – EINE Quelle für Eingabemaske, Rechnung und
+// Mandanten-Vorlage, damit sie nicht auseinanderlaufen. Grundlage: Spielplan-
+// Blatt „AZ", ergänzt um die Positionen aus BMF v. 15.08.2023, Rz 7
+// (Schuldzinsen, Reinigungskosten, Ausstattung). Drittes Feld = nur für diese
+// Objektart sichtbar; ohne Angabe gilt die Position für Miete und Eigentum.
+export const AZ_POSTEN = [
+  ['miete', 'Miete', 'miete'],
+  ['schuldzinsen', 'Schuldzinsen (Anschaffung/Herstellung/Reparatur)', 'eigentum'],
+  ['reinigung', 'Reinigungskosten'],
+  ['versicherung', 'Gebäudeversicherungen'],
+  ['grundsteuer', 'Grundsteuer'],
+  ['niederschlag', 'Niederschlagswasser'],
+  ['abfall', 'Abfallbeseitigung / Müllabfuhr'],
+  ['strasse', 'Straßenreinigung'],
+  ['stadtwerke', 'Stadtwerke Wasser/Strom/Gas'],
+  ['schornstein', 'Schornsteinfegergebühren'],
+  ['renovierung', 'Renovierung / Heizung'],
+  ['ausstattung', 'Ausstattung (Tapeten, Teppiche, Vorhänge)'],
+  ['anderes', 'Anderes'],
+]
 
 // Reisekosten Unternehmer: DATEV-Konten je Kontenrahmen (Dok. 5301708).
 // fahrt=Kfz Privat-Pkw, reise=Übernachtung/Reisenebenkosten, vma=Verpflegungspauschale (abzieh.),
@@ -358,11 +408,25 @@ export const MODULE = {
     } },
   verpflegung: { name: 'Verpflegungsmehraufwand', bereich: 'ba', typ: 'C', hinweis: 'Pauschalen-Rechner folgt' },
   arbeitszimmer: { name: 'Häusliches Arbeitszimmer', bereich: 'ba', typ: 'C',
+    stand: '08/2026',
+    konten: AZ_KONTEN,
+    // Ausfüll-Vorlage zum Versand an den Mandanten. Bauplan in vorlagen.js.
+    vorlage: { id: 'arbeitszimmer', titel: 'Mandanten-Vorlage (Excel)' },
+    quellen: ['§ 4 Abs. 5 S. 1 Nr. 6b EStG (Arbeitszimmer, Jahrespauschale)',
+              '§ 4 Abs. 5 S. 1 Nr. 6c EStG (Tagespauschale)',
+              '§ 7 Abs. 4 EStG (Gebäude-AfA)',
+              'BMF v. 15.08.2023, IV C 6 - S-2145/19/10006 :027',
+              'BFH v. 24.03.2026, VIII R 6/24 (Aufzeichnungspflicht)',
+              'DATEV Dok. 5361124 (Kontenerläuterung), 5301972 (Checkliste), 5305768 (Lexikon)',
+              'Vorlage: Spielplan-Mappe, Blatt „AZ"'],
     felder: (ctx, w) => {
       const skr = w.skr === '04' ? '04' : '03'
       const nutzung = w.nutzung || 'mittelpunkt'
       const f = [
         { k: 'skr', l: 'Kontenrahmen', t: 'select', def: '03', opt: [['03', 'SKR 03'], ['04', 'SKR 04']] },
+        { k: 'objekt', l: 'Objektart', t: 'select', full: true, opt: [
+          ['miete', 'Zur Miete'],
+          ['eigentum', 'Eigentum (mit Gebäude-AfA)'] ] },
         { k: 'nutzung', l: 'Abziehbarkeit', t: 'select', full: true, opt: [
           ['mittelpunkt', 'Mittelpunkt der Tätigkeit → volle Kosten / Jahrespauschale 1.260 €'],
           ['tagespauschale', 'Kein Mittelpunkt → Homeoffice-Tagespauschale 6 €/Tag'],
@@ -371,24 +435,23 @@ export const MODULE = {
       if (nutzung === 'tagespauschale') {
         f.push({ k: 'homeofficeTage', l: 'Homeoffice-Tage (6 €/Tag, max. 1.260 €)', t: 'num' })
       } else {
-        if (nutzung === 'mittelpunkt') f.push({ k: 'ansatz', l: 'Ansatz', t: 'select', opt: [['tatsaechlich', 'tatsächliche Kosten'], ['pauschale', 'Jahrespauschale 1.260 €']] })
-        f.push({ k: 'objekt', l: 'Objekt', t: 'select', opt: [['miete', 'Miete'], ['eigentum', 'Eigentum (AfA)']] })
+        if (nutzung === 'mittelpunkt') f.push({ k: 'ansatz', l: 'Ansatz', t: 'select', def: 'auto', opt: [
+          ['auto', 'automatisch die günstigere Variante'],
+          ['tatsaechlich', 'tatsächliche Kosten'],
+          ['pauschale', 'Jahrespauschale 1.260 €'] ] })
+        // Nur fragen, wenn es unterjährig ist – sonst ist die Antwort belanglos.
+        if ((num(w.monate) || 12) < 12) f.push({ k: 'kostenBasis', l: 'Die eingetragenen Beträge …', t: 'select', full: true, def: 'jahr', opt: [
+          ['jahr', 'sind Jahresbeträge → werden auf die Nutzungsmonate gekürzt'],
+          ['zeitraum', 'betreffen bereits nur den Nutzungszeitraum → keine Kürzung'] ] })
         f.push({ k: 'gesamtWohnflaeche', l: 'Gesamtwohnfläche m²', t: 'num' })
         f.push({ k: 'azFlaeche', l: 'Fläche Arbeitszimmer m²', t: 'num' })
-        f.push({ k: 'miete', l: 'Miete/Jahr (100 %)', t: 'num' })
-        f.push({ k: 'versicherung', l: 'Versicherungen', t: 'num' })
-        f.push({ k: 'grundsteuer', l: 'Grundsteuer', t: 'num' })
-        f.push({ k: 'niederschlag', l: 'Niederschlagswasser', t: 'num' })
-        f.push({ k: 'abfall', l: 'Abfallbeseitigung', t: 'num' })
-        f.push({ k: 'strasse', l: 'Straßenreinigung', t: 'num' })
-        f.push({ k: 'stadtwerke', l: 'Stadtwerke Wasser/Strom/Gas', t: 'num' })
-        f.push({ k: 'schornstein', l: 'Schornsteinfeger', t: 'num' })
-        f.push({ k: 'renovierung', l: 'Renovierung / Heizung', t: 'num' })
-        f.push({ k: 'anderes', l: 'Anderes', t: 'num' })
+        // Kostenarten aus AZ_POSTEN – gleiche Reihenfolge wie im Spielplan-Blatt „AZ".
+        AZ_POSTEN.filter(([, , nur]) => !nur || nur === (w.objekt || 'miete'))
+          .forEach(([k, l], i) => f.push({ k, l: i === 0 ? l + '/Jahr (100 %)' : l, t: 'num' }))
         if (w.objekt === 'eigentum') { f.push({ k: 'kaufpreis', l: 'Kaufpreis Gebäudeanteil (Eigentum)', t: 'num' }); f.push({ k: 'afaSatz', l: 'AfA-Satz % (§ 7 Abs. 4: 2/3 %)', t: 'num', def: '2' }) }
       }
-      f.push({ k: 'kAufwand', l: 'Konto Arbeitszimmer (Std. ' + (skr === '04' ? '6348' : '4288') + ')', t: 'text' })
-      f.push({ k: 'kGegen', l: 'Gegenkonto Privateinlage (Std. ' + (skr === '04' ? '2180' : '1890') + ')', t: 'text' })
+      f.push({ k: 'kAufwand', l: 'Konto Arbeitszimmer (Std. ' + AZ_KONTEN[skr].aufwand + ')', t: 'text' })
+      f.push({ k: 'kGegen', l: 'Gegenkonto Privateinlage (Std. ' + AZ_KONTEN[skr].gegen + ')', t: 'text' })
       f.push({ k: 'notiz', l: 'Notiz', t: 'area' })
       return f
     },
@@ -396,8 +459,9 @@ export const MODULE = {
       const r2 = x => Math.round(x * 100) / 100
       const komma = x => String(r2(x)).replace('.', ',')
       const skr = w.skr === '04' ? '04' : '03'
-      const kAufwand = w.kAufwand || (skr === '04' ? '6348' : '4288')
-      const kGegen = w.kGegen || (skr === '04' ? '2180' : '1890')
+      const kAufwand = w.kAufwand || AZ_KONTEN[skr].aufwand
+      const kGegen = w.kGegen || AZ_KONTEN[skr].gegen
+      const kNichtAbz = AZ_KONTEN[skr].nichtAbz
       const nutzung = w.nutzung || 'mittelpunkt'
       const monate = Math.min(12, Math.max(0, num(w.monate) || 12))
       const erg = [], hinweise = [], buchungen = []
@@ -410,6 +474,7 @@ export const MODULE = {
         if (roh > 1260) erg.push({ l: 'Höchstbetrag Tagespauschale', v: 1260 })
         erg.push({ l: 'abziehbare Tagespauschale', v: abzug, stark: 1 })
         hinweise.push('Homeoffice-Tagespauschale (§ 4 Abs. 5 S. 1 Nr. 6c EStG): 6 €/Kalendertag mit überwiegend häuslicher Tätigkeit, höchstens 1.260 €/Jahr (= 210 Tage). Kein häusliches Arbeitszimmer nötig; für denselben Zeitraum nicht neben dem Arbeitszimmer-Abzug.')
+        hinweise.push('Neben einer ganzjährig in Anspruch genommenen Jahrespauschale ist die Tagespauschale ausgeschlossen (§ 4 Abs. 5 S. 1 Nr. 6c S. 3 EStG). Ab 2024 steht dafür ein eigenes Konto „Tagespauschale für die Tätigkeit in der häuslichen Wohnung\" zur Verfügung – Kontonummer im Mandantenkontenrahmen prüfen (Dok. 5361124).')
         if (abzug > 0) buchungen.push({ s: kAufwand, st: 'Häusl. Arbeitszimmer / Homeoffice', h: kGegen, ht: 'Privateinlage', betr: abzug, text: 'Homeoffice-Tagespauschale' })
         return { ergebnisse: erg, total: { l: 'abziehbar', v: abzug }, hinweise, buchungen }
       }
@@ -417,30 +482,69 @@ export const MODULE = {
       const ges = num(w.gesamtWohnflaeche), az = num(w.azFlaeche)
       const anteil = ges > 0 ? az / ges : 0
       const afa = w.objekt === 'eigentum' ? r2(num(w.kaufpreis) * (num(w.afaSatz) || 2) / 100) : 0
-      const kosten100 = r2(num(w.miete) + num(w.versicherung) + num(w.grundsteuer) + num(w.niederschlag) + num(w.abfall) + num(w.strasse) + num(w.stadtwerke) + num(w.schornstein) + num(w.renovierung) + num(w.anderes) + afa)
-      const anteilig = r2(kosten100 * anteil)
+
+      // Einzelaufstellung wie im Spielplan-Blatt „AZ": je Kostenart der volle
+      // Betrag und daneben der anteilige. Vorher war nur die Summe zu sehen.
+      let kosten100 = 0
+      AZ_POSTEN.filter(([, , nur]) => !nur || nur === (w.objekt || 'miete')).forEach(([k, l]) => {
+        const v = num(w[k]); if (!v) return
+        kosten100 += v
+        erg.push({ l: l + ' (100 % ' + eur(v) + ')', v: r2(v * anteil) })
+      })
+      if (afa) { kosten100 += afa; erg.push({ l: 'AfA Gebäudeanteil (100 % ' + eur(afa) + ')', v: r2(afa * anteil) }) }
+      kosten100 = r2(kosten100)
+      const flaechenanteilig = r2(kosten100 * anteil)
+
+      // Unterjährige Nutzung: die eingetragenen Jahresbeträge werden auf die
+      // Nutzungsmonate gekürzt. Betreffen die Beträge ohnehin nur den Zeitraum,
+      // schaltet der Nutzer die Kürzung über kostenBasis ab.
+      const kuerzen = monate < 12 && (w.kostenBasis || 'jahr') === 'jahr'
+      const zeitFaktor = kuerzen ? monate / 12 : 1
+      const anteilig = r2(flaechenanteilig * zeitFaktor)
 
       erg.push({ l: 'Gesamtkosten (100 %)' + (afa ? ' inkl. AfA ' + eur(afa) : ''), v: kosten100 })
-      erg.push({ l: 'Flächenanteil Arbeitszimmer (' + az + ' / ' + ges + ' m² = ' + komma(anteil * 100) + ' %) → anteilige Kosten', v: anteilig, stark: 1 })
+      erg.push({ l: 'Flächenanteil Arbeitszimmer (' + az + ' / ' + ges + ' m² = ' + komma(anteil * 100) + ' %) → anteilige Kosten', v: flaechenanteilig, stark: !kuerzen })
+      if (kuerzen) {
+        erg.push({ l: 'zeitanteilig für ' + monate + ' von 12 Monaten', v: anteilig, stark: 1 })
+        hinweise.push('Die eingetragenen Beträge wurden als Jahresbeträge behandelt und auf ' + monate + ' Monate gekürzt. Betreffen sie ohnehin nur den Nutzungszeitraum, im Feld darüber auf „betreffen bereits nur den Nutzungszeitraum" umstellen.')
+      }
 
+      let nichtAbz = 0
       if (nutzung === 'alt1250') {
         abzug = Math.min(anteilig, 1250)
+        nichtAbz = r2(anteilig - abzug)
         erg.push({ l: 'abziehbar (alte Rechtslage, Höchstbetrag 1.250 €)', v: abzug, stark: 1 })
+        if (nichtAbz > 0) erg.push({ l: 'nicht abziehbarer Anteil (Konto ' + kNichtAbz + ')', v: nichtAbz })
         hinweise.push('⚠️ Alte Rechtslage bis VZ 2022: Höchstbetrag 1.250 € (Arbeitszimmer, wenn kein anderer Arbeitsplatz). Ab VZ 2023 entfallen – für aktuelle Jahre „Mittelpunkt" oder „Tagespauschale" wählen.')
+        if (nichtAbz > 0) hinweise.push('Der nicht abziehbare Anteil wird auf ' + kNichtAbz + ' umgebucht (Dok. 5361124, Buchung 2): ' + kNichtAbz + ' an ' + kAufwand + '.')
       } else {
         const jahrespausch = Math.min(1260, r2(105 * monate))
-        const ansatz = w.ansatz || 'tatsaechlich'
+        const ansatz = w.ansatz || 'auto'
+        // „auto" nimmt, was mehr Abzug bringt – das ist das Wahlrecht aus
+        // § 4 Abs. 5 S. 1 Nr. 6b S. 3 EStG, nur ohne Rechnen von Hand.
+        const gewaehlt = ansatz === 'auto' ? (anteilig >= jahrespausch ? 'tatsaechlich' : 'pauschale') : ansatz
         erg.push({ l: 'Alternative: Jahrespauschale (105 €/Monat × ' + monate + ', max. 1.260 €)', v: jahrespausch })
-        abzug = ansatz === 'pauschale' ? jahrespausch : anteilig
-        erg.push({ l: 'angesetzt: ' + (ansatz === 'pauschale' ? 'Jahrespauschale' : 'tatsächliche Kosten'), v: abzug, stark: 1 })
-        const guenstig = anteilig >= jahrespausch ? 'tatsächliche Kosten' : 'Jahrespauschale'
-        hinweise.push('Arbeitszimmer = Mittelpunkt der gesamten betrieblichen/beruflichen Tätigkeit (§ 4 Abs. 5 S. 1 Nr. 6b EStG): tatsächliche Kosten voll abziehbar ODER Wahlrecht Jahrespauschale 1.260 € (105 €/Monat, zeitanteilig). Günstiger hier: ' + guenstig + ' (' + eur(Math.max(anteilig, jahrespausch)) + ').')
+        abzug = gewaehlt === 'pauschale' ? jahrespausch : anteilig
+        erg.push({ l: 'angesetzt: ' + (gewaehlt === 'pauschale' ? 'Jahrespauschale' : 'tatsächliche Kosten')
+          + (ansatz === 'auto' ? ' (automatisch gewählt, ' + eur(Math.abs(anteilig - jahrespausch)) + ' günstiger)' : ' (von Hand gewählt)'), v: abzug, stark: 1 })
+        hinweise.push('Arbeitszimmer = Mittelpunkt der gesamten betrieblichen/beruflichen Tätigkeit (§ 4 Abs. 5 S. 1 Nr. 6b EStG): tatsächliche Kosten voll abziehbar ODER Wahlrecht Jahrespauschale 1.260 € (105 €/Monat, zeitanteilig).')
+        if (ansatz !== 'auto' && Math.max(anteilig, jahrespausch) > abzug)
+          hinweise.push('⚠️ Die andere Variante wäre um ' + eur(Math.max(anteilig, jahrespausch) - abzug) + ' günstiger. Wenn das gewollt ist, im Feld „Notiz" begründen.')
+        if (gewaehlt === 'pauschale') hinweise.push('Bei Ansatz der Jahrespauschale entfallen die besonderen Aufzeichnungspflichten nach § 4 Abs. 7 EStG (BMF v. 15.08.2023, Rz 26); ein Nachweis der tatsächlichen Kosten ist dann nicht nötig.')
       }
       if (ges > 0 && az > ges) hinweise.push('⚠️ Fläche Arbeitszimmer größer als Gesamtwohnfläche – Eingabe prüfen.')
-      if (w.objekt === 'eigentum') hinweise.push('Eigentum: AfA auf den Gebäudeanteil (§ 7 Abs. 4 EStG, i. d. R. 2 %/3 %). Prüfen, ob das Arbeitszimmer notwendiges Betriebsvermögen ist (→ spätere Entnahme/Veräußerung mit stillen Reserven); Grund und Boden ist nicht abschreibbar.')
-      hinweise.push('Buchung SKR' + skr + ': abziehbarer Anteil auf ' + kAufwand + ' (Aufwendungen häusliches Arbeitszimmer) an ' + kGegen + ' (Privateinlage, da privat getragen). Der nicht abziehbare Anteil bleibt privat.')
+      if (w.objekt === 'eigentum') hinweise.push('Eigentum: AfA auf den Gebäudeanteil (§ 7 Abs. 4 EStG, i. d. R. 2 %/3 %). Prüfen, ob das Arbeitszimmer notwendiges Betriebsvermögen ist (→ spätere Entnahme/Veräußerung mit stillen Reserven); Grund und Boden ist nicht abschreibbar. Ist der Gebäudeanteil aktiviert, gehört die AfA auf das eigene Konto „Abschreibungen auf Gebäudeanteil des häuslichen Arbeitszimmers" – Kontonummer im Mandantenkontenrahmen prüfen.')
+      hinweise.push('Aufteilungsmaßstab (BMF v. 15.08.2023, Rz 9): Fläche des Arbeitszimmers zur Wohnfläche einschließlich Arbeitszimmer. Gehört das Zimmer zu den Haupträumen, bleiben Nebenräume wie Waschküche, Abstellraum und Dachboden außen vor; wird ein Nebenraum genutzt, sind alle Nebenräume einzubeziehen (BFH v. 11.11.2014, VIII R 3/12).')
+      hinweise.push('Aufzeichnungspflicht § 4 Abs. 7 EStG: Die Aufwendungen sind einzeln, zeitnah und getrennt von den übrigen Betriebsausgaben aufzuzeichnen – bei Bilanzierung auf besonderen Konten, bei EÜR in gesonderter Aufzeichnung (BFH v. 24.03.2026, VIII R 6/24). Beim Ansatz der Jahrespauschale entfällt diese Pflicht (BMF v. 15.08.2023, Rz 26).')
+      hinweise.push('Buchung SKR' + skr + ': abziehbarer Anteil auf ' + kAufwand + ' an ' + kGegen + ' (Privateinlage, da privat getragen).')
 
-      if (abzug > 0) buchungen.push({ s: kAufwand, st: 'Häusliches Arbeitszimmer', h: kGegen, ht: 'Privateinlage', betr: r2(abzug), text: 'Häusliches Arbeitszimmer (abziehbarer Anteil)' })
+      if (abzug > 0 || nichtAbz > 0) {
+        // Erst der volle anteilige Betrag auf das Aufwandskonto, dann – wie in
+        // Dok. 5361124 (Buchung 2) – der nicht abziehbare Teil per Umbuchung.
+        const gebucht = r2(abzug + nichtAbz)
+        buchungen.push({ s: kAufwand, st: 'Häusliches Arbeitszimmer', h: kGegen, ht: 'Privateinlage', betr: gebucht, text: 'Häusliches Arbeitszimmer (anteilige Aufwendungen)' })
+        if (nichtAbz > 0) buchungen.push({ s: kNichtAbz, st: 'Arbeitszimmer, nicht abziehbarer Anteil', h: kAufwand, ht: 'Arbeitszimmer, abziehbarer Anteil', betr: nichtAbz, text: 'Umbuchung nicht abziehbarer Anteil' })
+      }
       return { ergebnisse: erg, total: { l: 'abziehbarer Betrag', v: r2(abzug) }, hinweise, buchungen }
     } },
   kfzKosten: { name: 'Kfz-Kosten (Konto)', bereich: 'ba', typ: 'B', konto: '4500', bez: 'Kfz-Kosten' },
@@ -1212,13 +1316,16 @@ export const MODULE = {
   ergebnisverwendung: { name: 'Ergebnisverwendung / Gewinnverteilung', bereich: 'passiva', typ: 'A' },
 }
 
-export function KONTO_RECHNEN(w) { let sS = 0, sV = 0; const erg = [], hin = []
-  ;(w.konten || []).forEach(k => { const s = num(k.saldo), v = num(k.vj); if (!(k.konto || s || v)) return; sS += s; sV += v; const d = s - v; const p = v ? Math.round(d / Math.abs(v) * 1000) / 10 : 0
-    erg.push({ l: ((k.konto || '') + ' ' + (k.bez || '')).trim() + (v ? ' (' + (p > 0 ? '+' : '') + p + '%)' : ''), v: d })
-    if (v && Math.abs(p) >= 20 && !k.ok) hin.push('Konto ' + (k.konto || '?') + ': ' + (p > 0 ? '+' : '') + p + '% ggü. Vorjahr – Ursache dokumentieren.') })
+export function KONTO_RECHNEN(w) { let sS = 0, sV = 0, sAbw = 0; const erg = [], hin = []
+  ;(w.konten || []).forEach(k => { const s = num(k.saldo), v = num(k.vj); if (!(k.konto || s || v)) return; sS += s; sV += v
+    const a = vjAbweichung(s, v); const p = a.prozent; sAbw += a.betrag
+    erg.push({ l: ((k.konto || '') + ' ' + (k.bez || '')).trim()
+      + (p != null ? ' (' + (p > 0 ? '+' : '') + p + '%)' : '') + (a.vzWechsel ? ' ⇄' : ''), v: a.betrag })
+    if (a.vzWechsel && !k.ok) hin.push('Konto ' + (k.konto || '?') + ': Vorzeichenwechsel gegenüber Vorjahr (Soll ↔ Haben) – immer erklären.')
+    else if (p != null && Math.abs(p) >= 20 && !k.ok) hin.push('Konto ' + (k.konto || '?') + ': ' + (p > 0 ? '+' : '') + p + '% ggü. Vorjahr – Ursache dokumentieren.') })
   erg.push({ l: 'Summe (Saldo)', v: sS, stark: 1 }); erg.push({ l: 'Summe Vorjahr', v: sV })
   if (!w.fPlausibel) hin.push('Plausibilität bestätigen, sobald geprüft.')
-  return { ergebnisse: erg, total: { l: 'Abweichung ggü. Vorjahr', v: sS - sV }, hinweise: hin } }
+  return { ergebnisse: erg, total: { l: 'Abweichung ggü. Vorjahr (Beträge)', v: sAbw }, hinweise: hin } }
 
 ;['erloeseStpfl', 'erloeseErmaessigt', 'erloeseSteuerfrei', 'erloeseAusfuhr', 'erloese13b', 'erloeseSonst'].forEach(k => { MODULE[k].rechnen = KONTO_RECHNEN; MODULE[k].kontoListe = true })
 

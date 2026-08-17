@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useRef, Fragment } from 'react'
 import {
   MODULE, BEREICH, VIEW_LABEL, VIEW_ORDER, BEREICH_FARBE, STATUS, AUFTRAG,
-  eur, num, uid, modLists, vorlageJA, ensureKat, neuerModulPunkt,
+  eur, num, uid, vjAbweichung, modLists, vorlageJA, ensureKat, neuerModulPunkt,
   viewsOf, alleP, fortschritt, setStichtag, getStichtag, KFZ_KONTEN, STAMMDATEN_FELDER, ustAbstimmung, UST_KONTEN, ust10Tage,
   klassifiziereKonto, kontoZiele, parseKontenText, applyKonten, fillExisting,
   sammleRueckfragen, aufbereitenText, markRueckfrage, buildExportSheets,
@@ -38,7 +38,8 @@ export default function JAChecklisteV2({ au, client, onUpdate }) {
   if (au?.jahr) setStichtag(au.jahr)
 
   const data = useMemo(() => buildData(au, gw), [au?.jaChecklisteV2, gw])
-  const ctx = { gw, rechtsform: data.stammdaten?.rechtsform || client?.rechtsform || au?.rechtsform || '' }
+  const ctx = { gw, rechtsform: data.stammdaten?.rechtsform || client?.rechtsform || au?.rechtsform || '',
+    mandant: client?.name || '', wj: au?.jahr || '' }
 
   const bereiche = (() => { const b = viewsOf(data); return b.includes('steuern') ? b : [...b, 'steuern'] })()
   const [view, setView] = useState(bereiche[0] || 'be')
@@ -605,6 +606,30 @@ function SusaImport({ onApply, onFill, onClose }) {
 function statusCounts(cl) { const c = { offen: 0, arbeit: 0, rueck: 0, ok: 0, korr: 0 }; alleP(cl).forEach(p => { c[p.status] = (c[p.status] || 0) + 1 }); return c }
 function countBereich(cl, b) { return (cl.kategorien.find(k => (k.bereich || '_') === b)?.punkte || []).length }
 
+/* Download der Mandanten-Vorlage. Erscheint automatisch bei jedem Modul, das in
+   registry.js eine `vorlage` meldet — vorlagen.js wird erst beim Klick geladen. */
+function VorlagenKnopf({ mod, ctx, werte }) {
+  const [laeuft, setLaeuft] = useState(false)
+  const holen = async () => {
+    setLaeuft(true)
+    try {
+      const { vorlageHerunterladen } = await import('../../utils/jaCheckliste/vorlagen.js')
+      // Die Vorlage folgt der im Modul gewählten Objektart, damit der Mandant
+      // nur die Felder bekommt, die für seinen Fall gelten.
+      vorlageHerunterladen(mod.vorlage.id, {
+        mandant: ctx?.mandant || '', jahr: ctx?.wj || '', objekt: (werte && werte.objekt) || 'miete' })
+    } catch (e) {
+      alert('Vorlage konnte nicht erzeugt werden: ' + e.message)
+    } finally { setLaeuft(false) }
+  }
+  return (
+    <button className="btn btn-sm" onClick={holen} disabled={laeuft}
+      title="Ausfüll-Vorlage als Excel herunterladen und dem Mandanten schicken">
+      {laeuft ? '…' : '⤓ ' + (mod.vorlage.titel || 'Vorlage')}
+    </button>
+  )
+}
+
 // ── Modul-Karte (ein Prüfpunkt) ───────────────────────────────────────────────
 function ModulCard({ p, ctx, data, mutate, removePunkt, darOpen, setDarOpen }) {
   const st = STATUS[p.status] || STATUS.offen
@@ -616,6 +641,7 @@ function ModulCard({ p, ctx, data, mutate, removePunkt, darOpen, setDarOpen }) {
         <span className={'pp__typ ' + p.typ}>TYP {p.typ}</span>
         <span className="pp__titel">{p.titel}</span>
         <span className="pp__konten">{(p.konten || []).filter(x => x && x !== '—').map((k, i) => <span key={i} className="kchip">{k}</span>)}</span>
+        {mod && mod.vorlage && <VorlagenKnopf mod={mod} ctx={ctx} werte={p.werte} />}
         <span className={'stpill ' + st[0]}>{st[1]}</span>
       </div>
       <div className="pp__b">
@@ -670,7 +696,10 @@ function BodyA({ p, setF, mutate, setStatus }) {
 }
 
 function BodyB({ p, setF, mutate, setStatus }) {
-  const w = p.werte; const s = num(w.saldo), v = num(w.vj); const d = s - v; const dp = v ? Math.round(d / Math.abs(v) * 1000) / 10 : 0
+  // Abweichung über vjAbweichung: Beträge vergleichen, nicht Vorzeichen — sonst
+  // liest sich eine wachsende Verbindlichkeit als Minus. Vorzeichenwechsel extra.
+  const w = p.werte; const s = num(w.saldo), v = num(w.vj)
+  const a = vjAbweichung(s, v); const d = a.betrag; const dp = a.prozent
   return (
     <>
       <QuickCheck p={p} mutate={mutate} label="Vorjahresvergleich plausibel – ohne weitere Erfassung" />
@@ -679,7 +708,10 @@ function BodyB({ p, setF, mutate, setStatus }) {
         <div className="fld"><label>Bezeichnung</label><input value={w.bez || ''} onChange={e => setF('bez', e.target.value)} /></div>
         <div className="fld"><label>Saldo aktuell</label><input className="num" value={w.saldo || ''} placeholder="0,00" onChange={e => setF('saldo', e.target.value)} /></div>
         <div className="fld"><label>Saldo Vorjahr</label><input className="num" value={w.vj || ''} placeholder="0,00" onChange={e => setF('vj', e.target.value)} /></div>
-        <div className="fld"><label>Abweichung</label><div style={{ padding: '8px 0' }}><span className={'abw ' + (d >= 0 ? 'up' : 'down')}>{eur(d)} ({dp > 0 ? '+' : ''}{dp}%)</span></div></div>
+        <div className="fld"><label>Abweichung</label><div style={{ padding: '8px 0' }}>
+          <span className={'abw ' + (d >= 0 ? 'up' : 'down')}>{eur(d)}{dp != null ? ` (${dp > 0 ? '+' : ''}${dp}%)` : ''}</span>
+          {a.vzWechsel && <span className="abw up" title="Konto ist gegenüber dem Vorjahr von Soll auf Haben gekippt – immer erklären" style={{ marginLeft: 8 }}>⇄ Vorzeichenwechsel</span>}
+        </div></div>
         <StatusSelect p={p} setStatus={setStatus} />
         <div className="fld full"><label>Erläuterung / Rückfrage an Mandant</label><textarea value={w.notiz || ''} placeholder="Plausibel? Woraus resultiert die Abweichung?" onChange={e => setF('notiz', e.target.value)} /></div>
       </div>
