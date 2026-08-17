@@ -9,7 +9,9 @@ import { SE_JAHRE, SE_JAHRE_LISTE, SE_KONTEN, SE_ALTERSSTAFFEL, seFaktor } from 
 export { SE_JAHRE, SE_KONTEN, SE_ALTERSSTAFFEL }
 
 // ── Helfer ──────────────────────────────────────────────────────────────────
-export const eur = n => (isFinite(n) ? n : 0).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })
+// Typpruefung noetig: isFinite(null) ist true, ohne sie liefe eur(null) in
+// null.toLocaleString() – das riss beim Sachentnahmen-Modul die ganze Karte mit.
+export const eur = n => (typeof n === 'number' && isFinite(n) ? n : 0).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })
 export const num = v => {
   v = (v == null ? '' : v).toString().trim().replace(/[\s€]/g, '')
   if (!v) return 0

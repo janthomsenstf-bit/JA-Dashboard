@@ -919,7 +919,9 @@ function ErgebnisBox({ p, ctx, mutate }) {
   return (
     <div className="ergebnis">
       <h4>Berechnung</h4>
-      {r.ergebnisse.map((e, i) => <div className="erow" key={i}><span>{e.l}</span><span><b>{eur(e.v)}</b></span></div>)}
+      {/* Zeilen ohne Betrag (v == null) sind reine Infozeilen, etwa der Faktor je
+          Person. Fuer sie wird kein Wert gesetzt statt "0,00 EUR" auszuweisen. */}
+      {r.ergebnisse.map((e, i) => <div className="erow" key={i}><span>{e.l}</span><span>{e.v == null ? null : <b>{eur(e.v)}</b>}</span></div>)}
       {r.total && <div className="erow total"><span>{r.total.l}</span><b>{eur(r.total.v)}</b></div>}
       {(r.hinweise || []).filter(Boolean).map((h, i) => <div className="ergHinweis" key={i}>{h}</div>)}
       {buch.length > 0 && (
