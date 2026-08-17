@@ -7,6 +7,7 @@ import AlertBanner from './components/AlertBanner.jsx'
 import ClientTable from './components/ClientTable.jsx'
 import DetailView, { TAB } from './components/detail/DetailView.jsx'
 import NewClientModal from './components/NewClientModal.jsx'
+import { naechsteFreieNummer, nameAusEmail } from './utils/mandantennummer.js'
 import StotaxImportModal from './components/StotaxImportModal.jsx'
 import ArchiveModal from './components/ArchiveModal.jsx'
 import ChecklistenEditor from './components/ChecklistenEditor.jsx'
@@ -401,6 +402,7 @@ export default function App() {
   const [sortCol, setSortCol]             = useState('mandantennummer')
   const [sortDir, setSortDir]             = useState('asc')
   const [showNewModal, setShowNewModal]   = useState(false)
+  const [neuAusMail, setNeuAusMail]       = useState(null)   // { uid, account, von, vonName } – Anlegen aus unzugeordneter Mail
   const [showStotaxImport, setShowStotaxImport] = useState(false)
   const [bestandModal, setBestandModal] = useState(null)   // Sicherung & Bestandsaufnahme (Phase 0)
   const [archiveTarget, setArchiveTarget] = useState(null)
@@ -1004,7 +1006,7 @@ export default function App() {
   }
 
   // ── Client CRUD ───────────────────────────────────────────────────────────────
-  function addClient(data) {
+  function addClient(data, { oeffnen = true } = {}) {
     const newClient = {
       id: generateId(),
       notizen: '',
@@ -1030,8 +1032,25 @@ export default function App() {
       checklisten: {},
     }
     setClients(prev => [newClient, ...prev])
-    setSelectedId(newClient.id)
+    // Beim Anlegen aus einer Mail bleibt die Ansicht stehen (der Nutzer arbeitet
+    // seinen Eingang weiter ab) – sonst wie bisher direkt in die Akte springen.
+    if (oeffnen) setSelectedId(newClient.id)
     setShowNewModal(false)
+    return newClient.id
+  }
+
+  // Legt den Mandanten an und ordnet die auslösende Mail sofort zu.
+  function addClientAusMail(data) {
+    const mail = neuAusMail
+    const id = addClient(data, { oeffnen: false })
+    setNeuAusMail(null)
+    if (mail && id) {
+      // saveContact=true: assignEmail legt den Absender nur an, wenn er fehlt –
+      // die im Modal erfasste Adresse wird also nicht verdoppelt.
+      assignEmail(mail.uid, mail.account, id, true, undefined)
+      setBackupToast(`✓ „${data.name}" angelegt – Mail zugeordnet`)
+      setTimeout(() => setBackupToast(''), 5000)
+    }
   }
 
   // ── Phase 0: Sicherung + Bestandsaufnahme vor dem Auftrags-Umbau ──────────────
@@ -1751,6 +1770,7 @@ export default function App() {
                 onAssignEmail={(uid, account, clientId, auftragId, saveContact) => assignEmail(uid, account, clientId, !!saveContact, auftragId)}
                 onDismissUnbekannt={(uid, account) => setUnbekannteEmails(prev => prev.filter(e => !(e.uid === uid && e.account === account)))}
                 emailVorlagen={emailVorlagen}
+                onNeuerMandantAusMail={(mail) => { setNeuAusMail(mail); setShowNewModal(true) }}
                 onRefresh={pollEmails}
               />
             )}
@@ -1769,6 +1789,7 @@ export default function App() {
                   onAssignEmail={(uid, account, clientId, auftragId, saveContact) => assignEmail(uid, account, clientId, !!saveContact, auftragId)}
                   onDismissUnbekannt={(uid, account) => setUnbekannteEmails(prev => prev.filter(e => !(e.uid === uid && e.account === account)))}
                   emailVorlagen={emailVorlagen}
+                  onNeuerMandantAusMail={(mail) => { setNeuAusMail(mail); setShowNewModal(true) }}
                 />
               </div>
             )}
@@ -2129,7 +2150,18 @@ export default function App() {
       )}
 
       {showNewModal && (
-        <NewClientModal onClose={() => setShowNewModal(false)} onSubmit={addClient} />
+        <NewClientModal
+          onClose={() => { setShowNewModal(false); setNeuAusMail(null) }}
+          onSubmit={neuAusMail ? addClientAusMail : addClient}
+          nummernVorschlag={naechsteFreieNummer(clients)}
+          initialData={neuAusMail ? {
+            name:         nameAusEmail(neuAusMail.von, neuAusMail.vonName),
+            kontaktEmail: neuAusMail.von || '',
+          } : null}
+          herkunft={neuAusMail
+            ? `Aus der unzugeordneten Mail von ${neuAusMail.von}${neuAusMail.betreff ? ` — „${neuAusMail.betreff}"` : ''}. Nach dem Anlegen wird die Mail diesem Mandanten zugeordnet.`
+            : ''}
+        />
       )}
       {showStotaxImport && (
         <StotaxImportModal clients={clients} onApply={applyStotaxImport} onClose={() => setShowStotaxImport(false)} />

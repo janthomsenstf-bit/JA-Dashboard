@@ -171,7 +171,7 @@ function ZonenTitel({ children }) {
 
 export default function StartseiteHome({
   clients, aufgaben = [], onSelectClient, onSelectClientAtKomm, onUpdateClient, onRefresh, onOeffneEingang,
-  unbekannteEmails = [], onAssignEmail, onDismissUnbekannt, emailVorlagen = [],
+  unbekannteEmails = [], onAssignEmail, onDismissUnbekannt, emailVorlagen = [], onNeuerMandantAusMail,
 }) {
   const activeClients = useMemo(() => clients.filter(c => !c.archiviert), [clients])
   const [botKarten, setBotKarten] = useState([])   // bot_inbox: Handy-Meldungen + Beleg-Freigaben
@@ -378,6 +378,7 @@ export default function StartseiteHome({
                 emailVorlagen={emailVorlagen}
                 onAssign={onAssignEmail}
                 onIgnore={() => ignoriereUnbekannt(e)}
+                onNeuerMandant={onNeuerMandantAusMail}
               />
             ))}
           </div>

@@ -43,7 +43,7 @@ function rowZuVorgang(row) {
 
 
 
-export default function AiEmpfehlungenBereich({ clients = [], dispatcher, onOeffneMandant, onMailErledigt, unbekannteEmails = [], onAssignEmail, onDismissUnbekannt, emailVorlagen = [], onRefresh }) {
+export default function AiEmpfehlungenBereich({ clients = [], dispatcher, onOeffneMandant, onMailErledigt, unbekannteEmails = [], onAssignEmail, onDismissUnbekannt, emailVorlagen = [], onRefresh, onNeuerMandantAusMail }) {
   const [ignore, setIgnore]      = useState(ladeIgnore)
   const [aktualisiert, setAktualisiert] = useState('')   // '' | 'laeuft' | 'ok'
   const [zeigeUnwichtig, setZeigeUnwichtig] = useState(false)
@@ -209,7 +209,7 @@ export default function AiEmpfehlungenBereich({ clients = [], dispatcher, onOeff
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               {wichtigUnbekannt.map(e => (
-                <UnbekanntCard key={`${e.account}:${e.uid}`} email={e} clients={clients} emailVorlagen={emailVorlagen} onAssign={onAssignEmail} onIgnore={() => ignoriereUnbekannt(e)} />
+                <UnbekanntCard key={`${e.account}:${e.uid}`} email={e} clients={clients} emailVorlagen={emailVorlagen} onAssign={onAssignEmail} onIgnore={() => ignoriereUnbekannt(e)} onNeuerMandant={onNeuerMandantAusMail} />
               ))}
             </div>
           </div>
@@ -227,7 +227,7 @@ export default function AiEmpfehlungenBereich({ clients = [], dispatcher, onOeff
             {zeigeUnwichtig && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '8px', opacity: 0.85 }}>
                 {unwichtigUnbekannt.map(e => (
-                  <UnbekanntCard key={`${e.account}:${e.uid}`} email={e} clients={clients} emailVorlagen={emailVorlagen} onAssign={onAssignEmail} onIgnore={() => ignoriereUnbekannt(e)} />
+                  <UnbekanntCard key={`${e.account}:${e.uid}`} email={e} clients={clients} emailVorlagen={emailVorlagen} onAssign={onAssignEmail} onIgnore={() => ignoriereUnbekannt(e)} onNeuerMandant={onNeuerMandantAusMail} />
                 ))}
               </div>
             )}

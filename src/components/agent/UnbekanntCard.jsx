@@ -6,7 +6,7 @@
 import { useState } from 'react'
 import { callAI, hasAiKey } from '../../utils/aiClient.js'
 
-export default function UnbekanntCard({ email, clients = [], emailVorlagen = [], onAssign, onIgnore }) {
+export default function UnbekanntCard({ email, clients = [], emailVorlagen = [], onAssign, onIgnore, onNeuerMandant }) {
   const [zielId, setZielId] = useState('')
   const [auftragId, setAuftragId] = useState('')   // #24 – optional an eine Akte/Auftrag andocken
   const [speichernKontakt, setSpeichernKontakt] = useState(true)   // Absender in Stammdaten übernehmen
@@ -228,6 +228,13 @@ export default function UnbekanntCard({ email, clients = [], emailVorlagen = [],
           style={{ background: zielId ? 'var(--accent)' : 'var(--surface2)', color: zielId ? '#fff' : 'var(--text-muted)', border: '1px solid var(--accent)', padding: '6px 13px', borderRadius: 'var(--radius-sm)', fontSize: '12px', fontWeight: 700, cursor: zielId ? 'pointer' : 'default', opacity: zielId ? 1 : 0.6 }}>
           Zuordnen
         </button>
+        {onNeuerMandant && (
+          <button onClick={() => onNeuerMandant(email)}
+            title="Neuen Mandanten anlegen – Name und E-Mail werden aus dieser Mail vorbelegt, danach wird die Mail gleich zugeordnet"
+            style={{ background: 'none', border: '1px solid var(--border2)', color: 'var(--accent)', padding: '6px 12px', borderRadius: 'var(--radius-sm)', fontSize: '12px', fontWeight: 600, cursor: 'pointer' }}>
+            ＋ Neuer Mandant
+          </button>
+        )}
         <button onClick={() => onIgnore?.()} title="Künftige E-Mails von diesem Absender ignorieren"
           style={{ background: 'none', border: '1px solid var(--border)', color: 'var(--text-secondary)', padding: '6px 11px', borderRadius: '999px', fontSize: '11px', cursor: 'pointer' }}>
           🚫 Absender ignorieren

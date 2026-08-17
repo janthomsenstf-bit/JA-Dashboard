@@ -22,7 +22,7 @@ function genZusatzId() {
 
 const EMPTY_ZUSATZ = { bezeichnung: '', art: 'Sonstiges', betroffJahr: '', anzeigeJahr: CURRENT_YEAR - 1, monat: 1, notiz: '' }
 
-export default function NewClientModal({ onClose, onSubmit, initialData = null, editMode = false }) {
+export default function NewClientModal({ onClose, onSubmit, initialData = null, editMode = false, nummernVorschlag = null, herkunft = '' }) {
   const [form, setForm] = useState(initialData ? {
     mandantennummer:    initialData.mandantennummer    ?? '',
     mandantennummer2:   initialData.mandantennummer2   ?? '',
@@ -35,6 +35,7 @@ export default function NewClientModal({ onClose, onSubmit, initialData = null, 
     gewinnermittlung:   initialData.gewinnermittlung   ?? 'Bilanz',
     unternehmensgegenstand: initialData.unternehmensgegenstand ?? '',
     zusatzaufgaben:     Array.isArray(initialData.zusatzaufgaben) ? initialData.zusatzaufgaben : [],
+    kontaktEmail:       initialData.kontaktEmail       ?? '',
   } : {
     mandantennummer:   '',
     mandantennummer2:  '',
@@ -47,6 +48,7 @@ export default function NewClientModal({ onClose, onSubmit, initialData = null, 
     gewinnermittlung:  'Bilanz',
     unternehmensgegenstand: '',
     zusatzaufgaben:    [],
+    kontaktEmail:      initialData?.kontaktEmail ?? '',
   })
   const [errors, setErrors] = useState({})
   const [newZusatz, setNewZusatz] = useState({ ...EMPTY_ZUSATZ })
@@ -84,8 +86,14 @@ export default function NewClientModal({ onClose, onSubmit, initialData = null, 
     ev.preventDefault()
     const e = validate()
     if (Object.keys(e).length > 0) { setErrors(e); return }
+    const { kontaktEmail, ...rest } = form
     onSubmit({
-      ...form,
+      ...rest,
+      // Beim Anlegen: erkannte Mail-Adresse gleich als Kontakt hinterlegen –
+      // dadurch ordnet der Auto-Abgleich künftige Mails dieses Absenders zu.
+      ...(!editMode && kontaktEmail.trim()
+        ? { kontakte: [{ id: 'p' + Date.now().toString(36), name: '', rolle: '', email: kontaktEmail.trim(), telefon: '' }] }
+        : {}),
       veranlagungsjahr:  form.veranlagungsjahr ? Number(form.veranlagungsjahr) : '',
       veranlagungsjahr2: form.veranlagungsjahr2 ? Number(form.veranlagungsjahr2) : '',
       veranlagungsjahr3: form.veranlagungsjahr3 ? Number(form.veranlagungsjahr3) : '',
@@ -96,6 +104,11 @@ export default function NewClientModal({ onClose, onSubmit, initialData = null, 
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal">
         <div className="modal-title">{editMode ? '✏️ Mandant bearbeiten' : '+ Neuer Fall anlegen'}</div>
+        {!editMode && herkunft && (
+          <div style={{ fontSize: '12px', color: 'var(--text-muted)', margin: '-4px 0 12px', lineHeight: 1.5 }}>
+            {herkunft}
+          </div>
+        )}
         <form onSubmit={handleSubmit}>
 
           {/* Mandantennummern – bis zu 3 */}
@@ -103,6 +116,28 @@ export default function NewClientModal({ onClose, onSubmit, initialData = null, 
             <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'block', marginBottom: '6px' }}>
               Mandantennummer(n) <span className="required">*</span>
             </label>
+            {!editMode && nummernVorschlag?.vorschlag && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '9px', marginBottom: '7px', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  onClick={() => set('mandantennummer', nummernVorschlag.vorschlag)}
+                  disabled={form.mandantennummer === nummernVorschlag.vorschlag}
+                  style={{
+                    background: form.mandantennummer === nummernVorschlag.vorschlag ? 'var(--surface2)' : 'var(--surface)',
+                    border: '1px solid var(--border2)', borderRadius: 'var(--radius-sm)',
+                    padding: '5px 11px', fontSize: '12px', fontWeight: 600,
+                    color: form.mandantennummer === nummernVorschlag.vorschlag ? 'var(--text-muted)' : 'var(--accent)',
+                    cursor: form.mandantennummer === nummernVorschlag.vorschlag ? 'default' : 'pointer',
+                  }}
+                >
+                  {form.mandantennummer === nummernVorschlag.vorschlag ? '✓ ' : '＋ '}
+                  Vorschlag {nummernVorschlag.vorschlag}
+                </button>
+                <span style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>
+                  höchste vergebene: {nummernVorschlag.hoechste}
+                </span>
+              </div>
+            )}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
               <div>
                 <input
@@ -146,6 +181,25 @@ export default function NewClientModal({ onClose, onSubmit, initialData = null, 
               )}
             </div>
           </div>
+
+          {/* E-Mail-Kontakt – nur beim Anlegen. Im Bearbeiten-Modus bleiben die
+              Kontakte unangetastet (die werden in den Stammdaten gepflegt). */}
+          {!editMode && (
+            <div className="modal-field-row">
+              <div className="modal-field" style={{ flex: 2 }}>
+                <label>E-Mail (Kontakt)</label>
+                <input
+                  type="email"
+                  placeholder="z.B. info@firma.de"
+                  value={form.kontaktEmail}
+                  onChange={e => set('kontaktEmail', e.target.value)}
+                />
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                  Wird als Kontakt gespeichert – künftige Mails dieses Absenders ordnet das Dashboard dann von selbst zu.
+                </span>
+              </div>
+            </div>
+          )}
 
           {/* Veranlagungsjahre – bis zu 3 (optional) */}
           <div style={{ marginBottom: '12px' }}>
