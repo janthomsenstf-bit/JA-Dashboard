@@ -636,10 +636,11 @@ function ModulCard({ p, ctx, data, mutate, removePunkt, darOpen, setDarOpen }) {
   const mod = MODULE[p.modul]
   const setStatus = s => mutate(d => { findP(d, p.id).status = s })
   return (
-    <div className="pp open" data-ppcard={p.id}>
+    <div className={'pp open' + (mod && mod.stand ? ' neu' : '')} data-ppcard={p.id}>
       <div className="pp__h" style={{ cursor: 'default' }}>
         <span className={'pp__typ ' + p.typ}>TYP {p.typ}</span>
         <span className="pp__titel">{p.titel}</span>
+        {mod && mod.stand && <span className="stand" title={(mod.quellen || []).join(' · ')}>überarbeitet {mod.stand}</span>}
         <span className="pp__konten">{(p.konten || []).filter(x => x && x !== '—').map((k, i) => <span key={i} className="kchip">{k}</span>)}</span>
         {mod && mod.vorlage && <VorlagenKnopf mod={mod} ctx={ctx} werte={p.werte} />}
         <span className={'stpill ' + st[0]}>{st[1]}</span>
@@ -931,12 +932,16 @@ function ModulPicker({ bereich, data, onAdd, onRemove, onClose }) {
       <div className="jac2-modal">
         <div className="modal__h"><h2>Module: {VIEW_LABEL[bereich]}</h2><button className="x" onClick={onClose}>×</button></div>
         <div className="modal__b">
-          <p className="jhint" style={{ marginBottom: '14px' }}>Wähle die Module, die du für „{VIEW_LABEL[bereich]}" brauchst. Jedes Modul erscheint danach als eigener Prüfpunkt.</p>
+          <p className="jhint" style={{ marginBottom: '14px' }}>Wähle die Module, die du für „{VIEW_LABEL[bereich]}" brauchst. Jedes Modul erscheint danach als eigener Prüfpunkt.
+            {' '}<span className="stand">überarbeitet</span> heißt: Fachlogik, Konten und Fundstellen sind auf dem angegebenen Stand geprüft.</p>
           <div className="modlist">
             {list.map(([id, m]) => { const on = vorhanden.has(id); const rechner = m.typ === 'C' && m.rechnen
               return (
-                <div className={'moditem' + (on ? ' on' : '')} key={id}>
-                  <div><div className="nm">{m.name}</div><div className="ty">Typ {m.typ}{rechner ? ' · Rechner' : (m.custom ? ' · Fachmodul' : (m.hinweis ? ' · Vorlage' : ''))}</div></div>
+                <div className={'moditem' + (on ? ' on' : '') + (m.stand ? ' neu' : '')} key={id}>
+                  <div>
+                    <div className="nm">{m.name}{m.stand && <span className="stand" style={{ marginLeft: 7 }}>überarbeitet {m.stand}</span>}</div>
+                    <div className="ty">Typ {m.typ}{rechner ? ' · Rechner' : (m.custom ? ' · Fachmodul' : (m.hinweis ? ' · Vorlage' : ''))}</div>
+                  </div>
                   {on ? <button className="add rem" onClick={() => onRemove(id)}>✓ drin · entfernen</button>
                     : <button className="add" onClick={() => onAdd(id)}>+ hinzufügen</button>}
                 </div>

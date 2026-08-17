@@ -279,4 +279,11 @@ export const JAC2_CSS = `
 .jac2-modal .moditem .add{margin-left:auto;border:1px solid #2563eb;color:#2563eb;background:none;border-radius:6px;padding:4px 10px;font-size:12px;font-weight:600;cursor:pointer}
 .jac2-modal .moditem .add:hover{background:#2563eb;color:#fff}
 .jac2-modal .moditem.on{opacity:.6}.jac2-modal .moditem .add.rem{border-color:#15803d;color:#15803d}
+/* Ueberarbeitete Module: gruen hinterlegt, damit auf einen Blick sichtbar ist,
+   welche Fachlogik auf aktuellem Stand ist. Steuerung ueber MODULE[x].stand. */
+.jac2-modal .moditem.neu{border-color:#86efac;background:#f0fdf4}
+.jac2 .stand{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:700;letter-spacing:.02em;
+  color:#15803d;background:#dcfce7;border-radius:99px;padding:2px 7px;white-space:nowrap}
+.jac2 .pp.neu{box-shadow:inset 3px 0 0 #22c55e}
+
 `
