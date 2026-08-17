@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import {
   calcKFZ1Prozent, calcKFZFahrtenbuch,
-  calcArbeitszimmerPauschale, calcArbeitszimmerKosten,
   calcVMASingle, calcFahrtkosten, calcReisekostenGesamt,
   LAENDER_LISTE, fmtEur, fmtPct,
 } from '../../utils/rechnerData.js'
@@ -10,6 +9,7 @@ import {
   exportAZPrint, exportAZExcel,
   exportReisePrint, exportReiseExcel,
 } from '../../utils/rechnerExport.js'
+import { MODULE } from '../../utils/jaCheckliste/registry.js'
 
 export function genId() { return 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5) }
 
@@ -284,43 +284,54 @@ export function KFZRechner({ saved, onSave, onDelete, client }) {
 }
 
 // ─── Arbeitszimmer Rechner ───────────────────────────────────────────────────────
+// Rendert das Registry-Modul `arbeitszimmer` aus jaCheckliste/registry.js. Damit
+// gibt es die Fachlogik nur einmal: Kostenarten, Jahres- und Tagespauschale,
+// Miete/Eigentum, Konten und Buchungssätze kommen aus dem Modul, nicht aus einer
+// zweiten Rechnung. Der frühere eigene Rechner (calcArbeitszimmerPauschale /
+// calcArbeitszimmerKosten) ist damit abgelöst.
+const AZ_MOD = MODULE.arbeitszimmer
+
+function AZFeld({ f, wert, onChange }) {
+  const gemein = { value: wert ?? '', onChange: e => onChange(f.k, e.target.value) }
+  if (f.t === 'select') return (
+    <select {...gemein}>{(f.opt || []).map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
+  )
+  if (f.t === 'area') return <textarea rows={2} {...gemein} />
+  if (f.t === 'date') return <input type="date" {...gemein} />
+  if (f.t === 'num') return <input type="number" step="0.01" {...gemein} />
+  return <input {...gemein} />
+}
+
 export function ArbeitszimmerRechner({ saved, onSave, onDelete, client }) {
   const empty = {
     id: null, bezeichnung: '', datum: new Date().toISOString().slice(0, 10),
-    methode: 'pauschale',
-    arbeitstage: '',
-    bueroflaeche: '', gesamtflaeche: '', jahresmiete: '', jahresNK: '', jahresAfA: '',
-    versicherung: '', grundsteuer: '', abfallgebuehren: '',
-    schornsteinfeger: '', renovierung: '', strom: '', sonstiges: '',
-    notiz: '',
+    werte: { skr: '03', objekt: 'miete', nutzung: 'mittelpunkt', ansatz: 'auto', monate: '12' },
   }
-  const [form, setForm]       = useState(empty)
+  const [form, setForm] = useState(empty)
   const [selectedId, setSelectId] = useState(null)
-  const [showForm, setShowForm]   = useState(false)
+  const [showForm, setShowForm] = useState(false)
 
-  function set(k, v) { setForm(f => ({ ...f, [k]: v })) }
+  const werte = form.werte || {}
+  const setW = (k, v) => setForm(f => ({ ...f, werte: { ...(f.werte || {}), [k]: v } }))
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
   function loadSaved(id) {
     const item = saved.find(s => s.id === id)
     if (!item) return
-    setForm({ ...item })
-    setSelectId(id)
-    setShowForm(true)
+    // Alte Einträge aus dem früheren Rechner haben kein `werte`-Objekt.
+    setForm({ ...empty, ...item, werte: item.werte || { ...empty.werte } })
+    setSelectId(id); setShowForm(true)
   }
-
-  function handleNew() { setForm(empty); setSelectId(null); setShowForm(true) }
-
+  function handleNew() { setForm({ ...empty, werte: { ...empty.werte } }); setSelectId(null); setShowForm(true) }
   function handleSave() {
-    const res = form.methode === 'pauschale'
-      ? calcArbeitszimmerPauschale(form)
-      : calcArbeitszimmerKosten(form)
-    const ergebnis = res.betrag ?? res.abzugsfaehig ?? 0
-    onSave({ ...form, id: form.id ?? genId(), ergebnis })
+    const r = AZ_MOD.rechnen(werte, {})
+    onSave({ ...form, id: form.id ?? genId(), ergebnis: r.total?.v ?? 0 })
     setSelectId(form.id ?? null)
   }
 
-  const resPauschale = form.methode === 'pauschale' ? calcArbeitszimmerPauschale(form) : null
-  const resKosten    = form.methode === 'kosten'    ? calcArbeitszimmerKosten(form) : null
+  const felder = typeof AZ_MOD.felder === 'function' ? AZ_MOD.felder({}, werte) : (AZ_MOD.felder || [])
+  const erg = AZ_MOD.rechnen(werte, {})
+  const hatEingabe = felder.some(f => f.t === 'num' && Number(werte[f.k]) > 0)
 
   return (
     <div>
@@ -340,133 +351,58 @@ export function ArbeitszimmerRechner({ saved, onSave, onDelete, client }) {
 
       {showForm && (
         <div className="section-card" style={{ marginTop: '12px' }}>
-          <div className="section-card-title">Arbeitszimmer-Berechnung</div>
+          <div className="section-card-title">Häusliches Arbeitszimmer</div>
+          <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '10px' }}>
+            Stand {AZ_MOD.stand} · Rechnet nach § 4 Abs. 5 S. 1 Nr. 6b und 6c EStG.
+            Dasselbe Modul steht in der JA-Checkliste unter Betriebsausgaben.
+          </div>
 
           <FieldRow>
             <Field label="Bezeichnung">
-              <input value={form.bezeichnung} onChange={e => set('bezeichnung', e.target.value)} placeholder="z.B. Häusliches Arbeitszimmer 2024" />
+              <input value={form.bezeichnung} onChange={e => set('bezeichnung', e.target.value)} placeholder="z.B. Häusliches Arbeitszimmer 2025" />
             </Field>
             <Field label="Datum">
               <input type="date" value={form.datum} onChange={e => set('datum', e.target.value)} />
             </Field>
           </FieldRow>
 
-          <Field label="Berechnungsmethode">
-            <div style={{ display: 'flex', gap: '8px' }}>
-              {[
-                { v: 'pauschale', l: 'Tagespauschale (6 €/Tag)' },
-                { v: 'kosten',    l: 'Tatsächliche Kosten' },
-              ].map(o => (
-                <button key={o.v} className={`email-template-btn${form.methode === o.v ? ' active' : ''}`} onClick={() => set('methode', o.v)}>{o.l}</button>
-              ))}
-            </div>
-          </Field>
-
-          {form.methode === 'pauschale' && (
-            <>
-              <div style={{ background: 'var(--surface2)', borderRadius: 'var(--radius-sm)', padding: '10px 12px', fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '10px', borderLeft: '3px solid var(--accent)' }}>
-                § 4 Abs. 5 Nr. 6b EStG: 6 € je Arbeitstag im Homeoffice, max. 210 Tage = 1.260 €/Jahr.
-                Gilt auch ohne abgeschlossenes Arbeitszimmer.
+          <div className="grid-2">
+            {felder.map(f => (
+              <div key={f.k} style={f.full || f.t === 'area' ? { gridColumn: '1 / -1' } : undefined}>
+                <Field label={f.l}>
+                  <AZFeld f={f} wert={werte[f.k] ?? f.def ?? ''} onChange={setW} />
+                </Field>
               </div>
-              <Field label="Homeoffice-Arbeitstage" hint="Max. 210 Tage anerkannt">
-                <input type="number" min="0" max="365" value={form.arbeitstage} onChange={e => set('arbeitstage', e.target.value)} placeholder="z.B. 150" style={{ maxWidth: '160px' }} />
-              </Field>
+            ))}
+          </div>
 
-              {form.arbeitstage && (
-                <>
-                  <ResultBox
-                    title="Ergebnis Tagespauschale"
-                    rows={[
-                      { label: 'Eingegebene Tage', value: `${form.arbeitstage} Tage` },
-                      { label: 'Anerkannte Tage', value: `${resPauschale.tage} Tage${resPauschale.maxErreicht ? ' (Maximum erreicht)' : ''}` },
-                      { label: 'Satz', value: '6,00 €/Tag' },
-                    ]}
-                    total={resPauschale.betrag}
-                    totalLabel="Abzugsfähiger Betrag"
-                  />
-                  <ExportButtons onPDF={() => exportAZPrint(form, client)} onExcel={() => exportAZExcel(form, client)} />
-                </>
+          {hatEingabe && (
+            <>
+              <ResultBox
+                title="Ergebnis"
+                rows={(erg.ergebnisse || []).map(e => ({ label: e.l, value: fmtEur(e.v), muted: !e.stark }))}
+                total={erg.total?.v ?? 0}
+                totalLabel={erg.total?.l ?? 'Abzugsfähiger Betrag'}
+              />
+              {(erg.buchungen || []).length > 0 && (
+                <div className="section-card" style={{ marginTop: '10px' }}>
+                  <div className="section-card-title">Buchungsvorschlag</div>
+                  {erg.buchungen.map((b, i) => (
+                    <div key={i} style={{ fontSize: '13px', display: 'flex', gap: '8px', padding: '4px 0' }}>
+                      <b>{b.s}</b> {b.st} <span style={{ color: 'var(--text-muted)' }}>an</span> <b>{b.h}</b> {b.ht}
+                      <span style={{ marginLeft: 'auto', fontWeight: 600 }}>{fmtEur(b.betr)}</span>
+                    </div>
+                  ))}
+                </div>
               )}
+              {(erg.hinweise || []).length > 0 && (
+                <ul style={{ fontSize: '12.5px', color: 'var(--text-muted)', lineHeight: 1.6, paddingLeft: '18px', marginTop: '10px' }}>
+                  {erg.hinweise.map((h, i) => <li key={i}>{h}</li>)}
+                </ul>
+              )}
+              <ExportButtons onPDF={() => exportAZPrint(form, client)} onExcel={() => exportAZExcel(form, client)} />
             </>
           )}
-
-          {form.methode === 'kosten' && (
-            <>
-              <div style={{ background: 'var(--surface2)', borderRadius: 'var(--radius-sm)', padding: '10px 12px', fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '10px', borderLeft: '3px solid var(--accent)' }}>
-                Nur abzugsfähig wenn das Arbeitszimmer den <strong>Mittelpunkt der gesamten betrieblichen/beruflichen Tätigkeit</strong> bildet.
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '4px' }}>
-                <Field label="Bürofläche (qm)">
-                  <input type="number" value={form.bueroflaeche} onChange={e => set('bueroflaeche', e.target.value)} placeholder="z.B. 12" />
-                </Field>
-                <Field label="Gesamtfläche Wohnung (qm)">
-                  <input type="number" value={form.gesamtflaeche} onChange={e => set('gesamtflaeche', e.target.value)} placeholder="z.B. 90" />
-                </Field>
-              </div>
-              <div style={{ borderTop: '1px solid var(--border)', paddingTop: '10px', marginTop: '4px', marginBottom: '4px' }}>
-                <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>Aufwendungen p.a.</div>
-                <Field label="Jahresmiete / Zinsen (€)">
-                  <input type="number" value={form.jahresmiete} onChange={e => set('jahresmiete', e.target.value)} placeholder="z.B. 9600" />
-                </Field>
-                <Field label="Nebenkosten (€)">
-                  <input type="number" value={form.jahresNK} onChange={e => set('jahresNK', e.target.value)} placeholder="z.B. 2400" />
-                </Field>
-                <Field label="AfA Gebäude (€)" hint="Nur bei Eigentum">
-                  <input type="number" value={form.jahresAfA} onChange={e => set('jahresAfA', e.target.value)} placeholder="z.B. 1200" />
-                </Field>
-                <Field label="Versicherung (€)" hint="Gebäude-, Hausrat-, Haftpflicht">
-                  <input type="number" value={form.versicherung} onChange={e => set('versicherung', e.target.value)} placeholder="z.B. 400" />
-                </Field>
-                <Field label="Grundsteuer (€)">
-                  <input type="number" value={form.grundsteuer} onChange={e => set('grundsteuer', e.target.value)} placeholder="z.B. 600" />
-                </Field>
-                <Field label="Abfallgebühren (€)">
-                  <input type="number" value={form.abfallgebuehren} onChange={e => set('abfallgebuehren', e.target.value)} placeholder="z.B. 180" />
-                </Field>
-                <Field label="Schornsteinfeger (€)">
-                  <input type="number" value={form.schornsteinfeger} onChange={e => set('schornsteinfeger', e.target.value)} placeholder="z.B. 80" />
-                </Field>
-                <Field label="Strom (€)" hint="Gesamter Haushaltsstrom">
-                  <input type="number" value={form.strom} onChange={e => set('strom', e.target.value)} placeholder="z.B. 1800" />
-                </Field>
-                <Field label="Renovierung (€)" hint="Anteilig abzugsfähige Reparaturen">
-                  <input type="number" value={form.renovierung} onChange={e => set('renovierung', e.target.value)} placeholder="z.B. 500" />
-                </Field>
-                <Field label="Sonstige Kosten (€)">
-                  <input type="number" value={form.sonstiges} onChange={e => set('sonstiges', e.target.value)} placeholder="z.B. 200" />
-                </Field>
-              </div>
-
-              {resKosten && Number(form.bueroflaeche) > 0 && Number(form.gesamtflaeche) > 0 && (
-                <>
-                  <ResultBox
-                    title="Ergebnis Kostenaufteilung"
-                    rows={[
-                      { label: `Flächenanteil (${form.bueroflaeche} / ${form.gesamtflaeche} qm)`, value: fmtPct(resKosten.anteil) },
-                      { label: 'Miete / Zinsen', value: fmtEur(Number(form.jahresmiete) || 0), muted: true },
-                      { label: 'Nebenkosten', value: fmtEur(Number(form.jahresNK) || 0), muted: true },
-                      { label: 'AfA Gebäude', value: fmtEur(Number(form.jahresAfA) || 0), muted: true },
-                      { label: 'Versicherung', value: fmtEur(Number(form.versicherung) || 0), muted: true },
-                      { label: 'Grundsteuer', value: fmtEur(Number(form.grundsteuer) || 0), muted: true },
-                      { label: 'Abfallgebühren', value: fmtEur(Number(form.abfallgebuehren) || 0), muted: true },
-                      { label: 'Schornsteinfeger', value: fmtEur(Number(form.schornsteinfeger) || 0), muted: true },
-                      { label: 'Strom', value: fmtEur(Number(form.strom) || 0), muted: true },
-                      { label: 'Renovierung', value: fmtEur(Number(form.renovierung) || 0), muted: true },
-                      { label: 'Sonstige Kosten', value: fmtEur(Number(form.sonstiges) || 0), muted: true },
-                      { label: 'Gesamtkosten p.a.', value: fmtEur(resKosten.gesamtkosten) },
-                    ]}
-                    total={resKosten.abzugsfaehig}
-                    totalLabel="Abzugsfähiger Anteil"
-                  />
-                  <ExportButtons onPDF={() => exportAZPrint(form, client)} onExcel={() => exportAZExcel(form, client)} />
-                </>
-              )}
-            </>
-          )}
-
-          <Field label="Notiz">
-            <input value={form.notiz} onChange={e => set('notiz', e.target.value)} placeholder="Interne Anmerkung (optional)" />
-          </Field>
 
           <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '4px' }}>
             <button className="btn btn-ghost btn-sm" onClick={() => setShowForm(false)}>Abbrechen</button>

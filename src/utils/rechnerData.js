@@ -93,42 +93,9 @@ export function calcKFZFahrtenbuch({ gesamtkm, privatkm, gesamtkosten }) {
 }
 
 // ─── Arbeitszimmer ───────────────────────────────────────────────────────────────
-export function calcArbeitszimmerPauschale({ arbeitstage }) {
-  const tage  = Math.min(Number(arbeitstage) || 0, 210)
-  const betrag = tage * 6
-  return { tage, betrag, maxErreicht: Number(arbeitstage) > 210 }
-}
-
-export function calcArbeitszimmerKosten({
-  bueroflaeche, gesamtflaeche,
-  jahresmiete, jahresNK, jahresAfA,
-  versicherung, grundsteuer, abfallgebuehren,
-  schornsteinfeger, renovierung, strom,
-  sonstiges,
-}) {
-  const bf  = Number(bueroflaeche)    || 0
-  const gf  = Number(gesamtflaeche)   || 0
-  if (gf === 0) return { anteil: 0, gesamtkosten: 0, abzugsfaehig: 0 }
-
-  const positionen = [
-    Number(jahresmiete)      || 0,
-    Number(jahresNK)         || 0,
-    Number(jahresAfA)        || 0,
-    Number(versicherung)     || 0,
-    Number(grundsteuer)      || 0,
-    Number(abfallgebuehren)  || 0,
-    Number(schornsteinfeger) || 0,
-    Number(renovierung)      || 0,
-    Number(strom)            || 0,
-    Number(sonstiges)        || 0,
-  ]
-
-  const anteil       = bf / gf
-  const gesamtkosten = positionen.reduce((s, v) => s + v, 0)
-  const abzugsfaehig = anteil * gesamtkosten
-
-  return { anteil: anteil * 100, gesamtkosten, abzugsfaehig }
-}
+// Der eigene Rechner ist entfallen. Die Berechnung liegt jetzt im Registry-Modul
+// "arbeitszimmer" (utils/jaCheckliste/registry.js) und wird von RechnerTab und
+// rechnerExport von dort bezogen – eine Fachlogik statt zwei.
 
 // ─── Reisekosten / VMA ───────────────────────────────────────────────────────────
 // abwesenheitsart:

@@ -1,10 +1,10 @@
 import * as XLSX from 'xlsx'
 import {
   calcKFZ1Prozent, calcKFZFahrtenbuch,
-  calcArbeitszimmerPauschale, calcArbeitszimmerKosten,
   calcVMASingle, calcFahrtkosten, calcReisekostenGesamt,
   fmtEur, fmtPct,
 } from './rechnerData.js'
+import { MODULE } from './jaCheckliste/registry.js'
 
 // ─── Hilfsfunktionen ─────────────────────────────────────────────────────────────
 const KFZ_TYP_LABELS = {
@@ -190,43 +190,36 @@ export function exportKFZExcel(item, client) {
 }
 
 // ─── Arbeitszimmer ───────────────────────────────────────────────────────────────
-const AZ_FELDER = [
-  ['jahresmiete',      'Jahresmiete / Zinsen (€)'],
-  ['jahresNK',         'Nebenkosten (€)'],
-  ['jahresAfA',        'AfA Gebäude (€)'],
-  ['versicherung',     'Versicherung (€)'],
-  ['grundsteuer',      'Grundsteuer (€)'],
-  ['abfallgebuehren',  'Abfallgebühren (€)'],
-  ['schornsteinfeger', 'Schornsteinfeger (€)'],
-  ['strom',            'Strom (€)'],
-  ['renovierung',      'Renovierung (€)'],
-  ['sonstiges',        'Sonstige Kosten (€)'],
-]
+// ─── Arbeitszimmer ───────────────────────────────────────────────────────────
+// Zahlen kommen aus dem Registry-Modul, nicht aus einer zweiten Rechnung.
+// Dadurch stimmen Ausdruck und Dashboard zwangsläufig überein.
+function azErgebnis(item) {
+  const M = MODULE.arbeitszimmer
+  const w = item.werte || {}
+  return { M, w, r: M.rechnen(w, {}), felder: typeof M.felder === 'function' ? M.felder({}, w) : (M.felder || []) }
+}
+
+function azEingabeZeilen(felder, w) {
+  return felder
+    .filter(f => f.k !== 'notiz' && (w[f.k] ?? f.def ?? '') !== '')
+    .map(f => {
+      let v = w[f.k] ?? f.def
+      if (f.t === 'select' && f.opt) { const t = f.opt.find(o => o[0] === v); v = t ? t[1] : v }
+      else if (f.t === 'num') v = fmtEur(v)
+      return [f.l, v]
+    })
+}
 
 export function exportAZPrint(item, client) {
-  const isPauschale = item.methode === 'pauschale'
-  const resPausch   = isPauschale ? calcArbeitszimmerPauschale(item) : null
-  const resKosten   = !isPauschale ? calcArbeitszimmerKosten(item) : null
-
-  const eingaben = isPauschale ? `
-    <tr><td class="label">Methode</td><td class="value">Tagespauschale (6 €/Tag)</td></tr>
-    <tr><td class="label">Homeoffice-Arbeitstage</td><td class="value">${item.arbeitstage}</td></tr>
-    <tr><td class="label">Anerkannte Tage (max. 210)</td><td class="value">${resPausch.tage}</td></tr>
-  ` : `
-    <tr><td class="label">Methode</td><td class="value">Tatsächliche Kosten (Kostenaufteilung)</td></tr>
-    <tr><td class="label">Bürofläche</td><td class="value">${item.bueroflaeche} qm</td></tr>
-    <tr><td class="label">Gesamtfläche Wohnung</td><td class="value">${item.gesamtflaeche} qm</td></tr>
-    <tr><td class="label">Flächenanteil</td><td class="value">${fmtPct(resKosten.anteil)}</td></tr>
-    <tr><td class="section-title" colspan="2">Aufwendungen p.a.</td></tr>
-    ${AZ_FELDER.map(([k, l]) => Number(item[k]) > 0 ? `<tr><td class="label muted">${l}</td><td class="value">${fmtEur(item[k])}</td></tr>` : '').join('')}
-    <tr><td class="label"><strong>Gesamtkosten</strong></td><td class="value"><strong>${fmtEur(resKosten.gesamtkosten)}</strong></td></tr>
-  `
-
-  const ergebnis = isPauschale ? `
-    <tr class="total"><td>Abzugsfähiger Betrag (§ 4 Abs. 5 Nr. 6b EStG)</td><td class="value">${fmtEur(resPausch.betrag)}</td></tr>
-  ` : `
-    <tr class="total"><td>Abzugsfähiger Anteil (${fmtPct(resKosten.anteil)} von ${fmtEur(resKosten.gesamtkosten)})</td><td class="value">${fmtEur(resKosten.abzugsfaehig)}</td></tr>
-  `
+  const { w, r, felder } = azErgebnis(item)
+  const eingaben = azEingabeZeilen(felder, w)
+    .map(([l, v]) => `<tr><td class="label">${l}</td><td class="value">${v}</td></tr>`).join('')
+  const ergebnis = (r.ergebnisse || [])
+    .map(e => `<tr${e.stark ? ' class="total"' : ''}><td class="label${e.stark ? '' : ' muted'}">${e.l}</td><td class="value">${e.v == null ? '' : fmtEur(e.v)}</td></tr>`).join('')
+    + `<tr class="total"><td>${r.total?.l || 'Abzugsfähiger Betrag'}</td><td class="value">${fmtEur(r.total?.v ?? 0)}</td></tr>`
+  const buchungen = (r.buchungen || [])
+    .map(b => `<tr><td class="label muted">${b.s} ${b.st} an ${b.h} ${b.ht}</td><td class="value">${fmtEur(b.betr)}</td></tr>`).join('')
+  const hinweise = (r.hinweise || []).map(h => `<li>${h}</li>`).join('')
 
   const html = `
     <h1>Steuerliche Berechnung</h1>
@@ -237,20 +230,19 @@ export function exportAZPrint(item, client) {
       <span>VJ ${client.veranlagungsjahr}</span>
       <span>Datum: ${fmtDate(item.datum)}</span>
     </div>
-    <h2>Eingaben &amp; Aufwendungen</h2>
+    <h2>Eingaben</h2>
     <table><tbody>${eingaben}</tbody></table>
     <h2>Ergebnis</h2>
     <table><tbody>${ergebnis}</tbody></table>
+    ${buchungen ? `<h2>Buchungsvorschlag</h2><table><tbody>${buchungen}</tbody></table>` : ''}
+    ${hinweise ? `<h2>Hinweise</h2><ul style="font-size:9pt;color:#555">${hinweise}</ul>` : ''}
     ${item.notiz ? `<p style="font-size:9pt;color:#555;margin-top:8px"><strong>Notiz:</strong> ${item.notiz}</p>` : ''}
   `
   openPrintWindow(html, `Arbeitszimmer ${client.name}`)
 }
 
 export function exportAZExcel(item, client) {
-  const isPauschale = item.methode === 'pauschale'
-  const resPausch   = isPauschale ? calcArbeitszimmerPauschale(item) : null
-  const resKosten   = !isPauschale ? calcArbeitszimmerKosten(item) : null
-
+  const { w, r, felder } = azErgebnis(item)
   const rows = [
     ['Häusliches Arbeitszimmer'],
     [`Mandant: ${client.name}`, '', `Nr.: ${client.mandantennummer}`, '', `VJ: ${client.veranlagungsjahr}`],
@@ -258,32 +250,20 @@ export function exportAZExcel(item, client) {
     [],
     ['EINGABEN', ''],
     ['Bezeichnung', item.bezeichnung || '–'],
-    ['Methode', isPauschale ? 'Tagespauschale' : 'Kostenaufteilung'],
+    ...azEingabeZeilen(felder, w),
+    [],
+    ['ERGEBNIS', ''],
+    ...(r.ergebnisse || []).filter(e => e.v != null).map(e => [e.l, e.v]),
+    [r.total?.l || 'Abzugsfähiger Betrag', r.total?.v ?? 0],
   ]
-
-  if (isPauschale) {
-    rows.push(
-      ['Homeoffice-Arbeitstage', Number(item.arbeitstage) || 0],
-      ['Anerkannte Tage (max. 210)', resPausch.tage],
-      [], ['ERGEBNIS', ''],
-      ['Tagespauschale (6 €/Tag)', ''],
-      ['Abzugsfähiger Betrag (€)', resPausch.betrag],
-    )
-  } else {
-    rows.push(
-      ['Bürofläche (qm)', Number(item.bueroflaeche) || 0],
-      ['Gesamtfläche Wohnung (qm)', Number(item.gesamtflaeche) || 0],
-      ['Flächenanteil (%)', resKosten?.anteil ?? 0],
-      [],
-      ['AUFWENDUNGEN p.a.', ''],
-      ...AZ_FELDER.map(([k, l]) => [l, Number(item[k]) || 0]),
-      ['Gesamtkosten p.a. (€)', resKosten?.gesamtkosten ?? 0],
-      [],
-      ['ERGEBNIS', ''],
-      ['Abzugsfähiger Anteil (€)', resKosten?.abzugsfaehig ?? 0],
-    )
+  if ((r.buchungen || []).length) {
+    rows.push([], ['BUCHUNGSVORSCHLAG', ''])
+    r.buchungen.forEach(b => rows.push([`${b.s} ${b.st} an ${b.h} ${b.ht}`, b.betr]))
   }
-
+  if ((r.hinweise || []).length) {
+    rows.push([], ['HINWEISE', ''])
+    r.hinweise.forEach(h => rows.push([h, '']))
+  }
   if (item.notiz) rows.push([], ['Notiz', item.notiz])
   rows.push([], ['Erstellt am', today()], ['Alle Angaben ohne Gewähr', ''])
 
