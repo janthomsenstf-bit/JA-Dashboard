@@ -303,6 +303,13 @@ export const JAC2_CSS = `
 .jac2 .modkonten b{color:var(--ink);font-size:11px}
 .jac2 .modkonten code{font-family:ui-monospace,Menlo,Consolas,monospace;font-weight:700;color:var(--accent)}
 .jac2 .modquellen{margin:0;padding-left:16px;font-size:11.5px;color:var(--ink2);line-height:1.55}
+/* Erläuterungsbereich – bei jedem Prüfpunkt, unterhalb der Eingaben. */
+.jac2 .erl{margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}
+.jac2 .erl label{display:block;font-size:11.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
+  color:var(--ink2);margin-bottom:6px}
+.jac2 .erl textarea{width:100%;min-height:74px;resize:vertical;padding:9px 11px;border:1px solid var(--line2);
+  border-radius:8px;background:var(--surface);font:inherit;font-size:13px;color:var(--ink);line-height:1.5}
+.jac2 .erl textarea:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:var(--accent)}
 .jac2 .linkmehr{margin-left:auto;border:none;background:none;color:var(--accent);font:inherit;font-size:10.5px;
   font-weight:700;text-transform:none;letter-spacing:0;cursor:pointer;padding:0}
 

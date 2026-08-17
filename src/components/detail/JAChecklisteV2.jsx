@@ -354,13 +354,12 @@ function BodyUst({ p, ctx, mutate, setStatus }) {
         <div className="ust-hint">„Kurze Zeit" = 10 Tage; maßgeblich die Fälligkeit nach § 18 Abs. 1 S. 4 UStG (10. Tag nach VZ-Zeitraum), § 108 Abs. 3 AO (Werktagsverschiebung) unbeachtlich. <b>SEPA-Lastschrift:</b> Abfluss gilt am Fälligkeitstag (bei Kontodeckung), auch bei späterer Abbuchung. <b>Dauerfristverlängerung</b> verschiebt die Fälligkeit → i. d. R. Jahr der Zahlung (strittig, BFH VIII R 1/20 & 25/20). ⚠️ = 10.01. fällt auf Wochenende/Feiertag → Einzelfall prüfen. Prüfhinweis, keine automatische Entscheidung.</div>
       </div>}
 
-      <div className="darsec"><h6>Konten (Bilanz, SKR{skr}) &amp; Notiz</h6><div className="dargrid">
+      <div className="darsec"><h6>Konten (Bilanz, SKR{skr})</h6><div className="dargrid">
         <label className="darf"><span>USt-Verrechnung</span><input className="mono" value={w.kVerr || ''} placeholder={K.verr} onChange={e => setF('kVerr', e.target.value)} /></label>
         <label className="darf"><span>Forderung aus USt-VZ</span><input className="mono" value={w.kForderung || ''} placeholder={K.ford} onChange={e => setF('kForderung', e.target.value)} /></label>
         <label className="darf"><span>Verbindlichkeit aus USt-VZ</span><input className="mono" value={w.kVerb || ''} placeholder={K.verb} onChange={e => setF('kVerb', e.target.value)} /></label>
         <label className="darf"><span>USt-Forderung frühere Jahre / BP (→ {K.frueher})</span><input className="num" value={w.fruehereBetrag || ''} onChange={e => setF('fruehereBetrag', e.target.value)} /></label>
       </div>
-        <textarea className="darnotiz" style={{ marginTop: 8 }} value={w.notiz || ''} placeholder="Notiz / Klärung der Differenz …" onChange={e => setF('notiz', e.target.value)} />
       </div>
     </>
   )
@@ -709,6 +708,15 @@ function ModulCard({ p, ctx, data, mutate, removePunkt, darOpen, setDarOpen }) {
           </div>
           {mod && mod.stand && (mod.rechenweg || mod.quellen) && <ModulInfo mod={mod} />}
         </div>
+        {/* Erläuterungen: bei JEDEM Prüfpunkt, unabhängig von Typ und Modul.
+            Nutzt weiterhin werte.notiz, damit bereits geschriebene Texte erhalten
+            bleiben; die frueheren Einzelfelder je Typ sind dafuer entfallen. */}
+        <div className="erl">
+          <label htmlFor={'erl-' + p.id}>Erläuterungen</label>
+          <textarea id={'erl-' + p.id} value={p.werte.notiz || ''}
+            placeholder="Wie geprüft, worauf gestützt, was bleibt offen? Der Text erscheint im Excel-Export."
+            onChange={e => mutate(d => { findP(d, p.id).werte.notiz = e.target.value })} />
+        </div>
         <div className="ppfoot"><button className="linkdel" onClick={() => removePunkt(p.id)}>🗑&nbsp;Prüfpunkt entfernen</button></div>
       </div>
     </div>
@@ -746,7 +754,6 @@ function BodyA({ p, setF, mutate, setStatus }) {
         <StatusSelect p={p} setStatus={setStatus} />
         <div className="fld"><label>Konto (optional)</label><input className="mono" value={w.konto || (p.konten || [])[0] || ''} onChange={e => setF('konto', e.target.value)} /></div>
         <div className="fld"><label>Betrag</label><input className="num" value={w.betrag || ''} placeholder="0,00" onChange={e => setF('betrag', e.target.value)} /></div>
-        <div className="fld full"><label>Notiz / Bearbeitungsvermerk</label><textarea value={w.notiz || ''} placeholder="Wie geprüft? Ergebnis?" onChange={e => setF('notiz', e.target.value)} /></div>
       </div>
     </>
   )
@@ -770,7 +777,6 @@ function BodyB({ p, setF, mutate, setStatus }) {
           {a.vzWechsel && <span className="abw up" title="Konto ist gegenüber dem Vorjahr von Soll auf Haben gekippt – immer erklären" style={{ marginLeft: 8 }}>⇄ Vorzeichenwechsel</span>}
         </div></div>
         <StatusSelect p={p} setStatus={setStatus} />
-        <div className="fld full"><label>Erläuterung / Rückfrage an Mandant</label><textarea value={w.notiz || ''} placeholder="Plausibel? Woraus resultiert die Abweichung?" onChange={e => setF('notiz', e.target.value)} /></div>
       </div>
     </>
   )
@@ -789,6 +795,9 @@ function BodyC({ p, ctx, setF, mutate, setStatus }) {
   }
   const w = p.werte
   const felder = mod.felder ? (typeof mod.felder === 'function' ? mod.felder(ctx, w) : mod.felder) : null
+  // 'notiz' wird zentral als Erläuterungsbereich gerendert – hier ausblenden,
+  // damit dasselbe Feld nicht zweimal auf der Karte steht.
+  const sichtbar = felder ? felder.filter(f => f.k !== 'notiz') : null
   const toggleFlag = k => mutate(d => { const q = findP(d, p.id).werte; q[k] = !q[k] })
 
   return (
@@ -801,7 +810,7 @@ function BodyC({ p, ctx, setF, mutate, setStatus }) {
         </div>
       )}
       <div className="grid">
-        {felder && felder.map(f => {
+        {sichtbar && sichtbar.map(f => {
           const cur = (w[f.k] != null && w[f.k] !== '') ? w[f.k] : (f.def != null ? f.def : '')
           if (f.t === 'select') return (
             <div key={f.k} className={'fld' + (f.full ? ' full' : '')}><label>{f.l}</label>
@@ -1157,7 +1166,6 @@ function BodyKfz({ p, ctx, mutate, setStatus }) {
         <KfzF wv={w} setW={setW} k="kErtragOhneUst" l={'Kfz-Nutzung o. USt (' + KK.ohneUst + ')'} def={KK.ohneUst} />
         {fUst && <KfzF wv={w} setW={setW} k="kUst" l={'Umsatzsteuer 19 % (' + KK.ust + ')'} def={KK.ust} />}
       </div></div>
-      <div className="darsec"><h6>Notiz</h6><textarea className="darnotiz" value={w.notiz || ''} onChange={e => setW('notiz', e.target.value)} placeholder="Bearbeitungsvermerk …" /></div>
       <div className="darfoot">
         <label className="darstatussel">Status&nbsp;<select value={p.status} onChange={e => setStatus(e.target.value)}>{Object.keys(STATUS).map(s => <option key={s} value={s}>{STATUS[s][1]}</option>)}</select></label>
       </div>
