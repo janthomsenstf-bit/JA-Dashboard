@@ -59,10 +59,14 @@ function avatarColor(id) {
 
 // ── Große E-Mail-Karte mit KI-Zusammenfassung (einmal erzeugt + gecacht) ────────
 
-function EmailCard({ client, event, onOpen, onErledigt, onCacheSummary }) {
+function EmailCard({ client, event, onOpen, onErledigt, onCacheSummary, onAufgabe }) {
   const [sum, setSum]     = useState(event.kiZusammenfassung || null)
   const [emp, setEmp]     = useState(event.kiEmpfehlung || '')
   const [laedt, setLaedt] = useState(false)
+  const [aufgabeOffen, setAufgabeOffen] = useState(false)
+  const [aTitel, setATitel]   = useState('')
+  const [aFaellig, setAFaellig] = useState('')
+  const [aGemerkt, setAGemerkt] = useState('')   // Bestätigung an der Karte
   const triedRef = useRef(false)
   const sehrNeu = isSehrNeu(event.erstelltAm)
   const col = avatarColor(client.id)
@@ -90,6 +94,30 @@ function EmailCard({ client, event, onOpen, onErledigt, onCacheSummary }) {
     })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Formular öffnen: Titel aus KI-Empfehlung, sonst aus dem Betreff vorschlagen.
+  function aufgabeOeffnen() {
+    setATitel(emp || event.betreff || '')
+    setAFaellig('')
+    setAufgabeOffen(true)
+  }
+
+  // Legt die Aufgabe an. Die Mail bleibt bewusst offen – „Erledigt" bleibt ein
+  // eigener, bewusster Klick.
+  function aufgabeSpeichern() {
+    const titel = aTitel.trim()
+    if (!titel) return
+    onAufgabe?.({
+      titel,
+      mandantId: client.id,
+      faellig:   aFaellig ? `${aFaellig}T12:00:00` : null,
+      beschreibung: [event.betreff ? `Aus E-Mail: ${event.betreff}` : '', event.absender ? `Absender: ${event.absender}` : '']
+        .filter(Boolean).join('\n'),
+    })
+    setAufgabeOffen(false)
+    setAGemerkt(aFaellig ? `✓ Aufgabe angelegt · fällig ${fmtDate(aFaellig)}` : '✓ Aufgabe angelegt')
+    setTimeout(() => setAGemerkt(''), 6000)
+  }
 
   return (
     <div style={{
@@ -124,8 +152,41 @@ function EmailCard({ client, event, onOpen, onErledigt, onCacheSummary }) {
 
         <div style={{ display: 'flex', gap: '9px', marginTop: '11px', flexWrap: 'wrap', alignItems: 'center' }}>
           <button className="btn btn-primary btn-sm" onClick={onOpen} style={{ fontSize: '11.5px' }}>✉️ Öffnen &amp; antworten</button>
+          {onAufgabe && !aufgabeOffen && (
+            <button className="btn btn-ghost btn-sm" onClick={aufgabeOeffnen}
+              title="Aufgabe aus dieser Mail anlegen – die Mail bleibt offen"
+              style={{ fontSize: '11.5px' }}>📋 Aufgabe anlegen</button>
+          )}
           <button className="btn btn-ghost btn-sm" onClick={onErledigt} style={{ fontSize: '11.5px', color: 'var(--green)' }}>✓ Erledigt</button>
+          {aGemerkt && <span style={{ fontSize: '11.5px', fontWeight: 600, color: 'var(--green)' }}>{aGemerkt}</span>}
         </div>
+
+        {aufgabeOffen && (
+          <div style={{ marginTop: '10px', padding: '11px 12px', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)' }}>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+              <input
+                autoFocus
+                value={aTitel}
+                onChange={e => setATitel(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') aufgabeSpeichern(); if (e.key === 'Escape') setAufgabeOffen(false) }}
+                placeholder="Was ist zu tun?"
+                style={{ flex: '1 1 260px', minWidth: 0, fontSize: '12.5px', padding: '6px 9px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border2)', background: 'var(--surface)', color: 'var(--text)' }}
+              />
+              <input
+                type="date"
+                value={aFaellig}
+                onChange={e => setAFaellig(e.target.value)}
+                title="Fällig am (optional)"
+                style={{ fontSize: '12.5px', padding: '6px 9px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border2)', background: 'var(--surface)', color: 'var(--text)' }}
+              />
+              <button className="btn btn-primary btn-sm" onClick={aufgabeSpeichern} disabled={!aTitel.trim()} style={{ fontSize: '11.5px' }}>Anlegen</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => setAufgabeOffen(false)} style={{ fontSize: '11.5px' }}>Abbrechen</button>
+            </div>
+            <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '7px' }}>
+              Für {client.name} · ohne Datum landet sie in der Aufgabenliste ohne Frist. Die Mail bleibt offen.
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -171,7 +232,7 @@ function ZonenTitel({ children }) {
 
 export default function StartseiteHome({
   clients, aufgaben = [], onSelectClient, onSelectClientAtKomm, onUpdateClient, onRefresh, onOeffneEingang,
-  unbekannteEmails = [], onAssignEmail, onDismissUnbekannt, emailVorlagen = [], onNeuerMandantAusMail,
+  unbekannteEmails = [], onAssignEmail, onDismissUnbekannt, emailVorlagen = [], onNeuerMandantAusMail, onAddAufgabe,
 }) {
   const activeClients = useMemo(() => clients.filter(c => !c.archiviert), [clients])
   const [botKarten, setBotKarten] = useState([])   // bot_inbox: Handy-Meldungen + Beleg-Freigaben
@@ -351,7 +412,8 @@ export default function StartseiteHome({
                 <EmailCard key={`${client.id}-${event.id}`} client={client} event={event}
                   onOpen={() => onSelectClientAtKomm(client.id)}
                   onErledigt={() => handleErledigt(client, event)}
-                  onCacheSummary={cacheSummary} />
+                  onCacheSummary={cacheSummary}
+                  onAufgabe={onAddAufgabe ? (a) => onAddAufgabe({ typ: 'einmal', erledigt: false, ...a }) : undefined} />
               ))}
             </div>
             {offeneEmails.length > 3 && (

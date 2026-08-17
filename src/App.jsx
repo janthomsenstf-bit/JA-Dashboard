@@ -1790,6 +1790,7 @@ export default function App() {
                   onDismissUnbekannt={(uid, account) => setUnbekannteEmails(prev => prev.filter(e => !(e.uid === uid && e.account === account)))}
                   emailVorlagen={emailVorlagen}
                   onNeuerMandantAusMail={(mail) => { setNeuAusMail(mail); setShowNewModal(true) }}
+                  onAddAufgabe={addAufgabe}
                 />
               </div>
             )}
