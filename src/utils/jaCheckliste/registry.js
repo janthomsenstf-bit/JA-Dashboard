@@ -242,6 +242,21 @@ export function ust10Tage(row, jahr, dauerfrist, K) {
 }
 
 // ── Modul-Registry (Typ C = Fachanwendungen) ──────────────────────────────────
+/* Welches Kalenderjahr gilt? Das Wirtschaftsjahr, falls dafuer ein BMF-Schreiben
+   hinterlegt ist – sonst das juengste vorhandene. Frueher wurde das Wirtschafts-
+   jahr auch dann als Vorgabe gesetzt, wenn es gar keine Option war: das Auswahl-
+   feld zeigte dann das erste Jahr der Liste, gerechnet wurde mit einem anderen. */
+export function seJahrWahl(w) {
+  if (w && w.jahr && SE_JAHRE[String(w.jahr)]) return String(w.jahr)
+  const wj = String(getStichtag().getFullYear())
+  if (SE_JAHRE[wj]) return wj
+  return String(SE_JAHRE_LISTE[SE_JAHRE_LISTE.length - 1])
+}
+export function seJahrAbweichend(w) {
+  const wj = String(getStichtag().getFullYear())
+  return !SE_JAHRE[wj] ? wj : null
+}
+
 export const MODULE = {
   bewirtung: { name: 'Bewirtungsaufwendungen', bereich: 'ba', typ: 'C',
     felder: [{ k: 'anlass', l: 'Anlass / bewirtete Personen', t: 'text' }, { k: 'gaeste', l: 'Anzahl Teilnehmer', t: 'num' },
@@ -305,7 +320,7 @@ export const MODULE = {
       { k: 'fNonFood', label: 'Non-Food-Entnahmen (Tabak, Bekleidung, Elektro …) sind gesondert aufgezeichnet' } ],
     felder: (ctx, w) => {
       const skr = w.skr === '04' ? '04' : '03'
-      const jahr = String(w.jahr || getStichtag().getFullYear())
+      const jahr = seJahrWahl(w)
       const jahrDaten = SE_JAHRE[jahr]
       const zweigOpt = jahrDaten
         ? Object.entries(jahrDaten.zweige).map(([k, z]) => [k, z.label + '  (' + z.erm + ' / ' + z.voll + ')'])
@@ -313,7 +328,7 @@ export const MODULE = {
       const f = [
         { k: 'skr', l: 'Kontenrahmen', t: 'select', def: '03', opt: [['03', 'SKR 03'], ['04', 'SKR 04']] },
         { k: 'jahr', l: 'Kalenderjahr (maßgeblich ist das BMF-Schreiben)', t: 'select',
-          def: String(getStichtag().getFullYear()), opt: SE_JAHRE_LISTE.map(j => [String(j), String(j)]) },
+          def: jahr, opt: SE_JAHRE_LISTE.map(j => [String(j), String(j)]) },
         { k: 'zweig', l: 'Gewerbezweig', t: 'select', full: true, opt: zweigOpt },
         { k: 'zweig2', l: 'Zweiter Gewerbezweig bei gemischtem Betrieb (nur der höhere zählt)', t: 'select', full: true,
           opt: [['', '– keiner –']].concat(zweigOpt) },
@@ -333,7 +348,7 @@ export const MODULE = {
       const r2 = x => Math.round(x * 100) / 100
       const skr = w.skr === '04' ? '04' : '03'
       const K = SE_KONTEN[skr]
-      const jahr = String(w.jahr || getStichtag().getFullYear())
+      const jahr = seJahrWahl(w)
       const erg = [], hinweise = [], buchungen = []
       const D = SE_JAHRE[jahr]
 
@@ -342,6 +357,8 @@ export const MODULE = {
         hinweise.push('Für ' + jahr + ' sind keine Pauschbeträge hinterlegt. Werte niemals hochrechnen – das BMF-Schreiben des Jahres abwarten und in pauschbetraege.js eintragen.')
         return { ergebnisse: [], total: { l: 'kein Ansatz möglich', v: 0 }, hinweise, buchungen }
       }
+      const abw = seJahrAbweichend(w)
+      if (abw && !w.jahr) hinweise.push('Das Wirtschaftsjahr ' + abw + ' hat noch kein hinterlegtes BMF-Schreiben. Gerechnet wird mit ' + jahr + '. Sobald das Schreiben für ' + abw + ' vorliegt, in pauschbetraege.js eintragen und hier umstellen.')
       if (!D.geprueft) hinweise.push('⚠️ Die Werte für ' + jahr + ' sind noch nicht gegen das Original-BMF-Schreiben verprobt. Vor Verwendung prüfen.')
 
       // R5 – gemischter Betrieb: nur die höhere Zeile, und zwar vollständig.
