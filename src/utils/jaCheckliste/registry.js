@@ -5,6 +5,9 @@
  * datengetrieben. KEINE DOM-Zugriffe hier.
  */
 
+import { SE_JAHRE, SE_JAHRE_LISTE, SE_KONTEN, SE_ALTERSSTAFFEL, seFaktor } from './pauschbetraege.js'
+export { SE_JAHRE, SE_KONTEN, SE_ALTERSSTAFFEL }
+
 // ── Helfer ──────────────────────────────────────────────────────────────────
 export const eur = n => (isFinite(n) ? n : 0).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })
 export const num = v => {
@@ -290,7 +293,152 @@ export const MODULE = {
     felder: [{ k: 'notiz', l: 'Notiz / Abweichungen dokumentieren', t: 'area' }] },
   erloesschmaelerung: { name: 'Erlösschmälerungen / Skonti', bereich: 'be', typ: 'B', konto: '8730', bez: 'Erlösschmälerungen' },
   igLieferung: { name: 'Innergemeinschaftliche Lieferungen', bereich: 'be', typ: 'A' },
-  sachentnahme: { name: 'Sachentnahmen Gastronomie (Pauschbeträge)', bereich: 'be', typ: 'C', hinweis: 'Pauschbeträge-Rechner folgt' },
+  sachentnahme: { name: 'Sachentnahmen – Pauschbeträge (unentgeltliche Wertabgaben)', bereich: 'be', typ: 'C',
+    stand: '08/2026', konten: SE_KONTEN, posLabel: 'Zum Haushalt gehörende Personen',
+    quellen: ['§ 148 S. 1 AO (Erleichterung von der Einzelaufzeichnung)',
+              '§ 4 Abs. 1 S. 2, § 6 Abs. 1 Nr. 4 EStG (Entnahme)',
+              '§ 3 Abs. 1b S. 1 Nr. 1, § 10 Abs. 4 S. 1 Nr. 1 UStG (unentgeltliche Wertabgabe)',
+              'BMF v. 12.02.2024 (KJ 2024) · BMF v. 21.01.2025 (KJ 2025)',
+              'Vorlage: Spielplan-Mappe, Blatt „Gastro"'],
+    flags: [
+      { k: 'fPersonal', label: 'Betrieb beschäftigt Personal (Personalessen ist Sachbezug, nicht Sachentnahme)' },
+      { k: 'fNonFood', label: 'Non-Food-Entnahmen (Tabak, Bekleidung, Elektro …) sind gesondert aufgezeichnet' } ],
+    felder: (ctx, w) => {
+      const skr = w.skr === '04' ? '04' : '03'
+      const jahr = String(w.jahr || getStichtag().getFullYear())
+      const jahrDaten = SE_JAHRE[jahr]
+      const zweigOpt = jahrDaten
+        ? Object.entries(jahrDaten.zweige).map(([k, z]) => [k, z.label + '  (' + z.erm + ' / ' + z.voll + ')'])
+        : [['', 'kein Jahr hinterlegt']]
+      const f = [
+        { k: 'skr', l: 'Kontenrahmen', t: 'select', def: '03', opt: [['03', 'SKR 03'], ['04', 'SKR 04']] },
+        { k: 'jahr', l: 'Kalenderjahr (maßgeblich ist das BMF-Schreiben)', t: 'select',
+          def: String(getStichtag().getFullYear()), opt: SE_JAHRE_LISTE.map(j => [String(j), String(j)]) },
+        { k: 'zweig', l: 'Gewerbezweig', t: 'select', full: true, opt: zweigOpt },
+        { k: 'zweig2', l: 'Zweiter Gewerbezweig bei gemischtem Betrieb (nur der höhere zählt)', t: 'select', full: true,
+          opt: [['', '– keiner –']].concat(zweigOpt) },
+        { k: 'monate', l: 'Monate mit Sachverhalt', t: 'num', def: '12' },
+      ]
+      if ((num(w.monate) || 12) < 12) f.push({ k: 'begruendung', l: 'Begründung für den zeitanteiligen Ansatz (Pflicht)', t: 'area', full: true })
+      f.push({ k: 'altersKonvention', l: 'Altersabgrenzung', t: 'select', full: true, def: 'jahresbeginn', opt: [
+        ['jahresbeginn', 'Stand zu Jahresbeginn (vereinfachend)'],
+        ['monatsgenau', 'monatsgenau (braucht Geburtsdaten)'] ] })
+      f.push({ k: 'notiz', l: 'Notiz', t: 'area', full: true })
+      return f
+    },
+    positionen: true,
+    posFelder: [{ k: 'bez', l: 'Person', t: 'text' }, { k: 'geb', l: 'Geburtsdatum', t: 'date' },
+                { k: 'alter', l: 'Alter (falls kein Geburtsdatum)', t: 'num' }],
+    rechnen: (w) => {
+      const r2 = x => Math.round(x * 100) / 100
+      const skr = w.skr === '04' ? '04' : '03'
+      const K = SE_KONTEN[skr]
+      const jahr = String(w.jahr || getStichtag().getFullYear())
+      const erg = [], hinweise = [], buchungen = []
+      const D = SE_JAHRE[jahr]
+
+      // V1 – ohne freigegebene Stammdaten wird nicht geschätzt.
+      if (!D) {
+        hinweise.push('Für ' + jahr + ' sind keine Pauschbeträge hinterlegt. Werte niemals hochrechnen – das BMF-Schreiben des Jahres abwarten und in pauschbetraege.js eintragen.')
+        return { ergebnisse: [], total: { l: 'kein Ansatz möglich', v: 0 }, hinweise, buchungen }
+      }
+      if (!D.geprueft) hinweise.push('⚠️ Die Werte für ' + jahr + ' sind noch nicht gegen das Original-BMF-Schreiben verprobt. Vor Verwendung prüfen.')
+
+      // R5 – gemischter Betrieb: nur die höhere Zeile, und zwar vollständig.
+      const kandidaten = [w.zweig, w.zweig2].filter(k => k && D.zweige[k])
+      if (!kandidaten.length) {
+        hinweise.push('Bitte den Gewerbezweig wählen. Betriebe außerhalb der neun BMF-Zweige haben keinen Pauschbetrag – dort gilt Einzelbewertung mit dem Teilwert (§ 6 Abs. 1 Nr. 4 EStG).')
+        return { ergebnisse: [], total: { l: 'kein Ansatz möglich', v: 0 }, hinweise, buchungen }
+      }
+      let zweigKey = kandidaten[0]
+      if (kandidaten.length > 1) {
+        const ges = k => D.zweige[k].erm + D.zweige[k].voll
+        zweigKey = ges(kandidaten[1]) > ges(kandidaten[0]) ? kandidaten[1] : kandidaten[0]
+        const andere = kandidaten.find(k => k !== zweigKey)
+        hinweise.push('Gemischter Betrieb: angesetzt wird nur „' + D.zweige[zweigKey].label + '" (' + eur(ges(zweigKey))
+          + ') statt „' + D.zweige[andere].label + '" (' + eur(ges(andere)) + '), und zwar die vollständige Zeile – keine Summenbildung (BMF, Vorbemerkung Nr. 6).')
+      }
+      const S = D.zweige[zweigKey]
+
+      // R2 – Personenfaktor. Wird protokolliert, weil er in der Prüfung die
+      // erste Rückfrage ist.
+      const monate = Math.min(12, Math.max(0, num(w.monate) || 12))
+      const monatsgenau = w.altersKonvention === 'monatsgenau'
+      let faktor = 0
+      const personen = (w._pos || []).filter(p => p && (p.bez || p.geb || p.alter))
+      personen.forEach(p => {
+        let f = 1, wie = ''
+        const geb = p.geb ? new Date(p.geb) : null
+        if (geb && !isNaN(geb) && monatsgenau) {
+          // Faktor je Monat mitteln – so wirkt ein Geburtstag ab dem Folgemonat.
+          let summe = 0
+          for (let m = 0; m < monate; m++) {
+            const stichtag = new Date(+jahr, m, 1)
+            let a = stichtag.getFullYear() - geb.getFullYear()
+            const vorGeb = stichtag.getMonth() < geb.getMonth() || (stichtag.getMonth() === geb.getMonth() && stichtag.getDate() < geb.getDate())
+            if (vorGeb) a--
+            summe += seFaktor(a)
+          }
+          f = monate ? summe / monate : 0
+          wie = 'monatsgenau'
+        } else {
+          let a = null
+          if (geb && !isNaN(geb)) { a = +jahr - geb.getFullYear() - (geb.getMonth() > 0 || geb.getDate() > 1 ? 1 : 0); wie = 'Stand 01.01.' }
+          else if (p.alter !== '' && p.alter != null) { a = num(p.alter); wie = 'Alter erfasst' }
+          f = seFaktor(a)
+        }
+        faktor += f
+        erg.push({ l: '  ' + (p.bez || 'Person') + (wie ? ' (' + wie + ')' : '') + ' → Faktor ' + String(Math.round(f * 100) / 100).replace('.', ','), v: null })
+      })
+      // V3
+      if (!personen.length || faktor <= 0) {
+        hinweise.push('Personenfaktor 0 – bitte die zum Haushalt gehörenden Personen erfassen. Kinder bis zum vollendeten 2. Lebensjahr bleiben außer Ansatz, bis zum vollendeten 12. mit dem halben Wert.')
+        return { ergebnisse: erg, total: { l: 'kein Ansatz möglich', v: 0 }, hinweise, buchungen }
+      }
+
+      const anteil = monate / 12
+      const nettoErm = r2(S.erm * faktor * anteil)
+      const nettoVoll = r2(S.voll * faktor * anteil)
+      const ustErm = r2(nettoErm * D.ustErm)
+      const ustVoll = r2(nettoVoll * D.ustVoll)
+      const bruttoErm = r2(nettoErm + ustErm)
+      const bruttoVoll = r2(nettoVoll + ustVoll)
+
+      erg.push({ l: 'Personenfaktor', v: faktor })
+      erg.push({ l: S.label + ' ' + jahr + ' – Jahreswert je Person (' + eur(S.erm) + ' / ' + eur(S.voll) + ')', v: S.erm + S.voll })
+      if (monate < 12) erg.push({ l: 'zeitanteilig ' + monate + ' von 12 Monaten', v: null })
+      erg.push({ l: 'Netto ermäßigter Steuersatz', v: nettoErm })
+      erg.push({ l: 'Netto voller Steuersatz', v: nettoVoll })
+      erg.push({ l: 'Netto gesamt', v: r2(nettoErm + nettoVoll), stark: 1 })
+      erg.push({ l: 'Umsatzsteuer ' + Math.round(D.ustErm * 100) + ' %', v: ustErm })
+      erg.push({ l: 'Umsatzsteuer ' + Math.round(D.ustVoll * 100) + ' %', v: ustVoll })
+      erg.push({ l: 'Brutto gesamt', v: r2(bruttoErm + bruttoVoll), stark: 1 })
+
+      // R7 – monatliche Verbuchung mit Ausgleich im letzten Monat, damit die
+      // Summe der Voranmeldungen exakt dem Jahreswert entspricht.
+      const n = Math.max(1, monate)
+      const mErm = r2(bruttoErm / n), mVoll = r2(bruttoVoll / n)
+      const letztErm = r2(bruttoErm - mErm * (n - 1)), letztVoll = r2(bruttoVoll - mVoll * (n - 1))
+      erg.push({ l: 'je Monat brutto ermäßigt / voll', v: r2(mErm + mVoll) })
+      if (letztErm !== mErm || letztVoll !== mVoll)
+        erg.push({ l: 'letzter Monat mit Rundungsausgleich', v: r2(letztErm + letztVoll) })
+
+      const txt = 'Sachentn. ' + S.label + ' ' + String(Math.round(faktor * 100) / 100).replace('.', ',') + ' Pers. ' + jahr
+      if (bruttoErm) buchungen.push({ s: K.gegen, st: 'Unentgeltliche Wertabgaben', h: K.entnahme7, ht: 'Entnahme Waren ' + Math.round(D.ustErm * 100) + ' % (Automatikkonto, brutto)', betr: mErm, text: txt + ' – je Monat' })
+      if (bruttoVoll) buchungen.push({ s: K.gegen, st: 'Unentgeltliche Wertabgaben', h: K.entnahme19, ht: 'Entnahme Waren ' + Math.round(D.ustVoll * 100) + ' % (Automatikkonto, brutto)', betr: mVoll, text: txt + ' – je Monat' })
+      if (letztErm !== mErm && bruttoErm) buchungen.push({ s: K.gegen, st: 'Unentgeltliche Wertabgaben', h: K.entnahme7, ht: 'Entnahme Waren ' + Math.round(D.ustErm * 100) + ' %', betr: letztErm, text: txt + ' – letzter Monat (Ausgleich)' })
+      if (letztVoll !== mVoll && bruttoVoll) buchungen.push({ s: K.gegen, st: 'Unentgeltliche Wertabgaben', h: K.entnahme19, ht: 'Entnahme Waren ' + Math.round(D.ustVoll * 100) + ' %', betr: letztVoll, text: txt + ' – letzter Monat (Ausgleich)' })
+
+      hinweise.push('Quelle: ' + D.quelle + (D.geprueft ? ' – ' + D.geprueft : ''))
+      hinweise.push('Auf die Entnahmekonten ' + K.entnahme7 + ' / ' + K.entnahme19 + ' wird der BRUTTObetrag gebucht; es sind Automatikkonten, die Umsatzsteuer spaltet die Buchführung selbst ab. Netto zu buchen ergibt eine zu niedrige Umsatzsteuer.')
+      hinweise.push('Zu- und Abschläge wegen Essgewohnheiten, Krankheit, Urlaub oder Diät sind unzulässig (BMF, Vorbemerkung Nr. 3). Zeitanteilig nur bei nachweislich vollständiger behördlicher Schließung – oder wenn der Betrieb nur einen Teil des Jahres bestand.')
+      if (monate < 12 && !(w.begruendung || '').trim()) hinweise.push('⚠️ Zeitanteiliger Ansatz ohne Begründung. Bitte Eröffnung, Aufgabe oder behördliche Schließung dokumentieren.')
+      if (!w.fNonFood) hinweise.push('Unentgeltliche Wertabgaben, die weder Nahrungsmittel noch Getränke sind (Tabak, Bekleidung, Elektro, Sonderposten), müssen einzeln aufgezeichnet werden (BMF, Vorbemerkung Nr. 5).')
+      if (w.fPersonal) hinweise.push('Personalessen ist kein Fall dieser Pauschbeträge, sondern Sachbezug beim Arbeitnehmer (§ 8 Abs. 2 EStG i. V. m. SvEV). Getrennt erfassen, sonst wird doppelt oder gar nicht angesetzt.')
+      if (!S.voll) hinweise.push('Für diesen Gewerbezweig sieht das BMF keinen Anteil zum vollen Steuersatz vor – es entsteht nur die Buchung zum ermäßigten Satz.')
+
+      return { ergebnisse: erg, total: { l: 'Brutto-Entnahme ' + jahr, v: r2(bruttoErm + bruttoVoll) }, hinweise, buchungen }
+    } },
   eigenverbrauch: { name: 'Unentgeltliche Wertabgaben / Eigenverbrauch', bereich: 'be', typ: 'A' },
   kleinunternehmer: { name: 'Kleinunternehmerregelung prüfen', bereich: 'be', typ: 'A' },
   ustVerprobung: { name: 'Umsatzsteuer-Verprobung', bereich: 'be', typ: 'A' },
