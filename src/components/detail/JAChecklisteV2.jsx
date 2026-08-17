@@ -645,6 +645,11 @@ function ModulCard({ p, ctx, data, mutate, removePunkt, darOpen, setDarOpen }) {
         <span className={'stpill ' + st[0]}>{st[1]}</span>
       </div>
       <div className="pp__b">
+        {mod && mod.veraltet && (
+          <div className="jhint" style={{ margin: '0 0 12px', padding: '9px 12px', borderRadius: '8px', background: 'rgba(250,178,25,.16)' }}>
+            ⚠️ {mod.veraltet.text}
+          </div>
+        )}
         {mod && mod.custom === 'darlehen'
           ? <Darlehen p={p} mutate={mutate} darOpen={darOpen} setDarOpen={setDarOpen} />
           : mod && mod.custom === 'kfz'
@@ -918,7 +923,9 @@ function Abstimmung({ data, filter, setFilter, onJump }) {
 // ── Modul-Picker ──────────────────────────────────────────────────────────────
 function ModulPicker({ bereich, data, onAdd, onRemove, onClose }) {
   const vorhanden = new Set(alleP(data).map(p => p.modul).filter(Boolean))
-  const list = Object.entries(MODULE).filter(([id, m]) => m.bereich === bereich)
+  // Abgelöste Module werden nicht mehr angeboten. Sie bleiben in der Registry,
+  // damit bereits angelegte Prüfpunkte weiter angezeigt werden.
+  const list = Object.entries(MODULE).filter(([id, m]) => m.bereich === bereich && !m.veraltet)
   return (
     <div className="jac2-ov" onClick={e => { if (e.target.classList.contains('jac2-ov')) onClose() }}>
       <div className="jac2-modal">

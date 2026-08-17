@@ -439,7 +439,12 @@ export const MODULE = {
 
       return { ergebnisse: erg, total: { l: 'Brutto-Entnahme ' + jahr, v: r2(bruttoErm + bruttoVoll) }, hinweise, buchungen }
     } },
-  eigenverbrauch: { name: 'Unentgeltliche Wertabgaben / Eigenverbrauch', bereich: 'be', typ: 'A' },
+  // Abgeloest durch 'sachentnahme' (Pauschbetraege nach BMF). Der Eintrag bleibt
+  // bestehen, damit bereits angelegte Pruefpunkte weiter angezeigt werden und
+  // keine Mandantendaten verlorengehen – er wird nur nicht mehr zur Auswahl
+  // angeboten.
+  eigenverbrauch: { name: 'Unentgeltliche Wertabgaben / Eigenverbrauch', bereich: 'be', typ: 'A',
+    veraltet: { statt: 'sachentnahme', text: 'Abgeloest durch das Modul „Sachentnahmen – Pauschbetraege\". Dieses rechnet die BMF-Pauschbetraege je Gewerbezweig und Person aus und erzeugt die Buchungen. Diesen Punkt uebernehmen und danach entfernen.' } },
   kleinunternehmer: { name: 'Kleinunternehmerregelung prüfen', bereich: 'be', typ: 'A' },
   ustVerprobung: { name: 'Umsatzsteuer-Verprobung', bereich: 'be', typ: 'A' },
   liebhaberei: { name: 'Liebhaberei / Gewinnerzielungsabsicht', bereich: 'be', typ: 'A' },
