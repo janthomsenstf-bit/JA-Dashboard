@@ -119,7 +119,7 @@ function loadCustomStatus() {
 }
 function saveCustomStatus(list) { try { localStorage.setItem(JA_STATUS_CUSTOM_KEY, JSON.stringify(list)) } catch {} }
 
-function TypOptions({ bereich = 'allgemein' } = {}) {
+function TypOptions({ bereich = 'allgemein', mitFachbereichen = false } = {}) {
   // In den Spezial-Bereichen nur der jeweilige Typ zur Auswahl.
   if (bereich === 'jahresabschluss') {
     const v = AUFTRAGS_TYP_CFG.jahresabschluss
@@ -140,6 +140,16 @@ function TypOptions({ bereich = 'allgemein' } = {}) {
       <optgroup label="Etablering / International">
         {etab.map(([k, v]) => <option key={k} value={k}>{v.icon} {v.label}</option>)}
       </optgroup>
+      {/* Jahresabschluss und Lohn stehen hier zur Auswahl, damit man sie findet –
+          die Auswahl legt nichts an, sondern springt in den zuständigen Reiter.
+          Nur in der Kopfzeilen-Auswahl, nicht in Batch-/Serien-Formularen. */}
+      {mitFachbereichen && (
+        <optgroup label="Eigene Reiter – öffnet den Reiter">
+          {['jahresabschluss', 'lohn'].map(k => (
+            <option key={k} value={k}>{AUFTRAGS_TYP_CFG[k].icon} {AUFTRAGS_TYP_CFG[k].label} →</option>
+          ))}
+        </optgroup>
+      )}
     </>
   )
 }
@@ -4650,7 +4660,7 @@ function SerieErstellenPanel({ onCreate, onClose }) {
 }
 
 // ── Hauptkomponente ───────────────────────────────────────────────────────────
-export default function AuftraegeTab({ client, onUpdate, initialFilterTyp = 'alle', bereich = 'allgemein', nurAuftragId = null, onClearNur, onOpenEmail, emailVorlagen = [], emailSignaturen = [], onedriveTokens = null, onUpdateOnedriveTokens, onAddRueckfrage, onToggleRueckfrage, onDeleteRueckfrage, onUpdateRueckfrageAntwort, onUpdateRueckfrageBuchungskonto, onAddRueckfrageFromCheckliste }) {
+export default function AuftraegeTab({ client, onUpdate, initialFilterTyp = 'alle', bereich = 'allgemein', nurAuftragId = null, onClearNur, onOpenEmail, emailVorlagen = [], emailSignaturen = [], onedriveTokens = null, onUpdateOnedriveTokens, onAddRueckfrage, onToggleRueckfrage, onDeleteRueckfrage, onUpdateRueckfrageAntwort, onUpdateRueckfrageBuchungskonto, onAddRueckfrageFromCheckliste, onWechselZuTyp }) {
   const bereichCfg = BEREICH_CFG[bereich] ?? BEREICH_CFG.allgemein
 
   // WICHTIG (Datensicherheit): allAuftraege = die VOLLSTÄNDIGE Liste. Sie ist die
@@ -4685,7 +4695,18 @@ export default function AuftraegeTab({ client, onUpdate, initialFilterTyp = 'all
 
   function save(list) { onUpdate({ auftraege: list }) }
 
+  // Jahresabschluss und Lohn werden in ihren eigenen Reitern angelegt. Wird so
+  // ein Typ hier gewählt, springen wir dorthin, statt einen Auftrag anzulegen,
+  // der im falschen Reiter landen würde.
+  const istFachbereich = (typ) => typ === 'jahresabschluss' || typ === 'lohn'
+
+  function waehleQuickTyp(typ) {
+    if (bereich === 'allgemein' && istFachbereich(typ)) { onWechselZuTyp?.(typ); return }
+    setQuickTyp(typ)
+  }
+
   function createAuftrag() {
+    if (bereich === 'allgemein' && istFachbereich(quickTyp)) { onWechselZuTyp?.(quickTyp); return }
     const au = mkAuftrag(quickTyp)
     save([au, ...allAuftraege])
     setExpandedId(au.id)
@@ -4771,9 +4792,9 @@ export default function AuftraegeTab({ client, onUpdate, initialFilterTyp = 'all
         )}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
           {bereich === 'allgemein' && (
-            <select value={quickTyp} onChange={e => setQuickTyp(e.target.value)}
+            <select value={quickTyp} onChange={e => waehleQuickTyp(e.target.value)}
               style={{ padding: '6px 10px', borderRadius: '7px', border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text)', fontSize: '12px', cursor: 'pointer' }}>
-              <TypOptions bereich={bereich} />
+              <TypOptions bereich={bereich} mitFachbereichen={!!onWechselZuTyp} />
             </select>
           )}
           <button onClick={createAuftrag}
@@ -4794,6 +4815,39 @@ export default function AuftraegeTab({ client, onUpdate, initialFilterTyp = 'all
           </button>
         </div>
       </div>
+
+      {/* ── Hinweis: Jahresabschluss und Lohn liegen in eigenen Reitern ──
+          Ohne diesen Hinweis sucht man sie hier vergeblich (die Auftragsdaten
+          sind eine gemeinsame Liste, nur die Anzeige ist aufgeteilt). */}
+      {bereich === 'allgemein' && onWechselZuTyp && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap',
+          marginBottom: '10px', padding: '7px 11px', borderRadius: '8px',
+          background: 'var(--surface2)', border: '1px solid var(--border)',
+          fontSize: '11.5px', color: 'var(--text-muted)',
+        }}>
+          <span>Jahresabschluss und Lohn haben eigene Reiter:</span>
+          {['jahresabschluss', 'lohn'].map(k => {
+            const cfg = AUFTRAGS_TYP_CFG[k]
+            const anzahl = allAuftraege.filter(a => a.typ === k).length
+            return (
+              <button key={k} onClick={() => onWechselZuTyp(k)}
+                title={`Zum Reiter ${cfg.label} wechseln`}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: '5px',
+                  padding: '3px 9px', borderRadius: '20px', cursor: 'pointer',
+                  border: `1px solid ${cfg.color ?? 'var(--border2)'}55`,
+                  background: 'var(--surface)', color: 'var(--text)',
+                  fontSize: '11.5px', fontWeight: 600,
+                }}>
+                <span aria-hidden="true">{cfg.icon}</span>{cfg.label}
+                <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>{anzahl}</span>
+                <span aria-hidden="true">→</span>
+              </button>
+            )
+          })}
+        </div>
+      )}
 
       {/* ── Panels ── */}
       {showBatch          && <BatchSeriePanel  onCreate={createBatchSerie}    onClose={() => setShowBatch(false)} />}

@@ -322,6 +322,7 @@ export default function DetailView({
               nurAuftragId={nurLeistungId}
               onClearNur={() => setNurLeistungId(null)}
               initialFilterTyp={auftraegeFilterTyp}
+              onWechselZuTyp={navigateToAuftraegeTyp}
               onOpenEmail={(emailId) => {
                 setLocalPendingEmailId(emailId)
                 setActiveTab(TAB.nachrichten)
