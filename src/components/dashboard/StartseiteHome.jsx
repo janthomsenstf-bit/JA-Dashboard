@@ -61,7 +61,7 @@ function avatarColor(id) {
 
 // ── Große E-Mail-Karte mit KI-Zusammenfassung (einmal erzeugt + gecacht) ────────
 
-function EmailCard({ client, event, onOpen, onErledigt, onCacheSummary, onAufgabe, autoSummary = true }) {
+function EmailCard({ client, event, onOpen, onErledigt, onCacheSummary, onAuftrag, autoSummary = true }) {
   const [sum, setSum]     = useState(event.kiZusammenfassung || null)
   const [emp, setEmp]     = useState(event.kiEmpfehlung || '')
   const [laedt, setLaedt] = useState(false)
@@ -104,27 +104,29 @@ function EmailCard({ client, event, onOpen, onErledigt, onCacheSummary, onAufgab
     })()
   }
 
-  // Formular öffnen: Titel aus KI-Empfehlung, sonst aus dem Betreff vorschlagen.
-  function aufgabeOeffnen() {
+  // Formular öffnen: Bezeichnung aus KI-Empfehlung, sonst aus dem Betreff vorschlagen.
+  function auftragOeffnen() {
     setATitel(emp || event.betreff || '')
     setAFaellig('')
     setAufgabeOffen(true)
   }
 
-  // Legt die Aufgabe an. Die Mail bleibt bewusst offen – „Erledigt" bleibt ein
-  // eigener, bewusster Klick.
-  function aufgabeSpeichern() {
-    const titel = aTitel.trim()
-    if (!titel) return
-    onAufgabe?.({
-      titel,
-      mandantId: client.id,
-      faellig:   aFaellig ? `${aFaellig}T12:00:00` : null,
-      beschreibung: [event.betreff ? `Aus E-Mail: ${event.betreff}` : '', event.absender ? `Absender: ${event.absender}` : '']
+  // Legt einen Auftrag beim Mandanten an – mit Frist, damit er in der
+  // Auftrags-Übersicht (Menüpunkt „Aufträge") auftaucht. Die Mail bleibt
+  // bewusst offen – „Erledigt" bleibt ein eigener, bewusster Klick.
+  function auftragSpeichern() {
+    const bezeichnung = aTitel.trim()
+    if (!bezeichnung) return
+    onAuftrag?.({
+      clientId: client.id,
+      bezeichnung,
+      frist: aFaellig || '',
+      notiz: [event.betreff ? `Aus E-Mail: ${event.betreff}` : '', event.absender ? `Absender: ${event.absender}` : '']
         .filter(Boolean).join('\n'),
+      mail: { betreff: event.betreff || '', absender: event.absender || '', datum: event.erstelltAm || null },
     })
     setAufgabeOffen(false)
-    setAGemerkt(aFaellig ? `✓ Aufgabe angelegt · fällig ${fmtDate(aFaellig)}` : '✓ Aufgabe angelegt')
+    setAGemerkt(aFaellig ? `✓ Auftrag angelegt · Frist ${fmtDate(aFaellig)}` : '✓ Auftrag angelegt')
     setTimeout(() => setAGemerkt(''), 6000)
   }
 
@@ -171,10 +173,10 @@ function EmailCard({ client, event, onOpen, onErledigt, onCacheSummary, onAufgab
             <button className="btn btn-ghost btn-sm" onClick={zusammenfassen} style={{ fontSize: '11.5px' }}
               title="Diese Mail von der KI zusammenfassen lassen">🧾 Zusammenfassen</button>
           )}
-          {onAufgabe && !aufgabeOffen && (
-            <button className="btn btn-ghost btn-sm" onClick={aufgabeOeffnen}
-              title="Aufgabe aus dieser Mail anlegen – die Mail bleibt offen"
-              style={{ fontSize: '11.5px' }}>📋 Aufgabe anlegen</button>
+          {onAuftrag && !aufgabeOffen && (
+            <button className="btn btn-ghost btn-sm" onClick={auftragOeffnen}
+              title={'Auftrag aus dieser Mail anlegen – mit Frist, erscheint unter „Aufträge". Die Mail bleibt offen.'}
+              style={{ fontSize: '11.5px' }}>📑 Auftrag anlegen</button>
           )}
           <button className="btn btn-ghost btn-sm" onClick={onErledigt} style={{ fontSize: '11.5px', color: 'var(--green)' }}>✓ Erledigt</button>
           {aGemerkt && <span style={{ fontSize: '11.5px', fontWeight: 600, color: 'var(--green)' }}>{aGemerkt}</span>}
@@ -187,22 +189,22 @@ function EmailCard({ client, event, onOpen, onErledigt, onCacheSummary, onAufgab
                 autoFocus
                 value={aTitel}
                 onChange={e => setATitel(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') aufgabeSpeichern(); if (e.key === 'Escape') setAufgabeOffen(false) }}
-                placeholder="Was ist zu tun?"
+                onKeyDown={e => { if (e.key === 'Enter') auftragSpeichern(); if (e.key === 'Escape') setAufgabeOffen(false) }}
+                placeholder="Worum geht es? (Bezeichnung des Auftrags)"
                 style={{ flex: '1 1 260px', minWidth: 0, fontSize: '12.5px', padding: '6px 9px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border2)', background: 'var(--surface)', color: 'var(--text)' }}
               />
               <input
                 type="date"
                 value={aFaellig}
                 onChange={e => setAFaellig(e.target.value)}
-                title="Fällig am (optional)"
+                title="Frist (optional)"
                 style={{ fontSize: '12.5px', padding: '6px 9px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border2)', background: 'var(--surface)', color: 'var(--text)' }}
               />
-              <button className="btn btn-primary btn-sm" onClick={aufgabeSpeichern} disabled={!aTitel.trim()} style={{ fontSize: '11.5px' }}>Anlegen</button>
+              <button className="btn btn-primary btn-sm" onClick={auftragSpeichern} disabled={!aTitel.trim()} style={{ fontSize: '11.5px' }}>Anlegen</button>
               <button className="btn btn-ghost btn-sm" onClick={() => setAufgabeOffen(false)} style={{ fontSize: '11.5px' }}>Abbrechen</button>
             </div>
             <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '7px' }}>
-              Für {client.name} · ohne Datum landet sie in der Aufgabenliste ohne Frist. Die Mail bleibt offen.
+              Auftrag für {client.name} · mit Frist erscheint er unter „Aufträge" im gesetzten Monat, ohne Frist nur beim Mandanten. Die Mail bleibt offen und wird am Auftrag verknüpft.
             </div>
           </div>
         )}
@@ -251,7 +253,7 @@ function ZonenTitel({ children }) {
 
 export default function StartseiteHome({
   clients, aufgaben = [], termine = [], onSelectClient, onSelectClientAtKomm, onUpdateClient, onRefresh, onOeffneEingang,
-  unbekannteEmails = [], onAssignEmail, onDismissUnbekannt, emailVorlagen = [], onNeuerMandantAusMail, onAddAufgabe,
+  unbekannteEmails = [], onAssignEmail, onDismissUnbekannt, emailVorlagen = [], onNeuerMandantAusMail, onAddAuftragAusMail,
 }) {
   const activeClients = useMemo(() => clients.filter(c => !c.archiviert), [clients])
   const [botKarten, setBotKarten] = useState([])   // bot_inbox: Handy-Meldungen + Beleg-Freigaben
@@ -443,7 +445,7 @@ export default function StartseiteHome({
                   onOpen={() => onSelectClientAtKomm(client.id)}
                   onErledigt={() => handleErledigt(client, event)}
                   onCacheSummary={cacheSummary}
-                  onAufgabe={onAddAufgabe ? (a) => onAddAufgabe({ typ: 'einmal', erledigt: false, ...a }) : undefined} />
+                  onAuftrag={onAddAuftragAusMail} />
               ))}
             </div>
             {offeneEmails.length > 3 && (

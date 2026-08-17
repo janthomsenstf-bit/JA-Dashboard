@@ -1141,6 +1141,33 @@ export default function App() {
   function updateTermin(id, patch) { setTermine(prev => prev.map(t => t.id === id ? { ...t, ...patch } : t)) }
   function deleteTermin(id) { setTermine(prev => prev.filter(t => t.id !== id)) }
 
+  // ── Auftrag aus einer E-Mail anlegen (Posteingang auf der Startseite) ────────
+  // Legt einen echten Auftrag beim Mandanten an – mit Frist, damit er im
+  // Menüpunkt „Aufträge" auftaucht. Die Mail wird am Auftrag verknüpft, damit
+  // später nachvollziehbar bleibt, woher er kam. Rein additiv: es wird nur die
+  // Auftragsliste des Mandanten ergänzt, nichts überschrieben.
+  function addAuftragAusMail({ clientId, bezeichnung, frist, notiz, mail }) {
+    const c = clients.find(x => x.id === clientId)
+    if (!c || !bezeichnung?.trim()) return
+    const au = mkAuftrag('freitext')
+    au.bezeichnung = bezeichnung.trim()
+    au.frist       = frist || ''
+    au.notiz       = notiz || ''
+    if (frist) {
+      const d = new Date(frist + 'T12:00:00')
+      if (!isNaN(d.getTime())) { au.jahr = d.getFullYear(); au.monat = d.getMonth() + 1 }
+    }
+    if (mail?.betreff || mail?.absender) {
+      au.verknuepfungen = [mkVerknuepfung({
+        art:      'mail',
+        betreff:  mail.betreff || '',
+        absender: mail.absender || '',
+        datum:    mail.datum || null,
+      })]
+    }
+    updateClient(clientId, { auftraege: [au, ...(c.auftraege ?? [])] })
+  }
+
   // ── Manuelle Aufgaben CRUD ────────────────────────────────────────────────────
   function addAufgabe(data) {
     setAufgabenListe(prev => [...prev, {
@@ -1844,7 +1871,7 @@ export default function App() {
                   onDismissUnbekannt={(uid, account) => setUnbekannteEmails(prev => prev.filter(e => !(e.uid === uid && e.account === account)))}
                   emailVorlagen={emailVorlagen}
                   onNeuerMandantAusMail={(mail) => { setNeuAusMail(mail); setShowNewModal(true) }}
-                  onAddAufgabe={addAufgabe}
+                  onAddAuftragAusMail={addAuftragAusMail}
                 />
               </div>
             )}
