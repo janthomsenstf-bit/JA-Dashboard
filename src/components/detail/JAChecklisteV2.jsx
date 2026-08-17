@@ -606,6 +606,50 @@ function SusaImport({ onApply, onFill, onClose }) {
 function statusCounts(cl) { const c = { offen: 0, arbeit: 0, rueck: 0, ok: 0, korr: 0 }; alleP(cl).forEach(p => { c[p.status] = (c[p.status] || 0) + 1 }); return c }
 function countBereich(cl, b) { return (cl.kategorien.find(k => (k.bereich || '_') === b)?.punkte || []).length }
 
+/* Beipackzettel eines überarbeiteten Moduls: Stand, Konten je Kontenrahmen,
+   Rechenweg und Fundstellen. Speist sich allein aus der Registry — ein Modul mit
+   `stand` bekommt den Block automatisch, ohne dass hier etwas zu ergänzen wäre. */
+function ModulInfo({ mod }) {
+  const [offen, setOffen] = useState(false)
+  const konten = mod.konten && typeof mod.konten === 'object' ? mod.konten : null
+  const rollen = { aufwand: 'Aufwand', nichtAbz: 'nicht abziehbar', gegen: 'Gegenkonto',
+    entnahme7: 'Entnahme 7 %', entnahme19: 'Entnahme 19 %', ust7: 'USt 7 %', ust19: 'USt 19 %' }
+  return (
+    <aside className="modinfo">
+      {(mod.rechenweg || []).length > 0 && (
+        <>
+          <div className="modinfo__t">Rechenweg</div>
+          <table className="modweg"><tbody>
+            {mod.rechenweg.map(([a, b], i) => <tr key={i}><td className="l">{a}</td><td>{b}</td></tr>)}
+          </tbody></table>
+        </>
+      )}
+      {konten && (
+        <>
+          <div className="modinfo__t">Konten</div>
+          {Object.entries(konten).map(([skr, k]) => (
+            <div className="modkonten" key={skr}>
+              <b>SKR{skr}</b>
+              {Object.entries(k).map(([rolle, nr]) => (
+                <span key={rolle}><code>{nr}</code> {rollen[rolle] || rolle}</span>
+              ))}
+            </div>
+          ))}
+        </>
+      )}
+      {(mod.quellen || []).length > 0 && (
+        <>
+          <div className="modinfo__t">
+            Quellen · Stand {mod.stand}
+            <button className="linkmehr" onClick={() => setOffen(o => !o)}>{offen ? 'weniger' : 'zeigen'}</button>
+          </div>
+          {offen && <ul className="modquellen">{mod.quellen.map((q, i) => <li key={i}>{q}</li>)}</ul>}
+        </>
+      )}
+    </aside>
+  )
+}
+
 /* Download der Mandanten-Vorlage. Erscheint automatisch bei jedem Modul, das in
    registry.js eine `vorlage` meldet — vorlagen.js wird erst beim Klick geladen. */
 function VorlagenKnopf({ mod, ctx, werte }) {
@@ -651,13 +695,20 @@ function ModulCard({ p, ctx, data, mutate, removePunkt, darOpen, setDarOpen }) {
             ⚠️ {mod.veraltet.text}
           </div>
         )}
-        {mod && mod.custom === 'darlehen'
-          ? <Darlehen p={p} mutate={mutate} darOpen={darOpen} setDarOpen={setDarOpen} />
-          : mod && mod.custom === 'kfz'
-            ? <BodyKfz p={p} ctx={ctx} mutate={mutate} setStatus={setStatus} />
-            : mod && mod.custom === 'ust'
-              ? <BodyUst p={p} ctx={ctx} mutate={mutate} setStatus={setStatus} />
-              : <BodyByType p={p} ctx={ctx} mutate={mutate} setStatus={setStatus} />}
+        {/* Überarbeitete Module bekommen die Seitenspalte mit Rechenweg, Konten
+            und Quellen. Der Altbestand bleibt in der bisherigen vollen Breite. */}
+        <div className={mod && mod.stand && (mod.rechenweg || mod.quellen) ? 'modzwei' : ''}>
+          <div>
+            {mod && mod.custom === 'darlehen'
+              ? <Darlehen p={p} mutate={mutate} darOpen={darOpen} setDarOpen={setDarOpen} />
+              : mod && mod.custom === 'kfz'
+                ? <BodyKfz p={p} ctx={ctx} mutate={mutate} setStatus={setStatus} />
+                : mod && mod.custom === 'ust'
+                  ? <BodyUst p={p} ctx={ctx} mutate={mutate} setStatus={setStatus} />
+                  : <BodyByType p={p} ctx={ctx} mutate={mutate} setStatus={setStatus} />}
+          </div>
+          {mod && mod.stand && (mod.rechenweg || mod.quellen) && <ModulInfo mod={mod} />}
+        </div>
         <div className="ppfoot"><button className="linkdel" onClick={() => removePunkt(p.id)}>🗑&nbsp;Prüfpunkt entfernen</button></div>
       </div>
     </div>

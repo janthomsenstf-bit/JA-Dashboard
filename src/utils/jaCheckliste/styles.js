@@ -285,5 +285,26 @@ export const JAC2_CSS = `
 .jac2 .stand{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:700;letter-spacing:.02em;
   color:#15803d;background:#dcfce7;border-radius:99px;padding:2px 7px;white-space:nowrap}
 .jac2 .pp.neu{box-shadow:inset 3px 0 0 #22c55e}
+/* Zweispaltiger Rumpf ueberarbeiteter Module: links die Eingaben, rechts der
+   Beipackzettel. Unter 1000px stapelt es. */
+.jac2 .modzwei{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:18px;align-items:start}
+@media(max-width:1000px){.jac2 .modzwei{grid-template-columns:1fr}}
+/* Im schmaleren Feld sind sieben Spalten zu viel – hoechstens drei. */
+.jac2 .modzwei .grid{grid-template-columns:repeat(auto-fit,minmax(210px,1fr))}
+.jac2 .modinfo{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-top:14px}
+.jac2 .modinfo__t{font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink2);
+  margin:0 0 8px;display:flex;align-items:center;gap:8px}
+.jac2 .modinfo__t:not(:first-child){margin-top:16px;padding-top:12px;border-top:1px solid var(--line)}
+.jac2 .modweg{width:100%;border-collapse:collapse;font-size:12px}
+.jac2 .modweg td{padding:4px 0;vertical-align:top;border-bottom:1px solid var(--line);color:var(--ink2)}
+.jac2 .modweg td.l{width:88px;font-weight:600;color:var(--ink);padding-right:8px}
+.jac2 .modweg tr:last-child td{border-bottom:none}
+.jac2 .modkonten{font-size:12px;color:var(--ink2);margin-bottom:6px;display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline}
+.jac2 .modkonten b{color:var(--ink);font-size:11px}
+.jac2 .modkonten code{font-family:ui-monospace,Menlo,Consolas,monospace;font-weight:700;color:var(--accent)}
+.jac2 .modquellen{margin:0;padding-left:16px;font-size:11.5px;color:var(--ink2);line-height:1.55}
+.jac2 .linkmehr{margin-left:auto;border:none;background:none;color:var(--accent);font:inherit;font-size:10.5px;
+  font-weight:700;text-transform:none;letter-spacing:0;cursor:pointer;padding:0}
+
 
 `

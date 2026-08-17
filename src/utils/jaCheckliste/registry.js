@@ -315,6 +315,14 @@ export const MODULE = {
               '§ 3 Abs. 1b S. 1 Nr. 1, § 10 Abs. 4 S. 1 Nr. 1 UStG (unentgeltliche Wertabgabe)',
               'BMF v. 12.02.2024 (KJ 2024) · BMF v. 21.01.2025 (KJ 2025)',
               'Vorlage: Spielplan-Mappe, Blatt „Gastro"'],
+    rechenweg: [
+      ['Gewerbezweig', 'bei zwei Zweigen zählt die Zeile mit dem höheren Gesamtbetrag – vollständig, nicht als Summe'],
+      ['Personenfaktor', 'je Person: unter 2 Jahre → 0 · unter 12 Jahre → 0,5 · sonst 1,0'],
+      ['Netto', 'Jahreswert je Person × Personenfaktor × Monate/12, getrennt nach ermäßigt und voll'],
+      ['Umsatzsteuer', 'wird aufgeschlagen, nicht herausgerechnet: 7 % bzw. 19 % auf den jeweiligen Anteil'],
+      ['Monatswert', 'Brutto ÷ Monate; der letzte Monat gleicht die Rundung aus'],
+      ['Buchung', 'Gegenkonto an Entnahmekonto, BRUTTO auf die Automatikkonten'],
+    ],
     flags: [
       { k: 'fPersonal', label: 'Betrieb beschäftigt Personal (Personalessen ist Sachbezug, nicht Sachentnahme)' },
       { k: 'fNonFood', label: 'Non-Food-Entnahmen (Tabak, Bekleidung, Elektro …) sind gesondert aufgezeichnet' } ],
@@ -580,6 +588,14 @@ export const MODULE = {
   arbeitszimmer: { name: 'Häusliches Arbeitszimmer', bereich: 'ba', typ: 'C',
     stand: '08/2026',
     konten: AZ_KONTEN,
+    rechenweg: [
+      ['Anteil', 'Fläche Arbeitszimmer ÷ Gesamtwohnfläche'],
+      ['je Kostenart', 'Betrag (100 %) × Anteil → eigene Zeile im Ergebnis'],
+      ['Gebäude-AfA', 'nur bei Eigentum: Kaufpreis Gebäudeanteil × AfA-Satz, dann × Anteil'],
+      ['Summe', 'Gesamtkosten × Anteil = anteilige Kosten, bei unterjähriger Nutzung gekürzt'],
+      ['Vergleich', 'gegen Jahrespauschale 1.260 € (105 €/Monat, zeitanteilig) – günstigere Variante'],
+      ['Buchung', 'abziehbarer Anteil an Privateinlage; bei Deckelung zusätzlich Umbuchung des nicht abziehbaren Anteils'],
+    ],
     // Ausfüll-Vorlage zum Versand an den Mandanten. Bauplan in vorlagen.js.
     vorlage: { id: 'arbeitszimmer', titel: 'Mandanten-Vorlage (Excel)' },
     quellen: ['§ 4 Abs. 5 S. 1 Nr. 6b EStG (Arbeitszimmer, Jahrespauschale)',
