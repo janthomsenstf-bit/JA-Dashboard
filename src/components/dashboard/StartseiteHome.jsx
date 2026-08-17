@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { supabase } from '../../utils/supabaseClient.js'
 import { callAI, hasAiKey } from '../../utils/aiClient.js'
-import { getOpenRueckfragen, getUpcomingDeadlines, fmtDate } from '../../utils/search.js'
+import { getOpenRueckfragen, fmtDate } from '../../utils/search.js'
+import { alleFristen, QUELLE_CFG } from '../../utils/fristen.js'
 import { ladeIgnore, speichereIgnore, absenderKey, istWahrscheinlichUnwichtig } from '../../utils/unbekannteMails.js'
 import SchnellMeldung   from '../agent/SchnellMeldung.jsx'
 import PosteingangKnopf from '../agent/PosteingangKnopf.jsx'
@@ -47,11 +48,6 @@ function truncate(str, max) {
   return s.length > max ? s.slice(0, max) + '…' : s
 }
 
-function heuteStr() {
-  const n = new Date()
-  return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`
-}
-function tag10(iso) { return String(iso || '').slice(0, 10) }
 function initials(name) {
   const parts = String(name || '?').trim().split(/\s+/)
   return ((parts[0]?.[0] || '') + (parts[1]?.[0] || '')).toUpperCase() || '?'
@@ -65,7 +61,7 @@ function avatarColor(id) {
 
 // ── Große E-Mail-Karte mit KI-Zusammenfassung (einmal erzeugt + gecacht) ────────
 
-function EmailCard({ client, event, onOpen, onErledigt, onCacheSummary, onAufgabe }) {
+function EmailCard({ client, event, onOpen, onErledigt, onCacheSummary, onAufgabe, autoSummary = true }) {
   const [sum, setSum]     = useState(event.kiZusammenfassung || null)
   const [emp, setEmp]     = useState(event.kiEmpfehlung || '')
   const [laedt, setLaedt] = useState(false)
@@ -79,6 +75,13 @@ function EmailCard({ client, event, onOpen, onErledigt, onCacheSummary, onAufgab
   const col = avatarColor(client.id)
 
   useEffect(() => {
+    if (!autoSummary) return   // aufgeklappte Karten fassen erst auf Klick zusammen
+    zusammenfassen()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Holt Text und lässt die KI zusammenfassen. Ergebnis wird am Event gecacht.
+  function zusammenfassen() {
     if (sum || triedRef.current || !hasAiKey()) return
     triedRef.current = true
     setLaedt(true)
@@ -99,8 +102,7 @@ function EmailCard({ client, event, onOpen, onErledigt, onCacheSummary, onAufgab
       } catch { /* Fallback: Betreff bleibt sichtbar */ }
       finally { setLaedt(false) }
     })()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }
 
   // Formular öffnen: Titel aus KI-Empfehlung, sonst aus dem Betreff vorschlagen.
   function aufgabeOeffnen() {
@@ -165,6 +167,10 @@ function EmailCard({ client, event, onOpen, onErledigt, onCacheSummary, onAufgab
 
         <div style={{ display: 'flex', gap: '9px', marginTop: '11px', flexWrap: 'wrap', alignItems: 'center' }}>
           <button className="btn btn-primary btn-sm" onClick={onOpen} style={{ fontSize: '11.5px' }}>✉️ Öffnen &amp; antworten</button>
+          {!sum && !laedt && !autoSummary && hasAiKey() && (
+            <button className="btn btn-ghost btn-sm" onClick={zusammenfassen} style={{ fontSize: '11.5px' }}
+              title="Diese Mail von der KI zusammenfassen lassen">🧾 Zusammenfassen</button>
+          )}
           {onAufgabe && !aufgabeOffen && (
             <button className="btn btn-ghost btn-sm" onClick={aufgabeOeffnen}
               title="Aufgabe aus dieser Mail anlegen – die Mail bleibt offen"
@@ -244,7 +250,7 @@ function ZonenTitel({ children }) {
 // ── Hauptkomponente ───────────────────────────────────────────────────────────
 
 export default function StartseiteHome({
-  clients, aufgaben = [], onSelectClient, onSelectClientAtKomm, onUpdateClient, onRefresh, onOeffneEingang,
+  clients, aufgaben = [], termine = [], onSelectClient, onSelectClientAtKomm, onUpdateClient, onRefresh, onOeffneEingang,
   unbekannteEmails = [], onAssignEmail, onDismissUnbekannt, emailVorlagen = [], onNeuerMandantAusMail, onAddAufgabe,
 }) {
   const activeClients = useMemo(() => clients.filter(c => !c.archiviert), [clients])
@@ -252,6 +258,8 @@ export default function StartseiteHome({
   const [aktualisiert, setAktualisiert] = useState('')
   const [ignore, setIgnore]           = useState(ladeIgnore)
   const [alleUnbekannt, setAlleUnbekannt] = useState(false)   // Top 3 oder alle zeigen
+  const [alleMails, setAlleMails] = useState(false)           // Posteingang: Top 3 oder alle
+  const posteingangRef = useRef(null)
   const [belegFehler, setBelegFehler] = useState('')
 
   // Offene eingehende E-Mails (Mandant + Event), neueste zuerst
@@ -274,27 +282,25 @@ export default function StartseiteHome({
   , [activeClients])
   const rqGesamt = useMemo(() => offeneRQ.reduce((s, x) => s + x.count, 0), [offeneRQ])
 
-  // Fristen (30 Tage)
-  const fristen = useMemo(() =>
-    activeClients.flatMap(c => getUpcomingDeadlines(c, 30).map(d => ({ ...d, client: c }))).sort((a, b) => new Date(a.date) - new Date(b.date))
-  , [activeClients])
+  // ── Alles mit Datum aus EINER Quelle ───────────────────────────────────────
+  // Aufträge, automatische Fristen, manuelle Aufgaben, Termine und Erinnerungen.
+  // Dieselbe Funktion speist den Bereich „Aufgaben" – beide zeigen dasselbe.
+  const fristenAlle = useMemo(
+    () => alleFristen({ clients, aufgabenListe: aufgaben, termine, tageVor: 90, tageNach: 30 }),
+    [clients, aufgaben, termine],
+  )
+  const ueberfaellig = useMemo(() => fristenAlle.filter(e => e.diff < 0),  [fristenAlle])
+  const faelligHeute = useMemo(() => fristenAlle.filter(e => e.diff === 0), [fristenAlle])
 
-  // Aufgaben: überfällig / heute fällig
-  const heute = heuteStr()
-  const offeneAufgaben = useMemo(() => (aufgaben || []).filter(a => a && !a.erledigt && a.faellig), [aufgaben])
-  const ueberfaellig = useMemo(() => offeneAufgaben.filter(a => tag10(a.faellig) < heute), [offeneAufgaben, heute])
-  const faelligHeute = useMemo(() => offeneAufgaben.filter(a => tag10(a.faellig) === heute), [offeneAufgaben, heute])
+  // Fristen (nächste 30 Tage, ohne heute/überfällig – die stehen schon oben)
+  const fristen = useMemo(() => fristenAlle.filter(e => e.diff > 0 && e.diff <= 30), [fristenAlle])
 
   const nameOf = useCallback((id) => activeClients.find(c => c.id === id)?.name || null, [activeClients])
 
-  // „Heute dran": überfällige + heute fällige Aufgaben, nach Datum
-  const heuteDran = useMemo(() => {
-    const rows = [
-      ...ueberfaellig.map(a => ({ id: a.id, titel: a.titel || 'Aufgabe', mandantId: a.mandantId, datum: a.faellig, ueb: true })),
-      ...faelligHeute.map(a => ({ id: a.id, titel: a.titel || 'Aufgabe', mandantId: a.mandantId, datum: a.faellig, ueb: false })),
-    ]
-    return rows.sort((a, b) => new Date(a.datum) - new Date(b.datum))
-  }, [ueberfaellig, faelligHeute])
+  // „Heute dran": überfällige + heute fällige Einträge, nach Datum
+  const heuteDran = useMemo(
+    () => [...ueberfaellig, ...faelligHeute].map(e => ({ ...e, ueb: e.diff < 0 })),
+    [ueberfaellig, faelligHeute])
 
   // bot_inbox: Handy-Meldungen (ai_aktion) + Beleg-Freigaben (dokument_ablage)
   const ladeBot = useCallback(async () => {
@@ -380,7 +386,13 @@ export default function StartseiteHome({
     ? <><span style={{ color: 'var(--red)', fontWeight: 700 }}>{brennt} {brennt === 1 ? 'Sache' : 'Dinge'}</span> {brennt === 1 ? 'braucht' : 'brauchen'} dich zuerst.</>
     : 'Nichts Dringendes — alles im grünen Bereich. 👍'
 
-  const top3 = offeneEmails.slice(0, 3)
+  const sichtbareMails = alleMails ? offeneEmails : offeneEmails.slice(0, 3)
+
+  // Klappt den Posteingang auf und springt hin (z.B. aus der KPI-Kachel).
+  function posteingangZeigen() {
+    setAlleMails(true)
+    setTimeout(() => posteingangRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
+  }
   const feld = { fontSize: '12.5px', fontWeight: 600, cursor: 'pointer', borderRadius: 'var(--radius-sm)', padding: '8px 13px', border: '1px solid var(--border2)', background: 'var(--surface)', color: 'var(--text-secondary)' }
 
   return (
@@ -410,8 +422,12 @@ export default function StartseiteHome({
       <ZonenTitel>Zu entscheiden</ZonenTitel>
 
       {/* ── 1) Posteingang (groß, oben) ── */}
-      <div>
-        <SekEyebrow note={<button onClick={onOeffneEingang} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--accent)', fontSize: '11.5px', fontWeight: 600 }}>→ zum vollen Eingang</button>}>
+      <div ref={posteingangRef}>
+        <SekEyebrow note={offeneEmails.length > 3
+          ? <button onClick={() => setAlleMails(v => !v)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--accent)', fontSize: '11.5px', fontWeight: 600 }}>
+              {alleMails ? '↑ nur die neuesten 3' : `↓ alle ${offeneEmails.length} anzeigen`}
+            </button>
+          : null}>
           📥 Posteingang{offeneEmails.length ? ` · ${offeneEmails.length} unbeantwortet${neueMails ? `, ${neueMails} neu` : ''}` : ''}
         </SekEyebrow>
         {offeneEmails.length === 0 ? (
@@ -421,8 +437,9 @@ export default function StartseiteHome({
         ) : (
           <>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '11px' }}>
-              {top3.map(({ client, event }) => (
+              {sichtbareMails.map(({ client, event }, i) => (
                 <EmailCard key={`${client.id}-${event.id}`} client={client} event={event}
+                  autoSummary={i < 3}
                   onOpen={() => onSelectClientAtKomm(client.id)}
                   onErledigt={() => handleErledigt(client, event)}
                   onCacheSummary={cacheSummary}
@@ -431,7 +448,11 @@ export default function StartseiteHome({
             </div>
             {offeneEmails.length > 3 && (
               <div style={{ textAlign: 'center', marginTop: '11px' }}>
-                <button onClick={onOeffneEingang} style={feld}>{offeneEmails.length - 3} weitere unbeantwortete Mails anzeigen</button>
+                <button onClick={() => setAlleMails(v => !v)} style={feld}>
+                  {alleMails
+                    ? '↑ weniger anzeigen'
+                    : `${offeneEmails.length - 3} weitere unbeantwortete ${offeneEmails.length - 3 === 1 ? 'Mail' : 'Mails'} anzeigen`}
+                </button>
               </div>
             )}
           </>
@@ -491,7 +512,7 @@ export default function StartseiteHome({
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px' }}>
           <Kpi icon="⏳" value={ueberfaellig.length} label="Überfällig" tone={ueberfaellig.length ? 'crit' : 'calm'} sub={ueberfaellig.length ? 'sofort ansehen' : ''} />
           <Kpi icon="📅" value={faelligHeute.length} label="Heute fällig" tone={faelligHeute.length ? 'warn' : 'calm'} />
-          <Kpi icon="📥" value={offeneEmails.length} label="Unbeantw. Mails" tone={offeneEmails.length ? 'ok' : 'calm'} sub={neueMails ? `${neueMails} ganz neu` : ''} onClick={onOeffneEingang} />
+          <Kpi icon="📥" value={offeneEmails.length} label="Unbeantw. Mails" tone={offeneEmails.length ? 'ok' : 'calm'} sub={neueMails ? `${neueMails} ganz neu` : ''} onClick={offeneEmails.length ? posteingangZeigen : undefined} />
           <Kpi icon="❓" value={rqGesamt} label="Wartet auf Mandant" tone="calm" />
           <Kpi icon="📁" value={belegKarten.length} label="Belege z. Freigabe" tone={belegKarten.length ? 'ok' : 'calm'} onClick={onOeffneEingang} />
         </div>
@@ -568,11 +589,13 @@ export default function StartseiteHome({
         ) : (
           <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow)', padding: '4px 16px' }}>
             {fristen.slice(0, 8).map((item, i) => (
-              <div key={i} onClick={() => onSelectClient(item.client.id)} style={{ display: 'flex', gap: '13px', padding: '10px 0', borderBottom: i < Math.min(fristen.length, 8) - 1 ? '1px solid var(--border)' : 'none', cursor: 'pointer' }}>
-                <div style={{ width: '92px', flexShrink: 0, fontSize: '11.5px', fontWeight: 700, color: 'var(--text-secondary)' }}>{fmtDate(item.date)}</div>
+              <div key={item.id} onClick={() => item.mandantId && onSelectClient(item.mandantId)} style={{ display: 'flex', gap: '13px', padding: '10px 0', borderBottom: i < Math.min(fristen.length, 8) - 1 ? '1px solid var(--border)' : 'none', cursor: item.mandantId ? 'pointer' : 'default' }}>
+                <div style={{ width: '92px', flexShrink: 0, fontSize: '11.5px', fontWeight: 700, color: 'var(--text-secondary)' }}>{fmtDate(item.datum)}</div>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: '13px', fontWeight: 600 }}>{item.label}</div>
-                  <div style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>{item.client.name}</div>
+                  <div style={{ fontSize: '13px', fontWeight: 600 }}>{item.titel}</div>
+                  <div style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>
+                    {[QUELLE_CFG[item.quelle]?.label, item.mandantName].filter(Boolean).join(' · ')}
+                  </div>
                 </div>
               </div>
             ))}
