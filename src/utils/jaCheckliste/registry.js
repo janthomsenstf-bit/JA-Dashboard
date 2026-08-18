@@ -1179,6 +1179,8 @@ export const MODULE = {
     ],
     // Weiche für den SuSa-Import: Aufwand in den oberen Block, Forderungen und
     // Verbindlichkeiten in den unteren.
+    // Meldet dem Import, welche Konten zu diesem Modul gehoeren.
+    erkennt: (konto, bez, skr) => !!lohnZielListe(konto, skr === '04' ? '04' : '03'),
     kontoZiel: (konto, w) => {
       const skr = (w && w.skr) === '04' ? '04' : '03'
       const z = lohnZielListe(konto, skr); if (z) return z
@@ -1794,6 +1796,32 @@ export function klassifiziereKonto(konto, bez) { const n = +konto; const b = (be
   if (n >= 3000 && n <= 3999) { if (/bestand/.test(b) || n >= 3960) return 'konUmlauf'; return 'konMaterial' }
   if (n >= 4000 && n <= 4999) return 'konAufwand'
   return 'konUnklar' }
+
+/* Kontenrahmen aus der Kontenmenge schaetzen. SKR03 fuehrt die Erloese im
+   8000er-Bereich, SKR04 den Aufwand im 6000er. Nur eine Vermutung fuer den
+   Import – das Modul selbst haelt den Kontenrahmen als eigenes Feld. */
+export function skrAusKonten(rows) {
+  let a8 = 0, a6 = 0
+  ;(rows || []).forEach(r => { const n = parseInt(String(r.konto || r).trim(), 10)
+    if (n >= 8000 && n <= 8999) a8++; else if (n >= 6000 && n <= 6999) a6++ })
+  return a6 > a8 ? '04' : '03'
+}
+
+/* Zielvorschlag fuer eine Kontozeile beim Import.
+   Zuerst duerfen die Fachmodule selbst erkennen, ob ein Konto zu ihnen gehoert
+   (erkennt()). Das Spezielle schlaegt damit das Allgemeine: Lohnkonten landen
+   in der Lohnverprobung statt im Sammelmodul "Aufwand (Konten)".
+   Beanspruchen mehrere Fachmodule dasselbe Konto, wird die Zeile als unklar
+   markiert statt still einem davon zugeteilt. */
+export function zielVorschlag(konto, bez, skr) {
+  const treffer = Object.entries(MODULE)
+    .filter(([, m]) => typeof m.erkennt === 'function')
+    .filter(([, m]) => { try { return !!m.erkennt(konto, bez, skr) } catch { return false } })
+    .map(([k]) => k)
+  if (treffer.length === 1) return treffer[0]
+  if (treffer.length > 1) return 'konUnklar'
+  return klassifiziereKonto(konto, bez)
+}
 
 export function kontoZiele() { return Object.entries(MODULE).filter(([k, m]) => m.kontoListe).map(([k, m]) => ({ k, name: m.name, bereich: m.bereich })) }
 

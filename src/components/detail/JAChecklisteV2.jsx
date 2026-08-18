@@ -529,6 +529,8 @@ function SusaImport({ onApply, onFill, onClose }) {
   const [txt, setTxt] = useState('')
   const [info, setInfo] = useState('')
   const [rows, setRows] = useState(null) // Zuordnungsschritt
+  const [skr, setSkr] = useState('03')
+  const [aus, setAus] = useState({})   // abgewaehlte Zielmodule
   const ziele = useMemo(() => kontoZiele(), [])
   const grp = {}; ziele.forEach(z => { (grp[z.bereich] || (grp[z.bereich] = [])).push(z) })
 
@@ -542,7 +544,11 @@ function SusaImport({ onApply, onFill, onClose }) {
     } catch (err) { setInfo(f.name + ' – konnte nicht gelesen werden. Bitte als CSV speichern oder Zeilen einfügen.') }
   }
   const analyze = () => { const r = parseKontenText(txt); if (!r.length) { setInfo('Keine Konten erkannt. Format: Konto ; Bezeichnung ; Saldo ; Vorjahr'); return }
-    r.forEach(x => { x.ziel = klassifiziereKonto(x.konto, x.bez) }); setRows(r) }
+    // Kontenrahmen einmal fuer die ganze Liste schaetzen, dann jede Zeile den
+    // Fachmodulen anbieten – erst danach die grobe Klassifizierung.
+    const skr = skrAusKonten(r)
+    r.forEach(x => { x.ziel = zielVorschlag(x.konto, x.bez, skr) })
+    setSkr(skr); setRows(r); setAus({}) }
   const fill = () => { const map = {}; parseKontenText(txt).forEach(r => { map[r.konto] = { s: r.saldo, v: r.vj } }); onFill(map) }
 
   const opts = (sel, i) => (
@@ -555,6 +561,17 @@ function SusaImport({ onApply, onFill, onClose }) {
   )
 
   const unklar = rows ? rows.filter(r => r.ziel === 'konUnklar').length : 0
+  // Zeilen nach Zielmodul buendeln – das ist der Ueberblick, ueber den entschieden
+  // wird, welche Module ueberhaupt angelegt werden.
+  const uebernommen = rows ? rows.filter(r => !aus[r.ziel]).length : 0
+  const uebersicht = useMemo(() => {
+    if (!rows) return []
+    const m = new Map()
+    rows.forEach(r => { const z = r.ziel || 'konUnklar'
+      if (!m.has(z)) m.set(z, { ziel: z, name: (MODULE[z] && MODULE[z].name) || 'Nicht zugeordnete Konten', anzahl: 0, summe: 0 })
+      const e = m.get(z); e.anzahl++; e.summe += num(r.saldo) })
+    return [...m.values()].sort((x, y) => y.anzahl - x.anzahl)
+  }, [rows])
 
   return (
     <div className="jac2-ov" onClick={e => { if (e.target.classList.contains('jac2-ov')) onClose() }}>
@@ -581,6 +598,24 @@ function SusaImport({ onApply, onFill, onClose }) {
             <div className="modal__h"><h2>Kontenzuordnung – Vorschlag</h2><button className="x" onClick={onClose}>×</button></div>
             <div className="modal__b">
               <p className="jhint" style={{ marginBottom: '10px' }}><b>{rows.length}</b> Konten erkannt{unklar ? <>, davon <b style={{ color: '#c2410c' }}>{unklar} unklar</b> (rot – bitte zuordnen)</> : null}. Prüfe/korrigiere die Zuordnung – <b>übernommen wird erst auf „Übernehmen".</b></p>
+              {/* Überblick: was wurde erkannt, und welche Module sollen angelegt
+                  werden? Abwählen setzt alle Zeilen dieses Ziels auf ignorieren. */}
+              <div className="kzueber">
+                <div className="kzueber__h">Erkannt – was soll angelegt werden?</div>
+                {uebersicht.map(u => (
+                  <label key={u.ziel} className={'kzu' + (aus[u.ziel] ? ' ab' : '') + (u.ziel === 'konUnklar' ? ' unklar' : '')}>
+                    <input type="checkbox" checked={!aus[u.ziel]}
+                      onChange={e => setAus(a => ({ ...a, [u.ziel]: !e.target.checked }))} />
+                    <span className="kzu__n">{u.name}</span>
+                    <span className="kzu__z">{u.anzahl} {u.anzahl === 1 ? 'Konto' : 'Konten'}</span>
+                    <span className="kzu__s">{u.summe ? eur(u.summe) : ''}</span>
+                  </label>
+                ))}
+                <div className="jhint" style={{ marginTop: '8px' }}>
+                  Kontenrahmen erkannt: <b>SKR{skr}</b>. Abgewählte Gruppen werden nicht übernommen –
+                  einzelne Zeilen lassen sich darunter weiterhin von Hand umstellen.
+                </div>
+              </div>
               <div className="kztab"><table className="kz"><thead><tr><th>Konto</th><th>Bezeichnung</th><th>Saldo</th><th>→ Modul / Kategorie</th></tr></thead>
                 <tbody>{rows.map((r, i) => (
                   <tr key={i} className={r.ziel === 'konUnklar' ? 'kz-unklar' : ''}>
@@ -589,7 +624,7 @@ function SusaImport({ onApply, onFill, onClose }) {
                   </tr>
                 ))}</tbody></table></div>
               <div className="ppactions" style={{ marginTop: '16px' }}>
-                <button className="btn btn-primary" onClick={() => onApply(rows)}>Übernehmen</button>
+                <button className="btn btn-primary" onClick={() => onApply(rows.filter(r => !aus[r.ziel]))}>Übernehmen{uebernommen < rows.length ? ' (' + uebernommen + ' von ' + rows.length + ')' : ''}</button>
                 <button className="btn" onClick={() => setRows(null)}>◂ Zurück</button>
                 <button className="btn" onClick={onClose}>Verwerfen</button>
               </div>

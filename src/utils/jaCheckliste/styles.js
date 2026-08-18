@@ -306,6 +306,16 @@ export const JAC2_CSS = `
 .jac2 .modkonten code{font-family:ui-monospace,Menlo,Consolas,monospace;font-weight:700;color:var(--accent)}
 .jac2 .modquellen{margin:0;padding-left:16px;font-size:11.5px;color:var(--ink2);line-height:1.55}
 /* Erläuterungsbereich – bei jedem Prüfpunkt, unterhalb der Eingaben. */
+/* Ueberblick im SuSa-Import: erkannte Zielmodule zum Abhaken. */
+.jac2-modal .kzueber{border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:14px;background:var(--surface2)}
+.jac2-modal .kzueber__h{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink2);margin-bottom:9px}
+.jac2-modal .kzu{display:flex;align-items:center;gap:10px;padding:5px 7px;border-radius:7px;cursor:pointer;font-size:13px}
+.jac2-modal .kzu:hover{background:var(--surface)}
+.jac2-modal .kzu.ab{opacity:.45}
+.jac2-modal .kzu.unklar .kzu__n{color:#c2410c}
+.jac2-modal .kzu__n{flex:1;font-weight:600}
+.jac2-modal .kzu__z{color:var(--ink2);font-size:12px;white-space:nowrap}
+.jac2-modal .kzu__s{width:130px;text-align:right;font-variant-numeric:tabular-nums;color:var(--ink2);font-size:12.5px}
 /* Mehrere Vermerke je Kontozeile – ein Eintrag je Buchung, nummeriert. */
 .jac2 .vermerkadd{border:1px dashed var(--line2);background:none;color:var(--ink2);border-radius:6px;
   padding:3px 9px;font:inherit;font-size:11.5px;cursor:pointer}
