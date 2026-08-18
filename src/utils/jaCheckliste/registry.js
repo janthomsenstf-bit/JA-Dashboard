@@ -7,6 +7,8 @@
 
 import { SE_JAHRE, SE_JAHRE_LISTE, SE_KONTEN, SE_ALTERSSTAFFEL, seFaktor } from './pauschbetraege.js'
 import { LOHN_LISTEN, LOHN_GRUPPEN, LOHN_LEIT, lohnZielListe, lohnGruppe } from './lohnkonten.js'
+import { UST_A_GRUPPEN, UST_A_LEIT, ustAGruppe, istUstAKonto } from './ustkonten.js'
+export { UST_A_GRUPPEN, UST_A_LEIT, ustAGruppe, istUstAKonto }
 export { LOHN_LISTEN, LOHN_GRUPPEN, LOHN_LEIT, lohnZielListe, lohnGruppe }
 export { SE_JAHRE, SE_KONTEN, SE_ALTERSSTAFFEL }
 
@@ -1299,6 +1301,147 @@ export const MODULE = {
       hinweise.push('Gegenprobe außerhalb dieses Moduls: Sachbezugskonten ' + (K.sachbezug || []).join(', ') + ' – sind Fahrzeuggestellung, Gutscheine und sonstige Sachbezüge erfasst und korrespondierend im Lohnaufwand gebucht?')
 
       return { ergebnisse: erg, total: { l: 'Lohnaufwand gesamt', v: r2(sAuf) }, hinweise, buchungen }
+    } },
+  ustAbgrenzung: { name: 'Umsatzsteuer – Abgrenzung, Forderungen und Verbindlichkeiten', bereich: 'steuern', typ: 'C',
+    stand: '08/2026', konten: UST_A_LEIT, kontoListe: true,
+    quellen: ['§ 246 Abs. 2 HGB (Saldierungsverbot), § 226 AO (Aufrechnung)',
+              '§ 11 Abs. 2 S. 2 EStG (regelmäßig wiederkehrende Ausgaben, Zehn-Tage-Regel)',
+              'DATEV Dok. 5305393 (Konten), 1036907 (Jahresabschluss buchen)',
+              'DATEV Dok. 1037686 (Ausweis im Jahresabschluss), 1037179 (EÜR)',
+              'Konten und Paragraphen sind Vorschläge und vom Bearbeiter zu prüfen'],
+    rechenweg: [
+      ['Bestände', 'Umsatzsteuerkonten aus der SuSa, gruppiert nach laufendem Jahr, Vorjahr und früheren Jahren'],
+      ['Saldierung', 'je Jahresschicht getrennt beurteilt – Forderung und Verbindlichkeit werden nicht vermischt'],
+      ['Steuerkonto', 'der offene Betrag laut Finanzamt wird von Hand eingetragen und gegen 1797/1545 gehalten'],
+      ['Altjahre', 'je Zeitraum der offene Betrag und die Zahlung im Folgejahr; die Differenz sollte null sein'],
+      ['Abgrenzung', 'nicht gezahlte Vorauszahlungszeiträume: 1780 an 1797 bzw. 1545 an 1780'],
+    ],
+    flags: [
+      { k: 'fAufrechnung', label: 'Aufrechnung nach § 226 AO geprüft (Voraussetzung für saldierten Ausweis)' },
+      { k: 'fAbwWj', label: 'Abweichendes Wirtschaftsjahr (Umsatzsteuer ist Kalenderjahressteuer)' },
+      { k: 'fJahresErkl', label: 'Umsatzsteuer-Jahreserklärung des Vorjahres liegt vor und ist vorgetragen' },
+    ],
+    felder: [
+      { k: 'skr', l: 'Kontenrahmen', t: 'select', def: '03', opt: [['03', 'SKR 03'], ['04', 'SKR 04']] },
+      { k: 'offenFa', l: 'Offen laut Steuerkonto zum 31.12. (Verbindlichkeit negativ)', t: 'num' },
+      { k: 'standFa', l: 'Stand der Steuerkonto-Abfrage', t: 'date' },
+      { k: 'notizFa', l: 'Woraus ermittelt (Sollstellungen abzüglich Zahlungen, Altjahre …)', t: 'area', full: true },
+    ],
+    listen: [
+      { key: 'bestand', label: 'Umsatzsteuerkonten zum Stichtag', rowNotes: true, felder: [
+        { k: 'konto', l: 'Konto', t: 'text' }, { k: 'bez', l: 'Bezeichnung', t: 'text' },
+        { k: 'saldo', l: 'Saldo 31.12.', t: 'num' }, { k: 'vj', l: 'Vorjahr', t: 'num' },
+        { k: 'ok', l: 'geprüft', t: 'check' }] },
+      { key: 'altjahre', label: 'Offene Zeiträume aus Vorjahren', rowNotes: true, rowVermerke: true, felder: [
+        { k: 'zeitraum', l: 'Zeitraum', t: 'text' },
+        { k: 'art', l: 'Art', t: 'select', def: 'verb', opt: [['verb', 'Verbindlichkeit'], ['ford', 'Forderung']] },
+        { k: 'betrag', l: 'Offen zum 31.12.', t: 'num' },
+        { k: 'zahlung', l: 'Zahlung im Folgejahr', t: 'num' },
+        { k: 'diff', l: 'Differenz', t: 'calc',
+          hilfe: 'Offener Betrag abzüglich der im Folgejahr geflossenen Zahlung. Null bedeutet erledigt.',
+          calc: x => Math.round((Math.abs(num(x.betrag)) - Math.abs(num(x.zahlung))) * 100) / 100,
+          warnWenn: x => num(x.zahlung) !== 0 && Math.abs(Math.abs(num(x.betrag)) - Math.abs(num(x.zahlung))) > 0.005 },
+        { k: 'ok', l: 'erledigt', t: 'check' }] },
+    ],
+    kontoZiel: () => 'bestand',
+    erkennt: (konto, bez, skr) => istUstAKonto(konto, skr === '04' ? '04' : '03'),
+    rechnen: (w, ctx) => {
+      const r2 = x => Math.round(x * 100) / 100
+      const skr = w.skr === '04' ? '04' : '03'
+      const K = UST_A_LEIT[skr]
+      const euer = ctx && ctx.gw === 'euer'
+      const erg = [], hinweise = [], buchungen = []
+      const kk = (w.bestand || []).filter(x => x && (x.konto || x.saldo))
+      const s = k => { const r = kk.find(x => String(x.konto).trim() === String(k)); return r ? num(r.saldo) : 0 }
+      const da = k => kk.some(x => String(x.konto).trim() === String(k))
+
+      if (!kk.length) {
+        hinweise.push('Noch keine Umsatzsteuerkonten übernommen. Über „SuSa / Kontenabstimmliste importieren" die Konten diesem Modul zuordnen – sie werden dann nach laufendem Jahr, Vorjahr und früheren Jahren gruppiert.')
+      }
+
+      // ── Salden je Jahresschicht. Getrennt, weil § 246 Abs. 2 HGB die Saldierung
+      //    nicht vorschreibt und jede Schicht für sich Forderung oder
+      //    Verbindlichkeit sein kann.
+      const schicht = {}
+      UST_A_GRUPPEN.forEach(g => {
+        const konten = Object.keys(g.konten[skr]).map(String)
+        const summe = konten.reduce((t, k) => t + s(k), 0)
+        const anzahl = konten.filter(da).length
+        schicht[g.key] = summe
+        if (anzahl) erg.push({ l: g.label + ' (' + anzahl + (anzahl === 1 ? ' Konto' : ' Konten') + ')', v: r2(summe) })
+      })
+
+      const lfd = schicht.laufend || 0, vj = schicht.vorjahr || 0, fr = schicht.frueher || 0
+      const gesamt = r2(lfd + vj + fr)
+      erg.push({ l: 'Summe der Abgrenzungskonten', v: gesamt, stark: 1 })
+      hinweise.push('Die Summe umfasst nur die Abgrenzungskonten. Der Gruppensaldo der Bilanz enthaelt zusaetzlich Vorsteuer und Umsatzsteuer (Dok. 1037686) – die stehen im Modul „Umsatzsteuer-Abstimmung\". Diese Zahl ist also kein Bilanzausweis.')
+
+      // Saldierungsverbot: liegt in einer Schicht eine Forderung und in einer
+      // anderen eine Verbindlichkeit vor, darf nicht ohne Weiteres saldiert werden.
+      const schichten = [['laufendes Jahr', lfd], ['Vorjahr', vj], ['frühere Jahre', fr]].filter(x => Math.abs(x[1]) > 0.005)
+      const hatSoll = schichten.some(x => x[1] > 0), hatHaben = schichten.some(x => x[1] < 0)
+      if (hatSoll && hatHaben) {
+        hinweise.push('⚠️ Saldierungsverbot: ' + schichten.map(x => x[0] + ' ' + eur(x[1])).join(' · ')
+          + '. Die Umsatzsteuer ist eine Jahressteuer – nach § 246 Abs. 2 HGB ist je Jahr getrennt zu beurteilen, ob eine Forderung oder eine Verbindlichkeit vorliegt. Ein saldierter Ausweis setzt voraus, dass eine Aufrechnung nach § 226 AO möglich ist; das ist zu prüfen und zu dokumentieren.')
+        if (!w.fAufrechnung) hinweise.push('Das Häkchen „Aufrechnung nach § 226 AO geprüft" ist nicht gesetzt. Ohne diese Prüfung sind Forderung und Verbindlichkeit getrennt auszuweisen.')
+      }
+
+      // ── Abgleich mit dem Steuerkonto ──
+      const gebucht = r2(s(K.verb) + s(K.ford))
+      const offenFa = num(w.offenFa)
+      if (offenFa) {
+        erg.push({ l: 'Verbindlichkeit ' + K.verb + ' + Forderung ' + K.ford + ' laut Buchhaltung', v: gebucht })
+        erg.push({ l: 'Offen laut Steuerkonto zum 31.12.' + (w.standFa ? ' (Stand ' + w.standFa + ')' : ''), v: r2(offenFa) })
+        const diff = r2(gebucht - offenFa)
+        erg.push({ l: 'Differenz Buchhaltung ./. Finanzamt', v: diff, stark: 1 })
+        if (Math.abs(diff) < 0.005) hinweise.push('✅ Die Abgrenzung stimmt mit dem Steuerkonto überein.')
+        else {
+          hinweise.push('Die Buchhaltung weist ' + eur(Math.abs(diff)) + ' ' + (Math.abs(gebucht) > Math.abs(offenFa) ? 'mehr' : 'weniger')
+            + ' aus als das Finanzamt offen hat. Ursache klären – häufig fehlt die Abgrenzung eines Voranmeldungszeitraums, eine berichtigte Voranmeldung ist noch nicht gebucht, oder eine Erstattung wurde bereits vereinnahmt.')
+          const betr = Math.abs(diff)
+          if (diff > 0) buchungen.push({ s: K.verb, st: 'Verbindlichkeiten aus USt-Vorauszahlungen', h: K.vz, ht: 'Umsatzsteuer-Vorauszahlungen', betr, text: 'Korrektur Abgrenzung auf den Steuerkontostand' })
+          else buchungen.push({ s: K.vz, st: 'Umsatzsteuer-Vorauszahlungen', h: K.verb, ht: 'Verbindlichkeiten aus USt-Vorauszahlungen', betr, text: 'Korrektur Abgrenzung auf den Steuerkontostand' })
+        }
+        if (!w.standFa) hinweise.push('Bitte den Stand der Steuerkonto-Abfrage eintragen. In der Betriebsprüfung ist die erste Frage, worauf sich die Zahl stützt.')
+      } else if (kk.length) {
+        hinweise.push('Der offene Betrag laut Steuerkonto ist noch nicht eingetragen. Ohne ihn lässt sich nicht beurteilen, ob die Abgrenzung zum 31.12. vollständig ist.')
+      }
+
+      // ── Abgrenzung der Vorauszahlungen ──
+      if (da(K.vz) && Math.abs(s(K.vz)) > 0.005 && !da(K.verb) && !da(K.ford))
+        hinweise.push('Auf ' + K.vz + ' stehen ' + eur(s(K.vz)) + ', aber weder ' + K.verb + ' noch ' + K.ford + ' sind bebucht. Für Voranmeldungszeiträume, die zum Stichtag noch nicht gezahlt oder erstattet sind, ist abzugrenzen: ' + K.vz + ' an ' + K.verb + ' bzw. ' + K.ford + ' an ' + K.vz + ' (Dok. 1036907).')
+      if (da(K.svz) && Math.abs(s(K.svz)) > 0.005)
+        hinweise.push('Die Sondervorauszahlung auf ' + K.svz + ' (' + eur(s(K.svz)) + ') wird auf die Dezember-Voranmeldung angerechnet. Prüfen, ob die Anrechnung erfolgt ist und der Restbetrag richtig abgegrenzt wurde.')
+
+      // ── Jahreserklärung und Vortrag ──
+      if (Math.abs(vj) > 0.005 && !w.fJahresErkl)
+        hinweise.push('Auf den Vorjahreskonten stehen ' + eur(vj) + '. Die Nachzahlung oder Erstattung aus der Jahreserklärung wird nicht mehr im alten Jahr gebucht, sondern im neuen Jahr auf ' + K.vjFord + ' (Forderung) bzw. ' + K.vjVerb + ' (Verbindlichkeit) vorgetragen (Dok. 1036907).')
+      if (Math.abs(fr) > 0.005)
+        hinweise.push('Auf ' + K.frueher + ' stehen noch ' + eur(fr) + ' aus früheren Jahren. Prüfen, ob der Betrag zwischenzeitlich gezahlt, erstattet oder aufgerechnet wurde – Altbestände bleiben sonst jahrelang stehen.')
+      hinweise.push('Hinweis zum Ausweis: Ab 2025 ist die Umsatzsteuer Vorjahr im DATEV-Standard nicht mehr im Gruppensaldo enthalten (Dok. 1037686). Der Ausweis in der Bilanz ist entsprechend zu prüfen.')
+
+      // ── EÜR und abweichendes Wirtschaftsjahr ──
+      if (euer || da(K.par11Verb) || da(K.par11Ford))
+        hinweise.push('EÜR: Eine Vorauszahlung, die innerhalb von zehn Tagen nach dem Jahreswechsel gezahlt wird, ist eine regelmäßig wiederkehrende Ausgabe nach § 11 Abs. 2 S. 2 EStG und gehört wirtschaftlich ins alte Jahr. Erfassung über ' + K.par11Verb + ' bzw. ' + K.par11Ford + '; diese Konten fließen nicht in die Gewinnermittlung (Dok. 1037179).')
+      if (w.fAbwWj)
+        hinweise.push('Abweichendes Wirtschaftsjahr: Die Umsatzsteuer ist eine Kalenderjahressteuer. Sowohl zum Ende des Kalenderjahres als auch zum Ende des Wirtschaftsjahres sind die Vorauszahlungen zwingend abzugrenzen (Dok. 1036907).')
+
+      // ── Altjahre: Ausgleich im Folgejahr ──
+      const alt = (w.altjahre || []).filter(x => x && (x.zeitraum || x.betrag))
+      if (alt.length) {
+        const offenRest = alt.filter(x => num(x.zahlung) && Math.abs(Math.abs(num(x.betrag)) - Math.abs(num(x.zahlung))) > 0.005)
+        const summeAlt = alt.reduce((t, x) => t + (x.art === 'ford' ? Math.abs(num(x.betrag)) : -Math.abs(num(x.betrag))), 0)
+        const restOffen = alt.reduce((t, x) => t + (Math.abs(num(x.betrag)) - Math.abs(num(x.zahlung))), 0)
+        const erledigt = alt.filter(x => num(x.zahlung) && Math.abs(Math.abs(num(x.betrag)) - Math.abs(num(x.zahlung))) <= 0.005).length
+        erg.push({ l: 'Zeiträume aus Vorjahren: ' + alt.length + ' erfasst, ' + erledigt + ' im Folgejahr ausgeglichen', v: null })
+        erg.push({ l: 'davon noch offen', v: r2(restOffen) })
+        alt.filter(x => !num(x.zahlung)).forEach(x =>
+          hinweise.push('Zeitraum ' + (x.zeitraum || '?') + ': noch keine Zahlung im Folgejahr erfasst – offen ' + eur(num(x.betrag)) + '.'))
+        offenRest.forEach(x => hinweise.push('Zeitraum ' + (x.zeitraum || '?') + ': offen ' + eur(num(x.betrag))
+          + ', gezahlt ' + eur(num(x.zahlung)) + ' – Rest ' + eur(Math.abs(num(x.betrag)) - Math.abs(num(x.zahlung))) + '. Ursache je Buchung im Vermerk festhalten.'))
+      }
+
+      return { ergebnisse: erg, total: { l: 'Summe der Abgrenzungskonten', v: gesamt }, hinweise, buchungen }
     } },
   gewerbesteuer: { name: 'Gewerbesteuer (Abstimmung & Berechnung)', bereich: 'steuern', typ: 'C', kontoListe: true,
     listen: [{ key: 'konten', label: 'Gewerbesteuer-Konten (Vorauszahlungen, Rückstellung …)', rowNotes: true, felder: [
