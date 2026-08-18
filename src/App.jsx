@@ -1437,6 +1437,21 @@ export default function App() {
     oeffneMandant(clientId, tab)
   }
 
+  // Reine Auftragsübersicht – die Standardansicht im Menüpunkt „Aufträge".
+  const auftraegeEl = (
+    <GlobalTodoView
+      modus="auftraege"
+      clients={clients}
+      aufgabenListe={aufgabenListe}
+      onUpdateAufgabe={updateAufgabe}
+      onAddAufgabe={addAufgabe}
+      onUpdateClient={updateClient}
+      onSelectClient={id => oeffneMandant(id)}
+      onNavigateToAuftrag={oeffneAuftrag}
+    />
+  )
+
+  // Dieselbe Ansicht, zusätzlich mit auto-Fristen und manuellen Aufgaben.
   const aufgabenEl = (
     <GlobalTodoView
       clients={clients}
@@ -1448,7 +1463,6 @@ export default function App() {
       onNavigateToAuftrag={oeffneAuftrag}
     />
   )
-
 
   const honorareEl = (
     <BudgetView
@@ -1978,6 +1992,7 @@ export default function App() {
                   wechselBereich('personen')
                 }}
                 onOeffneBereich={wechselBereich}
+                slotAuftraege={auftraegeEl}
                 slotAufgaben={aufgabenEl}
               />
             )}

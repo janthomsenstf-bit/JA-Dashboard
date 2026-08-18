@@ -20,10 +20,16 @@ const WOCHENTAG_L  = ['Sonntag','Montag','Dienstag','Mittwoch','Donnerstag','Fre
 const STATUS_ORDER = ['offen','in_bearbeitung','erledigt']
 
 // Persistente Filter der Übersicht – reine Anzeige-Einstellungen, gerätelokal.
+// Die reine Auftragsansicht und die Gesamtansicht merken sich ihre Einstellungen
+// getrennt (eigener Schlüssel) – sonst verstellen sich die beiden Reiter
+// gegenseitig Monat und Filter.
 const TODO_FILTER_KEY = 'sda-todo-filters-v1'
-function loadTodoFilters() {
+function filterKeyFuer(modus) {
+  return modus === 'auftraege' ? TODO_FILTER_KEY + '-auftraege' : TODO_FILTER_KEY
+}
+function loadTodoFilters(key = TODO_FILTER_KEY) {
   try {
-    const raw = localStorage.getItem(TODO_FILTER_KEY)
+    const raw = localStorage.getItem(key)
     if (raw) return JSON.parse(raw) || {}
   } catch {}
   return {}
@@ -917,9 +923,13 @@ function StatBadge({ label, count, color, bg }) {
 }
 
 // ── Hauptkomponente ───────────────────────────────────────────────────────────
-export default function GlobalTodoView({ clients, aufgabenListe = [], onUpdateAufgabe, onAddAufgabe, onUpdateClient, onSelectClient, onNavigateToAuftrag }) {
+export default function GlobalTodoView({ clients, aufgabenListe = [], onUpdateAufgabe, onAddAufgabe, onUpdateClient, onSelectClient, onNavigateToAuftrag, modus = 'alle' }) {
+  // modus 'auftraege' → nur echte Aufträge (der Quellen-Filter entfällt)
+  // modus 'alle'      → zusätzlich auto-Fristen und manuelle Aufgaben
+  const nurAuftraege  = modus === 'auftraege'
+  const speicherKey   = filterKeyFuer(modus)
   const aktiveClients = useMemo(() => clients.filter(c => !c.archiviert), [clients])
-  const saved = useMemo(() => loadTodoFilters(), [])
+  const saved = useMemo(() => loadTodoFilters(speicherKey), [speicherKey])
 
   // ── Ansicht & Navigation (letzte Ansicht wiederhergestellt) ───────────────
   const [viewMode,      setViewMode]      = useState(saved.viewMode ?? 'monat')
@@ -936,18 +946,18 @@ export default function GlobalTodoView({ clients, aufgabenListe = [], onUpdateAu
   const [filterTyp,        setFilterTyp]        = useState(saved.filterTyp ?? 'alle')
   const [filterStatus,     setFilterStatus]     = useState(saved.filterStatus ?? 'aktiv')
   const [filterMandatstyp, setFilterMandatstyp] = useState(saved.filterMandatstyp ?? 'alle')
-  const [filterQuelle,     setFilterQuelle]     = useState(saved.filterQuelle ?? 'alle')
+  const [filterQuelle,     setFilterQuelle]     = useState(nurAuftraege ? 'auftraege' : (saved.filterQuelle ?? 'alle'))
 
   // Letzte Ansicht automatisch merken (gerätelokal, nur Anzeige-Einstellungen)
   useEffect(() => {
     try {
-      localStorage.setItem(TODO_FILTER_KEY, JSON.stringify({
+      localStorage.setItem(speicherKey, JSON.stringify({
         viewMode,
         navDate: (navDate instanceof Date && !isNaN(navDate)) ? navDate.toISOString() : null,
         filterJahr, filterMonat, filterTyp, filterStatus, filterMandatstyp, filterQuelle,
       }))
     } catch {}
-  }, [viewMode, navDate, filterJahr, filterMonat, filterTyp, filterStatus, filterMandatstyp, filterQuelle])
+  }, [speicherKey, viewMode, navDate, filterJahr, filterMonat, filterTyp, filterStatus, filterMandatstyp, filterQuelle])
 
   // ── Alle Aufträge (Serien expandiert) ─────────────────────────────────────
   const alleAuftraege = useMemo(() => {
@@ -1303,7 +1313,7 @@ export default function GlobalTodoView({ clients, aufgabenListe = [], onUpdateAu
     setViewMode('monat'); setNavDate(t)
     setFilterJahr(t.getFullYear()); setFilterMonat(t.getMonth() + 1)
     setFilterTyp('alle'); setFilterStatus('aktiv'); setFilterMandatstyp('alle')
-    setFilterQuelle('alle')
+    setFilterQuelle(nurAuftraege ? 'auftraege' : 'alle')
   }
 
   function goPrev() {
@@ -1506,11 +1516,11 @@ export default function GlobalTodoView({ clients, aufgabenListe = [], onUpdateAu
 
         {/* Zeile 1: Titel + View-Mode + Stats */}
         <div style={{ display:'flex', alignItems:'center', gap:'10px', marginBottom:'10px', flexWrap:'wrap' }}>
-          <span style={{ fontSize:'20px' }}>📑</span>
+          <span style={{ fontSize:'20px' }}>{nurAuftraege ? '📑' : '📋'}</span>
           <div>
-            <div style={{ fontWeight:800, fontSize:'15px' }}>Aufträge &amp; Fristen</div>
+            <div style={{ fontWeight:800, fontSize:'15px' }}>{nurAuftraege ? 'Auftrags-Übersicht' : 'Aufgaben & Fristen'}</div>
             <div style={{ fontSize:'10px', opacity:0.55 }}>
-              Alle Mandate · Aufträge, Fristen und Aufgaben
+              {nurAuftraege ? 'Alle Mandate · nur echte Aufträge' : 'Alle Mandate · Aufträge, Fristen und Aufgaben'}
             </div>
           </div>
 
@@ -1654,13 +1664,16 @@ export default function GlobalTodoView({ clients, aufgabenListe = [], onUpdateAu
             <button key={k} onClick={() => setFilterMandatstyp(k)} style={btnFilter(filterMandatstyp === k, '#f59e0b')}>{l}</button>
           ))}
 
-          {divider}
-
           {/* Quellen-Filter: eigene Aufträge · auto-Fristen · manuelle Aufgaben.
-              Damit grenzt man hier auf „nur echte Aufträge" ein. */}
-          {[['alle','🗂 Alle Quellen'],['auftraege','📋 Aufträge'],['fristen','📅 Fristen (auto)'],['manuell','📌 Aufgaben']].map(([k,l]) => (
-            <button key={k} onClick={() => setFilterQuelle(k)} style={btnFilter(filterQuelle === k, '#22d3ee')}>{l}</button>
-          ))}
+              In der reinen Auftragsansicht fest auf Aufträge gestellt – daher aus. */}
+          {!nurAuftraege && (
+            <>
+              {divider}
+              {[['alle','🗂 Alle Quellen'],['auftraege','📋 Aufträge'],['fristen','📅 Fristen (auto)'],['manuell','📌 Aufgaben']].map(([k,l]) => (
+                <button key={k} onClick={() => setFilterQuelle(k)} style={btnFilter(filterQuelle === k, '#22d3ee')}>{l}</button>
+              ))}
+            </>
+          )}
 
           {divider}
           <button onClick={resetFilters} title="Alle Filter auf Standard zurücksetzen (aktueller Monat, alle Typen, aktiv, alle Quellen)"

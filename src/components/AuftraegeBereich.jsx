@@ -2,13 +2,13 @@ import { useState, useMemo } from 'react'
 import { alleFristen, fristenGruppen, QUELLE_CFG } from '../utils/fristen.js'
 
 /**
- * Bereich „Aufträge" – hier laufen alle Dinge mit Datum zusammen.
- * (Der frühere eigene Menüpunkt „Aufgaben" ist hier aufgegangen.)
+ * Bereich „Aufträge" – die Auftragsübersicht, ergänzt um das, was vorher im
+ * eigenen Menüpunkt „Aufgaben" lag.
  *
- * Zwei Ansichten:
+ * Drei Ansichten:
+ *  · Aufträge          – die reine Auftragsübersicht (Standard, unverändert)
  *  · Cockpit           – Kennzahlen + chronologische Agenda (der Überblick)
- *  · Aufträge & Fristen – die vollständige Übersicht (das Arbeitstier); dort
- *    grenzt der Quellen-Filter auf reine Aufträge, auto-Fristen oder Aufgaben ein.
+ *  · Aufgaben & Fristen – zusätzlich auto-Fristen und manuelle Aufgaben
  *
  * Kalender und Honorare sind eigene Hauptmenüpunkte und liegen nicht hier.
  *
@@ -22,8 +22,9 @@ import { alleFristen, fristenGruppen, QUELLE_CFG } from '../utils/fristen.js'
 const FARBE = '#2563eb' // Farbwelt des Bereichs „Aufträge"
 
 const ANSICHTEN = [
-  { key: 'cockpit',  label: 'Cockpit',            icon: '🎛' },
-  { key: 'aufgaben', label: 'Aufträge & Fristen', icon: '📋' },
+  { key: 'auftraege', label: 'Aufträge',           icon: '📑' },
+  { key: 'cockpit',   label: 'Cockpit',            icon: '🎛' },
+  { key: 'aufgaben',  label: 'Aufgaben & Fristen', icon: '📋' },
 ]
 
 // ── Zeit-Helfer ───────────────────────────────────────────────────────────────
@@ -55,10 +56,11 @@ export default function AuftraegeBereich({
   aufgabenListe = [],
   onOeffneMandant,
   onOeffneBereich,   // springt in einen anderen Hauptmenüpunkt (Kalender/Honorare)
-  slotAufgaben,      // bestehende Auftrags-/Fristen-Übersicht
+  slotAuftraege,     // die reine Auftragsübersicht (Standardansicht)
+  slotAufgaben,      // dieselbe Übersicht, zusätzlich mit Fristen und Aufgaben
 }) {
   const [ansicht, setAnsicht] = useState(() => {
-    try { return localStorage.getItem('auftraege-ansicht') || 'cockpit' } catch { return 'cockpit' }
+    try { return localStorage.getItem('auftraege-ansicht') || 'auftraege' } catch { return 'auftraege' }
   })
   const wechsel = a => { setAnsicht(a); try { localStorage.setItem('auftraege-ansicht', a) } catch {} }
 
@@ -280,7 +282,14 @@ export default function AuftraegeBereich({
         </div>
       )}
 
-      {/* ── Vollständige Auftrags-/Fristen-Übersicht (unverändert) ── */}
+      {/* ── Reine Auftragsübersicht (Standard, unverändert) ── */}
+      {ansicht === 'auftraege' && (
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}>
+          {slotAuftraege ?? <Leer text="Auftrags-Übersicht ist hier nicht verfügbar." />}
+        </div>
+      )}
+
+      {/* ── Dieselbe Übersicht, zusätzlich mit auto-Fristen und Aufgaben ── */}
       {ansicht === 'aufgaben' && (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}>
           {slotAufgaben ?? <Leer text="Aufgaben-Übersicht ist hier nicht verfügbar." />}
