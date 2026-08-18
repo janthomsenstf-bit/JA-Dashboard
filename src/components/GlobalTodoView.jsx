@@ -1344,7 +1344,8 @@ export default function GlobalTodoView({ clients, aufgabenListe = [], onUpdateAu
 
   // Navigation-Label
   const navLabel = useMemo(() => {
-    if (viewMode === 'monat') return `${MONAT_KURZ[filterMonat-1]} ${filterJahr}`
+    // filterMonat === null heißt „Alle" – sonst stünde hier „undefined 2026"
+    if (viewMode === 'monat') return filterMonat === null ? `Ganzes Jahr ${filterJahr}` : `${MONAT_KURZ[filterMonat-1]} ${filterJahr}`
     if (viewMode === 'woche') {
       const ws = getWeekStart(navDate)
       const we = new Date(ws); we.setDate(ws.getDate() + 6)
@@ -1518,7 +1519,7 @@ export default function GlobalTodoView({ clients, aufgabenListe = [], onUpdateAu
         <div style={{ display:'flex', alignItems:'center', gap:'10px', marginBottom:'10px', flexWrap:'wrap' }}>
           <span style={{ fontSize:'20px' }}>{nurAuftraege ? '📑' : '📋'}</span>
           <div>
-            <div style={{ fontWeight:800, fontSize:'15px' }}>{nurAuftraege ? 'Auftrags-Übersicht' : 'Aufgaben & Fristen'}</div>
+            <div style={{ fontWeight:800, fontSize:'15px' }}>{nurAuftraege ? 'Auftrags-Übersicht' : 'Meine Liste'}</div>
             <div style={{ fontSize:'10px', opacity:0.55 }}>
               {nurAuftraege ? 'Alle Mandate · nur echte Aufträge' : 'Alle Mandate · Aufträge, Fristen und Aufgaben'}
             </div>

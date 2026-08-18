@@ -1979,19 +1979,9 @@ export default function App() {
               />
             )}
 
-            {/* Bereich „Aufträge" – hier laufen alle Dinge mit Datum zusammen
-                (der frühere eigene Menüpunkt „Aufgaben" ist hier aufgegangen) */}
+            {/* Bereich „Aufträge" – Auftragsübersicht und „Meine Liste" */}
             {hauptbereich === 'auftraege' && (
               <AuftraegeBereich
-                clients={clients}
-                termine={termine}
-                aufgabenListe={aufgabenListe}
-                onOeffneMandant={(id, tab) => {
-                  setDetailInitialTab(tab ?? 0)
-                  setSelectedId(id)
-                  wechselBereich('personen')
-                }}
-                onOeffneBereich={wechselBereich}
                 slotAuftraege={auftraegeEl}
                 slotAufgaben={aufgabenEl}
               />
