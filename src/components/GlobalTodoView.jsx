@@ -499,8 +499,17 @@ function MandantenView({ rows, onSelectClient }) {
 }
 
 // ── Wochen-Ansicht ────────────────────────────────────────────────────────────
-function WeekView({ weekDays, onSelectClient, onCycleStatus, onQuickCreate, onNavigateToAuftrag }) {
+// Die Tagesspalten sind Ablageflächen: Karten lassen sich mit der Maus auf einen
+// anderen Tag ziehen (siehe verschiebeAufTag in der Hauptkomponente).
+function WeekView({ weekDays, onSelectClient, onCycleStatus, onQuickCreate, onNavigateToAuftrag, istVerschiebbar, verschiebeGrund, onVerschieben }) {
   const heute = new Date(); heute.setHours(0,0,0,0)
+  const [gezogen, setGezogen] = useState(null)   // Karte, die gerade am Mauszeiger hängt
+  const [zielTag, setZielTag] = useState(null)   // Spalte, über der sie schwebt
+
+  function ablegen(date) {
+    if (gezogen) onVerschieben?.(gezogen, date)
+    setGezogen(null); setZielTag(null)
+  }
 
   return (
     <div style={{ flex:1, display:'flex', overflowX:'auto', overflowY:'hidden', background:'var(--bg)' }}>
@@ -508,12 +517,20 @@ function WeekView({ weekDays, onSelectClient, onCycleStatus, onQuickCreate, onNa
         const istHeute    = isSameDay(date, heute)
         const istWE       = date.getDay() === 0 || date.getDay() === 6
         const isVergangen = date < heute && !istHeute
+        const istZiel     = zielTag === i && gezogen
         return (
-          <div key={i} style={{
+          <div key={i}
+            onDragOver={e => { if (gezogen) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setZielTag(i) } }}
+            onDragLeave={() => setZielTag(z => z === i ? null : z)}
+            onDrop={e => { e.preventDefault(); ablegen(date) }}
+            style={{
             flex: istWE ? '0 0 110px' : '1 1 0', minWidth: istWE ? '110px' : '150px',
             borderRight: i < 6 ? '1px solid var(--border)' : 'none',
             display:'flex', flexDirection:'column', overflow:'hidden',
-            background: istHeute ? 'rgba(59,130,246,0.03)' : istWE ? 'rgba(0,0,0,0.12)' : 'transparent',
+            outline: istZiel ? '2px dashed #3b82f6' : 'none', outlineOffset:'-2px',
+            background: istZiel ? 'rgba(59,130,246,0.10)'
+                      : istHeute ? 'rgba(59,130,246,0.03)' : istWE ? 'rgba(0,0,0,0.12)' : 'transparent',
+            transition:'background 0.12s',
           }}>
             {/* Tag-Header */}
             <div style={{
@@ -538,7 +555,12 @@ function WeekView({ weekDays, onSelectClient, onCycleStatus, onQuickCreate, onNa
             {/* Items */}
             <div style={{ flex:1, overflowY:'auto', padding:'5px 5px 8px' }}>
               {items.map(au => (
-                <WeekCard key={au.id} au={au} onSelectClient={onSelectClient} onCycleStatus={onCycleStatus} onNavigateToAuftrag={onNavigateToAuftrag} />
+                <WeekCard key={au.id} au={au} onSelectClient={onSelectClient} onCycleStatus={onCycleStatus} onNavigateToAuftrag={onNavigateToAuftrag}
+                  ziehbar={istVerschiebbar?.(au) ?? false}
+                  grund={verschiebeGrund?.(au) ?? ''}
+                  wirdGezogen={gezogen?.id === au.id}
+                  onZiehStart={() => setGezogen(au)}
+                  onZiehEnde={() => { setGezogen(null); setZielTag(null) }} />
               ))}
               <button onClick={() => onQuickCreate(date)}
                 style={{ width:'100%', padding:'4px', border:'1px dashed var(--border)', borderRadius:'6px', background:'transparent', color:'var(--text-muted)', fontSize:'11px', cursor:'pointer', marginTop: items.length > 0 ? '4px' : 0 }}>
@@ -552,7 +574,7 @@ function WeekView({ weekDays, onSelectClient, onCycleStatus, onQuickCreate, onNa
   )
 }
 
-function WeekCard({ au, onSelectClient, onCycleStatus, onNavigateToAuftrag }) {
+function WeekCard({ au, onSelectClient, onCycleStatus, onNavigateToAuftrag, ziehbar = false, grund = '', wirdGezogen = false, onZiehStart, onZiehEnde }) {
   const typCfg    = AUFTRAGS_TYP_CFG[au.typ]      ?? AUFTRAGS_TYP_CFG.freitext
   const statusCfg = AUFTRAGS_STATUS_CFG[au.status] ?? AUFTRAGS_STATUS_CFG.offen
   const erledigt  = au.status === 'erledigt'
@@ -561,12 +583,18 @@ function WeekCard({ au, onSelectClient, onCycleStatus, onNavigateToAuftrag }) {
   const isOverdue = !erledigt && exact && new Date(exact + 'T00:00:00') < heute
   const overdueDays = isOverdue ? daysSince(exact) : 0
   return (
-    <div style={{
+    <div
+      draggable={ziehbar}
+      onDragStart={e => { if (!ziehbar) { e.preventDefault(); return } e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', au.id); onZiehStart?.() }}
+      onDragEnd={() => onZiehEnde?.()}
+      title={ziehbar ? 'Zum Verschieben auf einen anderen Tag ziehen' : grund}
+      style={{
       padding:'5px 7px', borderRadius:'6px', marginBottom:'3px',
       border:`1px solid ${isOverdue ? 'rgba(239,68,68,0.4)' : typCfg.border}`,
       borderLeft: isOverdue ? '3px solid #ef4444' : `1px solid ${typCfg.border}`,
       background: erledigt ? 'rgba(22,163,74,0.04)' : isOverdue ? 'rgba(239,68,68,0.05)' : typCfg.bg,
-      opacity: erledigt ? 0.6 : 1,
+      opacity: wirdGezogen ? 0.4 : erledigt ? 0.6 : 1,
+      cursor: ziehbar ? 'grab' : 'default',
     }}>
       <div style={{ display:'flex', alignItems:'center', gap:'4px', marginBottom:'2px' }}>
         <button onClick={() => (au._generiert || au._manuell) ? onSelectClient(au.client.id) : onNavigateToAuftrag?.(au.client.id, au.id)} title={(au._generiert || au._manuell) ? '→ Mandant öffnen' : `→ ${typCfg.label} öffnen`}
@@ -1368,6 +1396,39 @@ export default function GlobalTodoView({ clients, aufgabenListe = [], onUpdateAu
     }
   }
 
+  // ── Per Maus auf einen anderen Tag ziehen ─────────────────────────────────
+  // Verschiebbar ist nur, was ein eigenes Datum trägt:
+  //  · echte Einzelaufträge      → Feld `frist`
+  //  · einmalige manuelle Aufgaben → Feld `faellig`
+  // NICHT verschiebbar: automatisch erzeugte Fristen (die stehen im Gesetz
+  // bzw. in den Stammdaten) und Serieninstanzen (ihr Termin folgt der Serie).
+  function istVerschiebbar(au) {
+    if (au._generiert) return false
+    if (au.istSerie) return false
+    if (au._manuell && au._serieInstanz) return false
+    return true
+  }
+
+  function verschiebeGrund(au) {
+    if (au._generiert) return 'Automatische Frist – ergibt sich aus den Stammdaten und lässt sich nicht verschieben'
+    if (au.istSerie || au._serieInstanz) return 'Serientermin – bitte in der Serie selbst ändern'
+    return ''
+  }
+
+  // Ändert bewusst NUR das Datum. Zeitraum (jahr/monat) bleibt unangetastet:
+  // bei Jahresabschlüssen hängt daran das Veranlagungsjahr.
+  function verschiebeAufTag(au, datum) {
+    if (!au || !istVerschiebbar(au)) return
+    const ymd = `${datum.getFullYear()}-${String(datum.getMonth() + 1).padStart(2, '0')}-${String(datum.getDate()).padStart(2, '0')}`
+    if (getExactDate(au) === ymd) return          // schon dort – nichts tun
+    if (au._manuell) {
+      onUpdateAufgabe?.(au._manuellId, { faellig: `${ymd}T12:00:00` })
+      return
+    }
+    const upd = (au.client.auftraege ?? []).map(a => a.id === au.id ? { ...a, frist: ymd } : a)
+    onUpdateClient(au.client.id, { auftraege: upd })
+  }
+
   function cycleStatus(au) {
     // Generierte Fristen kennen nur erledigt/offen → einfaches Umschalten.
     if (au._generiert) {
@@ -1715,7 +1776,8 @@ export default function GlobalTodoView({ clients, aufgabenListe = [], onUpdateAu
             <MonthTable gefiltert={gefiltert} alleAuftraege={alleAuftraege} onSelectClient={onSelectClient} onCycleStatus={cycleStatus} onToggleDone={markDone} onNavigateToAuftrag={onNavigateToAuftrag} />
           )}
           {viewMode === 'woche' && weekDays && (
-            <WeekView weekDays={weekDays} onSelectClient={onSelectClient} onCycleStatus={cycleStatus} onQuickCreate={setQuickCreateDay} onNavigateToAuftrag={onNavigateToAuftrag} />
+            <WeekView weekDays={weekDays} onSelectClient={onSelectClient} onCycleStatus={cycleStatus} onQuickCreate={setQuickCreateDay} onNavigateToAuftrag={onNavigateToAuftrag}
+              istVerschiebbar={istVerschiebbar} verschiebeGrund={verschiebeGrund} onVerschieben={verschiebeAufTag} />
           )}
           {viewMode === 'tag' && dayItems && (
             <DayTable items={dayItems} date={navDate} onSelectClient={onSelectClient} onCycleStatus={cycleStatus} onToggleDone={markDone} onQuickCreate={setQuickCreateDay} onNavigateToAuftrag={onNavigateToAuftrag} />
