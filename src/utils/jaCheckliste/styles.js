@@ -306,6 +306,10 @@ export const JAC2_CSS = `
 .jac2 .modkonten code{font-family:ui-monospace,Menlo,Consolas,monospace;font-weight:700;color:var(--accent)}
 .jac2 .modquellen{margin:0;padding-left:16px;font-size:11.5px;color:var(--ink2);line-height:1.55}
 /* Erläuterungsbereich – bei jedem Prüfpunkt, unterhalb der Eingaben. */
+/* Rechenfeld in Listenzeilen: zeigt ein Ergebnis, nimmt keine Eingabe. */
+.jac2 .calcfeld{padding:6px 10px;border:1px dashed var(--line2);border-radius:7px;background:var(--surface2);
+  font-size:13px;color:var(--ink2);min-height:31px;font-variant-numeric:tabular-nums;text-align:right}
+.jac2 .calcfeld.warn{border-color:#f59e0b;border-style:solid;color:#b45309;font-weight:650;background:#fffbeb}
 .jac2 .erl{margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}
 .jac2 .erl label{display:block;font-size:11.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
   color:var(--ink2);margin-bottom:6px}

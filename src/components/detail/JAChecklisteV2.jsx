@@ -856,7 +856,10 @@ function KontoListe({ p, L, mutate }) {
               {textF.map(f => (
                 <div key={f.k} className={'fld ' + ((f.k === 'konto' || f.k === 'buchungskonto') ? 'w-konto' : (f.t === 'num' ? 'w-num' : ''))}>
                   <label>{f.l}</label>
-                  {f.t === 'select'
+                  {f.t === 'calc'
+                    ? <div className={'calcfeld num' + (f.warnWenn && f.warnWenn(r) ? ' warn' : '')}
+                        title={f.hilfe || ''}>{eur(f.calc(r))}</div>
+                    : f.t === 'select'
                     ? <select value={r[f.k] || ''} onChange={e => row(i)(x => { x[f.k] = e.target.value })}>{f.opt.map(o => <option key={o[0]} value={o[0]}>{o[1]}</option>)}</select>
                     : <input className={f.t === 'num' ? 'num' : (/konto|^k[A-Z]/.test(f.k) ? 'mono' : '')}
                         type={f.t === 'date' ? 'date' : 'text'}

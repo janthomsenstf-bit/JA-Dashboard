@@ -1160,10 +1160,23 @@ export const MODULE = {
       { k: 'skr', l: 'Kontenrahmen', t: 'select', def: '03', opt: [['03', 'SKR 03'], ['04', 'SKR 04']] },
       { k: 'lohnbuero', l: 'Lohnbuchhaltung durch', t: 'text' },
     ],
-    listen: LOHN_LISTEN.map(L => ({ key: L.key, label: L.label, rowNotes: true, felder: [
-      { k: 'konto', l: 'Konto', t: 'text' }, { k: 'bez', l: 'Bezeichnung', t: 'text' },
-      { k: 'saldo', l: 'Saldo', t: 'num' }, { k: 'vj', l: 'Vorjahr', t: 'num' },
-      { k: 'ok', l: 'geprüft / unauffällig', t: 'check' }] })),
+    // Die beiden Bloecke haben bewusst verschiedene Spalten: beim Aufwand zaehlt
+    // der Vorjahresvergleich, bei den Bestandskonten der Ausgleich im Folgejahr.
+    listen: [
+      { key: 'aufwand', label: 'Lohnaufwand', rowNotes: true, felder: [
+        { k: 'konto', l: 'Konto', t: 'text' }, { k: 'bez', l: 'Bezeichnung', t: 'text' },
+        { k: 'saldo', l: 'Saldo', t: 'num' }, { k: 'vj', l: 'Vorjahr', t: 'num' },
+        { k: 'ok', l: 'geprüft / unauffällig', t: 'check' }] },
+      { key: 'verbfor', label: 'Forderungen und Verbindlichkeiten', rowNotes: true, felder: [
+        { k: 'konto', l: 'Konto', t: 'text' }, { k: 'bez', l: 'Bezeichnung', t: 'text' },
+        { k: 'saldo', l: 'Saldo 31.12.', t: 'num' },
+        { k: 'zahlung', l: 'Zahlung im Folgejahr', t: 'num' },
+        { k: 'diff', l: 'Differenz', t: 'calc',
+          hilfe: 'Saldo abzüglich der im Folgejahr geflossenen Zahlung. Null bedeutet ausgeglichen; bleibt ein Rest, gehört ein Umbuchungshinweis in den Vermerk.',
+          calc: x => Math.round((Math.abs(num(x.saldo)) - Math.abs(num(x.zahlung))) * 100) / 100,
+          warnWenn: x => num(x.zahlung) !== 0 && Math.abs(Math.abs(num(x.saldo)) - Math.abs(num(x.zahlung))) > 0.005 },
+        { k: 'ok', l: 'ausgeglichen / geprüft', t: 'check' }] },
+    ],
     // Weiche für den SuSa-Import: Aufwand in den oberen Block, Forderungen und
     // Verbindlichkeiten in den unteren.
     kontoZiel: (konto, w) => {
@@ -1239,6 +1252,23 @@ export const MODULE = {
           if (g && g.key === 'forderung' && s < 0) hinweise.push(bez + ': Forderungskonto mit Haben-Saldo (' + eur(s) + ') – Richtung prüfen.')
         })
 
+        // Ausgleich im Folgejahr: der Bearbeiter traegt die tatsaechlich
+        // geflossene Zahlung ein; was uebrig bleibt, braucht einen Vermerk.
+        const mitZahlung = vf.filter(x => num(x.zahlung))
+        if (mitZahlung.length) {
+          const offen = mitZahlung.filter(x => Math.abs(Math.abs(num(x.saldo)) - Math.abs(num(x.zahlung))) > 0.005)
+          const restSumme = offen.reduce((t, x) => t + (Math.abs(num(x.saldo)) - Math.abs(num(x.zahlung))), 0)
+          erg.push({ l: 'Im Folgejahr abgeglichen: ' + (mitZahlung.length - offen.length) + ' von ' + vf.length + ' Konten', v: null })
+          if (offen.length) {
+            erg.push({ l: 'noch nicht ausgeglichene Differenz', v: r2(restSumme), stark: 1 })
+            offen.forEach(x => { const g = lohnGruppe(x.konto, skr)
+              const bez = ((x.konto || '') + ' ' + (x.bez || (g && g.bez) || '')).trim()
+              const rest = Math.abs(num(x.saldo)) - Math.abs(num(x.zahlung))
+              hinweise.push(bez + ': Saldo ' + eur(num(x.saldo)) + ', Zahlung im Folgejahr ' + eur(num(x.zahlung)) + ' – Differenz ' + eur(rest) + '. Ursache im Vermerk festhalten (Umbuchung, Rueckstellung, Verrechnung).') })
+          }
+        } else {
+          hinweise.push('Fuer den Ausgleich im Folgejahr sind noch keine Zahlungen erfasst. Die Spalte „Zahlung im Folgejahr\" wird aus den Kontoauszuegen des Folgejahres gefuellt; die Differenz sollte dann null sein.')
+        }
         const fp = finde(K.fordPersonal)
         if (fp && num(fp.saldo)) hinweise.push('Konto ' + K.fordPersonal + ' (Forderungen gegen Personal) ist mit ' + eur(num(fp.saldo)) + ' bebucht. Prüfen, ob darin Mitarbeiterdarlehen stecken – die gehören getrennt ausgewiesen und verzinst.')
         if (finde(K.par11) || finde(K.par11Sv)) hinweise.push('§ 11 Abs. 2 S. 2 EStG: Lohnsteuer und Sozialversicherung für Dezember sind regelmäßig wiederkehrende Ausgaben. Zahlung innerhalb von zehn Tagen nach dem Jahreswechsel gehört wirtschaftlich ins alte Jahr (Konten ' + K.par11 + ' / ' + K.par11Sv + ').')
@@ -1254,7 +1284,7 @@ export const MODULE = {
       if (fremd.length) hinweise.push('⚠️ Nicht zum Lohnbereich: ' +
         fremd.map(x => (x.konto + ' ' + (x.bez || '')).trim()).join(' · ') +
         '. Diese Konten aus dem Modul entfernen oder dem passenden Modul zuordnen – sie gehen sonst in Summe und Quote ein.')
-      hinweise.push('Den Abgleich mit der Zahlung im Folgejahr nimmt das Modul nicht vor – dafür fehlt die Summen- und Saldenliste des Folgejahres. Die Salden stehen oben; der Vermerk je Konto wandert in das Excel-Arbeitspapier.')
+      hinweise.push('Der Ausgleich im Folgejahr wird aus den Kontoauszügen eingetragen, nicht aus einer Folge-SuSa – die liegt zum Abschlusszeitpunkt nicht vor. Saldo, eingetragene Zahlung, Differenz und Vermerk je Konto wandern in das Excel-Arbeitspapier.')
       if (!w.fBrutto) hinweise.push('Bei Nettolohnverbuchung wird das Verrechnungskonto nur bebucht, wenn zum Stichtag noch Zahlungen offen sind (Dok. 5360651).')
       hinweise.push('Gegenprobe außerhalb dieses Moduls: Sachbezugskonten ' + (K.sachbezug || []).join(', ') + ' – sind Fahrzeuggestellung, Gutscheine und sonstige Sachbezüge erfasst und korrespondierend im Lohnaufwand gebucht?')
 
@@ -1915,7 +1945,9 @@ export function buildExportSheets(cl, meta) {
       const zusatz = L.rowNotes ? ['Vermerk', 'Rueckfragen'] : []
       rows.push((L.felder || []).map(f => f.l).concat(zusatz))
       ;(p.werte[L.key] || []).forEach(x => {
-        const basis = (L.felder || []).map(f => f.t === 'num' ? num(x[f.k]) : (x[f.k] || ''))
+        const basis = (L.felder || []).map(f => f.t === 'num' ? num(x[f.k])
+          : f.t === 'calc' ? (typeof f.calc === 'function' ? f.calc(x) : '')
+          : (x[f.k] || ''))
         if (L.rowNotes) basis.push(x.notiz || '',
           (Array.isArray(x.rueck) ? x.rueck.filter(q => (q.t || '').trim()).map(q => q.t).join(' | ') : ''))
         rows.push(basis) })
