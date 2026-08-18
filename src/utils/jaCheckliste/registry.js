@@ -1167,7 +1167,7 @@ export const MODULE = {
         { k: 'konto', l: 'Konto', t: 'text' }, { k: 'bez', l: 'Bezeichnung', t: 'text' },
         { k: 'saldo', l: 'Saldo', t: 'num' }, { k: 'vj', l: 'Vorjahr', t: 'num' },
         { k: 'ok', l: 'geprüft / unauffällig', t: 'check' }] },
-      { key: 'verbfor', label: 'Forderungen und Verbindlichkeiten', rowNotes: true, felder: [
+      { key: 'verbfor', label: 'Forderungen und Verbindlichkeiten', rowNotes: true, rowVermerke: true, felder: [
         { k: 'konto', l: 'Konto', t: 'text' }, { k: 'bez', l: 'Bezeichnung', t: 'text' },
         { k: 'saldo', l: 'Saldo 31.12.', t: 'num' },
         { k: 'zahlung', l: 'Zahlung im Folgejahr', t: 'num' },
@@ -1942,12 +1942,14 @@ export function buildExportSheets(cl, meta) {
     modLists(mod).forEach(L => { rows.push([L.label || ''])
       // Bei Listen mit Zeilenvermerk wandern Vermerk und Rueckfragen als eigene
       // Spalten ins Arbeitspapier - sonst waere die Begruendung nur am Bildschirm.
-      const zusatz = L.rowNotes ? ['Vermerk', 'Rueckfragen'] : []
+      const zusatz = (L.rowVermerke ? ['Vermerke je Buchung'] : []).concat(L.rowNotes ? ['Vermerk', 'Rueckfragen'] : [])
       rows.push((L.felder || []).map(f => f.l).concat(zusatz))
       ;(p.werte[L.key] || []).forEach(x => {
         const basis = (L.felder || []).map(f => f.t === 'num' ? num(x[f.k])
           : f.t === 'calc' ? (typeof f.calc === 'function' ? f.calc(x) : '')
           : (x[f.k] || ''))
+        if (L.rowVermerke) basis.push((Array.isArray(x.vermerke) ? x.vermerke : [])
+          .filter(v => (v.t || '').trim()).map((v, i) => (i + 1) + ') ' + v.t).join('  '))
         if (L.rowNotes) basis.push(x.notiz || '',
           (Array.isArray(x.rueck) ? x.rueck.filter(q => (q.t || '').trim()).map(q => q.t).join(' | ') : ''))
         rows.push(basis) })

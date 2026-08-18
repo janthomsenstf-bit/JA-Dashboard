@@ -848,6 +848,7 @@ function KontoListe({ p, L, mutate }) {
       <h5 className="posH">{L.label || 'Positionen'}</h5>
       {arr.map((r, i) => {
         const rr = Array.isArray(r.rueck) ? r.rueck : []; const offRR = rr.filter(x => !x.ok).length
+        const vm = Array.isArray(r.vermerke) ? r.vermerke : []
         const done = r.fertig || r.ok
         return (
           <div className="posrow2" key={i}>
@@ -883,7 +884,18 @@ function KontoListe({ p, L, mutate }) {
               <div className="posextra">
                 {L.rowFertig && <label className={'rowfertig' + (r.fertig ? ' on' : '')}><input type="checkbox" checked={!!r.fertig} onChange={e => row(i)(x => { x.fertig = e.target.checked })} /><span>erledigt / geklärt</span></label>}
                 <button className="rueckadd" onClick={() => row(i)(x => { (x.rueck || (x.rueck = [])).push({ t: '', ok: false }) })}>＋ Rückfrage{offRR ? <span className="rrbadge">{offRR}</span> : null}</button>
+                {L.rowVermerke && <button className="vermerkadd" onClick={() => row(i)(x => { (x.vermerke || (x.vermerke = [])).push({ t: '' }) })}>＋ Vermerk{vm.length ? <span className="rrbadge">{vm.length}</span> : null}</button>}
                 {r.notiz == null && <button className="hinweisadd" onClick={() => row(i)(x => { x.notiz = '' })}>＋ Hinweis (intern)</button>}
+                {L.rowVermerke && vm.length > 0 && (
+                  <div className="rowvermerke">{vm.map((q, vi) => (
+                    <div className="vmitem" key={vi}>
+                      <span className="vmnr">{vi + 1}</span>
+                      <input className="vmtext" value={q.t || ''} placeholder="Buchung oder Klärung zu diesem Konto …"
+                        onChange={e => row(i)(x => { x.vermerke[vi].t = e.target.value })} />
+                      <button className="del" title="Vermerk löschen" onClick={() => row(i)(x => { x.vermerke.splice(vi, 1) })}>×</button>
+                    </div>
+                  ))}</div>
+                )}
                 {rr.length > 0 && (
                   <div className="rowrueck">{rr.map((q, ri) => (
                     <div className="rritem" key={ri}>
