@@ -56,3 +56,21 @@ export function ustAKonten(gruppe, skr) {
   const g = UST_A_GRUPPEN.find(x => x.key === gruppe)
   return g ? Object.keys(g.konten[skr === '04' ? '04' : '03']).map(String) : []
 }
+
+/* Voranmeldungszeiträume (§ 18 Abs. 1, 2 UStG). Monatlich bei Zahllast über
+ * 9.000 EUR im Vorjahr, vierteljährlich darunter; Existenzgründer melden in den
+ * ersten beiden Jahren monatlich (§ 18 Abs. 2 S. 4 UStG). */
+export const UST_MONATE = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni',
+  'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember']
+
+export const UST_QUARTALE = ['I. Quartal', 'II. Quartal', 'III. Quartal', 'IV. Quartal']
+
+/** Zeiträume für den gewählten Rhythmus. */
+export function ustZeitraeume(rhythmus) {
+  return rhythmus === 'quartal' ? UST_QUARTALE : UST_MONATE
+}
+
+/** Der letzte Zeitraum – auf ihn wird die Sondervorauszahlung angerechnet. */
+export function ustLetzterZeitraum(rhythmus) {
+  const z = ustZeitraeume(rhythmus); return z[z.length - 1]
+}

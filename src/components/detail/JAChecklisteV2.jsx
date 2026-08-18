@@ -877,6 +877,15 @@ function KontoListe({ p, L, mutate }) {
   const row = (i) => (fn) => mutate(d => { const w = findP(d, p.id).werte; if (!w[L.key]) w[L.key] = []; while (w[L.key].length <= i) w[L.key].push({}); fn(w[L.key][i], w[L.key]) })
   const addRow = () => mutate(d => { const w = findP(d, p.id).werte; (w[L.key] || (w[L.key] = [])).push({}) })
   const delRow = (i) => mutate(d => { findP(d, p.id).werte[L.key].splice(i, 1) })
+  // Manche Listen kennen ihre Zeitraeume vorab (z. B. 12 Monate oder 4 Quartale).
+  // Angelegt wird nur, was noch fehlt - vorhandene Zeilen bleiben unberuehrt.
+  const seed = typeof L.seed === "function" ? L.seed(p.werte) : null
+  const seedKey = L.seedKey || "zeitraum"
+  const leer = x => !x || !Object.keys(x).some(k => x[k] !== "" && x[k] != null && x[k] !== false)
+  const seedRows = () => mutate(d => { const w = findP(d, p.id).werte
+    const alt = (w[L.key] || []).filter(x => !leer(x))
+    const da = new Set(alt.map(x => String(x[seedKey] || "").trim()))
+    w[L.key] = alt.concat(seed.rows.filter(r => !da.has(String(r[seedKey]).trim())).map(r => ({ ...r }))) })
 
   return (
     <div className="posblock">
@@ -953,6 +962,7 @@ function KontoListe({ p, L, mutate }) {
         )
       })}
       <button className="addbtn" onClick={addRow}>+ Position</button>
+      {seed && <button className="addbtn seed" onClick={seedRows} title="Legt nur fehlende Zeitraeume an; vorhandene Zeilen bleiben stehen.">{seed.label}</button>}
     </div>
   )
 }

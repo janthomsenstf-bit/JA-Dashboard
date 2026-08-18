@@ -7,7 +7,7 @@
 
 import { SE_JAHRE, SE_JAHRE_LISTE, SE_KONTEN, SE_ALTERSSTAFFEL, seFaktor } from './pauschbetraege.js'
 import { LOHN_LISTEN, LOHN_GRUPPEN, LOHN_LEIT, lohnZielListe, lohnGruppe } from './lohnkonten.js'
-import { UST_A_GRUPPEN, UST_A_LEIT, ustAGruppe, istUstAKonto } from './ustkonten.js'
+import { UST_A_GRUPPEN, UST_A_LEIT, ustAGruppe, istUstAKonto , ustZeitraeume, ustLetzterZeitraum } from './ustkonten.js'
 export { UST_A_GRUPPEN, UST_A_LEIT, ustAGruppe, istUstAKonto }
 export { LOHN_LISTEN, LOHN_GRUPPEN, LOHN_LEIT, lohnZielListe, lohnGruppe }
 export { SE_JAHRE, SE_KONTEN, SE_ALTERSSTAFFEL }
@@ -1320,18 +1320,42 @@ export const MODULE = {
       { k: 'fAufrechnung', label: 'Aufrechnung nach § 226 AO geprüft (Voraussetzung für saldierten Ausweis)' },
       { k: 'fAbwWj', label: 'Abweichendes Wirtschaftsjahr (Umsatzsteuer ist Kalenderjahressteuer)' },
       { k: 'fJahresErkl', label: 'Umsatzsteuer-Jahreserklärung des Vorjahres liegt vor und ist vorgetragen' },
+      { k: 'fDauerfrist', label: 'Dauerfristverlängerung (§§ 46–48 UStDV) – Sondervorauszahlung 1/11' },
     ],
-    felder: [
+    felder: (ctx, w) => { const f = [
       { k: 'skr', l: 'Kontenrahmen', t: 'select', def: '03', opt: [['03', 'SKR 03'], ['04', 'SKR 04']] },
-      { k: 'offenFa', l: 'Offen laut Steuerkonto zum 31.12. (Verbindlichkeit negativ)', t: 'num' },
-      { k: 'standFa', l: 'Stand der Steuerkonto-Abfrage', t: 'date' },
-      { k: 'notizFa', l: 'Woraus ermittelt (Sollstellungen abzüglich Zahlungen, Altjahre …)', t: 'area', full: true },
-    ],
+      { k: 'vzRhythmus', l: 'Voranmeldungszeitraum', t: 'select', def: 'monat',
+        opt: [['monat', 'monatlich (12 Zeiträume)'], ['quartal', 'vierteljährlich (4 Zeiträume)']] }]
+      // Die Sondervorauszahlung gibt es nur mit Dauerfristverlaengerung - ohne das
+      // Haekchen bleibt die Maske frei von Feldern, die niemanden betreffen.
+      if (w && w.fDauerfrist) f.push(
+        { k: 'svzBetrag', l: 'Sondervorauszahlung 1/11 (gezahlt)', t: 'num' },
+        { k: 'svzAnrechnung', l: 'davon auf den letzten Zeitraum angerechnet', t: 'num' })
+      f.push(
+        { k: 'offenFa', l: 'Offen laut Steuerkonto zum 31.12. (Verbindlichkeit negativ)', t: 'num' },
+        { k: 'standFa', l: 'Stand der Steuerkonto-Abfrage', t: 'date' },
+        { k: 'notizFa', l: 'Woraus ermittelt (Sollstellungen abzüglich Zahlungen, Altjahre …)', t: 'area', full: true })
+      return f },
     listen: [
       { key: 'bestand', label: 'Umsatzsteuerkonten zum Stichtag', rowNotes: true, felder: [
         { k: 'konto', l: 'Konto', t: 'text' }, { k: 'bez', l: 'Bezeichnung', t: 'text' },
         { k: 'saldo', l: 'Saldo 31.12.', t: 'num' }, { k: 'vj', l: 'Vorjahr', t: 'num' },
         { k: 'ok', l: 'geprüft', t: 'check' }] },
+      { key: 'uva', label: 'Umsatzsteuer-Voranmeldungen des Jahres', rowNotes: true, rowVermerke: true,
+        seedKey: 'zeitraum',
+        seed: w => { const q = w && w.vzRhythmus === 'quartal'
+          return { label: q ? '4 Quartale anlegen' : '12 Monate anlegen',
+            rows: ustZeitraeume(q ? 'quartal' : 'monat').map(z => ({ zeitraum: z })) } },
+        felder: [
+          { k: 'zeitraum', l: 'Zeitraum', t: 'text' },
+          { k: 'zahllast', l: 'Zahllast lt. UStVA (Erstattung negativ)', t: 'num' },
+          { k: 'gezahlt', l: 'Gezahlt / erstattet (auch im Folgejahr)', t: 'num' },
+          { k: 'gezahltAm', l: 'am', t: 'date' },
+          { k: 'offen', l: 'Differenz', t: 'calc',
+            hilfe: 'Zahllast abzüglich der Zahlung. Null heißt: der Zeitraum ist ausgeglichen – gleich ob im laufenden Jahr oder im Folgejahr gezahlt.',
+            calc: x => Math.round((num(x.zahllast) - num(x.gezahlt)) * 100) / 100,
+            warnWenn: x => Math.abs(num(x.zahllast) - num(x.gezahlt)) > 0.005 },
+          { k: 'ok', l: 'geprüft', t: 'check' }] },
       { key: 'altjahre', label: 'Offene Zeiträume aus Vorjahren', rowNotes: true, rowVermerke: true, felder: [
         { k: 'zeitraum', l: 'Zeitraum', t: 'text' },
         { k: 'art', l: 'Art', t: 'select', def: 'verb', opt: [['verb', 'Verbindlichkeit'], ['ford', 'Forderung']] },
@@ -1354,6 +1378,7 @@ export const MODULE = {
       const kk = (w.bestand || []).filter(x => x && (x.konto || x.saldo))
       const s = k => { const r = kk.find(x => String(x.konto).trim() === String(k)); return r ? num(r.saldo) : 0 }
       const da = k => kk.some(x => String(x.konto).trim() === String(k))
+      const offenFaBetrag = () => num(w.offenFa)
 
       if (!kk.length) {
         hinweise.push('Noch keine Umsatzsteuerkonten übernommen. Über „SuSa / Kontenabstimmliste importieren" die Konten diesem Modul zuordnen – sie werden dann nach laufendem Jahr, Vorjahr und früheren Jahren gruppiert.')
@@ -1386,9 +1411,83 @@ export const MODULE = {
         if (!w.fAufrechnung) hinweise.push('Das Häkchen „Aufrechnung nach § 226 AO geprüft" ist nicht gesetzt. Ohne diese Prüfung sind Forderung und Verbindlichkeit getrennt auszuweisen.')
       }
 
+      // ── Erfasste Voranmeldungen ──
+      // Der offene Rest je Zeitraum ist genau das, was zum 31.12. abzugrenzen ist.
+      // Deshalb wird hier nicht das Vorjahr verglichen, sondern die tatsaechliche
+      // Zahlung eingetragen - auch wenn sie erst im Folgejahr geflossen ist.
+      const rhythmus = w.vzRhythmus === 'quartal' ? 'quartal' : 'monat'
+      const erwartet = rhythmus === 'quartal' ? 4 : 12
+      const uva = (w.uva || []).filter(x => x && (x.zeitraum || x.zahllast || x.gezahlt))
+      let sZahllast = 0, sGezahlt = 0
+      uva.forEach(x => { sZahllast += num(x.zahllast); sGezahlt += num(x.gezahlt) })
+      sZahllast = r2(sZahllast); sGezahlt = r2(sGezahlt)
+      const offenUva = r2(sZahllast - sGezahlt)
+      const svz = w.fDauerfrist ? num(w.svzBetrag) : 0
+      const svzAnr = w.fDauerfrist ? num(w.svzAnrechnung) : 0
+
+      // Eine im Folgejahr geflossene Zahlung macht den Zeitraum ausgeglichen, aber
+      // sie stellt den Stichtag nicht glatt - genau diese Betraege sind abzugrenzen.
+      // Deshalb zaehlt fuer den 31.12. das Zahlungsdatum, nicht die Zahlung.
+      const wjJahr = parseInt((ctx && ctx.wj) || '', 10)
+      // Ohne Datum wird die Zahlung dem laufenden Jahr zugerechnet - das Feld ist
+      // freiwillig, und eine leere Zelle darf keinen Alarm ausloesen. Nur ein
+      // ausdruecklich spaeteres Datum verschiebt den Betrag ueber den Stichtag.
+      const spaetX = x => { const d = String(x.gezahltAm || ''); if (!d || !wjJahr) return false
+        const y = parseInt(d.slice(0, 4), 10); return !!y && y > wjJahr }
+      const imJahr = x => !spaetX(x)
+      const offenStichtag = r2(uva.reduce((t, x) => t + num(x.zahllast) - (imJahr(x) ? num(x.gezahlt) : 0), 0))
+      const restDiff = r2(sZahllast - sGezahlt)
+
+      if (uva.length) {
+        erg.push({ l: 'Zahllast lt. Voranmeldungen (' + uva.length + ' von ' + erwartet + ' Zeiträumen)', v: sZahllast })
+        erg.push({ l: 'davon gezahlt bzw. erstattet', v: sGezahlt })
+        if (Math.abs(restDiff) > 0.005) erg.push({ l: 'noch überhaupt nicht ausgeglichen', v: restDiff })
+        if (svz) erg.push({ l: 'Sondervorauszahlung 1/11 gezahlt', v: svz })
+        erg.push({ l: 'Offen zum 31.12. (nicht oder erst im Folgejahr gezahlt)', v: offenStichtag, stark: 1 })
+
+        const fehlend = ustZeitraeume(rhythmus).filter(z => !uva.some(x => String(x.zeitraum || '').trim() === z))
+        if (fehlend.length) hinweise.push('Es fehlen noch ' + fehlend.length + ' von ' + erwartet
+          + ' Voranmeldungszeiträumen: ' + fehlend.join(', ') + '. Über „' + (rhythmus === 'quartal' ? '4 Quartale' : '12 Monate')
+          + ' anlegen" ergänzen – angelegt wird nur, was fehlt.')
+
+        const spaet = uva.filter(x => spaetX(x) && Math.abs(num(x.zahllast)) > 0.005)
+        if (spaet.length) hinweise.push('Erst im Folgejahr geflossen: '
+          + spaet.map(x => (x.zeitraum || '?') + ' ' + eur(r2(num(x.zahllast)))).join(' · ')
+          + '. Diese Zahllasten gehören wirtschaftlich ins abzuschließende Jahr und müssen zum 31.12. als Verbindlichkeit stehen: '
+          + K.vz + ' an ' + K.verb + '.')
+
+        const offenRest = uva.filter(x => Math.abs(num(x.zahllast) - num(x.gezahlt)) > 0.005)
+        if (offenRest.length) hinweise.push('Noch gar nicht ausgeglichen: '
+          + offenRest.map(x => (x.zeitraum || '?') + ' ' + eur(r2(num(x.zahllast) - num(x.gezahlt)))).join(' · ')
+          + '. Prüfen, ob gezahlt, verrechnet oder gestundet wurde – sonst bleibt der Betrag zum 31.12. als Verbindlichkeit stehen ('
+          + K.vz + ' an ' + K.verb + ' bzw. ' + K.ford + ' an ' + K.vz + ' bei einer Erstattung).')
+
+        const ohneDatum = uva.filter(x => Math.abs(num(x.gezahlt)) > 0.005 && !String(x.gezahltAm || '').trim())
+        if (ohneDatum.length && wjJahr) hinweise.push('Ohne Zahlungsdatum wird die Zahlung dem laufenden Jahr zugerechnet ('
+          + ohneDatum.map(x => x.zeitraum || '?').join(', ') + '). Gerade bei den letzten Zeiträumen entscheidet das Datum darüber, ob zum 31.12. abzugrenzen ist – dort bitte eintragen.')
+
+        const faBetr = Math.abs(offenFaBetrag())
+        if (faBetr > 0.005) { const abw = r2(offenStichtag - faBetr)
+          if (Math.abs(abw) > 0.005) hinweise.push('Der offene Betrag lt. Voranmeldungen (' + eur(offenStichtag)
+            + ') weicht um ' + eur(abw) + ' vom Steuerkonto (' + eur(faBetr)
+            + ') ab. Häufige Ursachen: eine berichtigte Voranmeldung, eine Verrechnung mit anderen Steuerarten, Säumniszuschläge oder ein fehlender Zeitraum.')
+          else hinweise.push('✅ Der offene Betrag lt. Voranmeldungen stimmt mit dem Steuerkonto überein (' + eur(faBetr) + ').') }
+      } else if (kk.length) {
+        hinweise.push('Die Voranmeldungen sind noch nicht erfasst. Mit „12 Monate anlegen" bzw. „4 Quartale anlegen" die Zeiträume anlegen und je Zeitraum Zahllast und Zahlung eintragen – der offene Rest ist der abzugrenzende Betrag.')
+      }
+
+      if (w.fDauerfrist) {
+        if (!svz) hinweise.push('Dauerfristverlängerung ist angehakt, aber die Sondervorauszahlung 1/11 ist nicht eingetragen (§ 47 UStDV). Sie ist bis zum 10.02. anzumelden und zu zahlen.')
+        else { const rest = r2(svz - svzAnr)
+          if (Math.abs(rest) > 0.005) hinweise.push('Von der Sondervorauszahlung (' + eur(svz) + ') sind ' + eur(svzAnr)
+            + ' angerechnet, es bleiben ' + eur(rest) + '. Die Anrechnung erfolgt auf den letzten Voranmeldungszeitraum ('
+            + ustLetzterZeitraum(rhythmus) + ', § 48 Abs. 4 UStDV); ein Rest wird erstattet oder verrechnet und ist als Forderung auszuweisen.')
+          else hinweise.push('Die Sondervorauszahlung ist vollständig auf ' + ustLetzterZeitraum(rhythmus) + ' angerechnet.') }
+      }
+
       // ── Abgleich mit dem Steuerkonto ──
       const gebucht = r2(s(K.verb) + s(K.ford))
-      const offenFa = num(w.offenFa)
+      const offenFa = offenFaBetrag()
       if (offenFa) {
         erg.push({ l: 'Verbindlichkeit ' + K.verb + ' + Forderung ' + K.ford + ' laut Buchhaltung', v: gebucht })
         erg.push({ l: 'Offen laut Steuerkonto zum 31.12.' + (w.standFa ? ' (Stand ' + w.standFa + ')' : ''), v: r2(offenFa) })
@@ -1399,7 +1498,10 @@ export const MODULE = {
           hinweise.push('Die Buchhaltung weist ' + eur(Math.abs(diff)) + ' ' + (Math.abs(gebucht) > Math.abs(offenFa) ? 'mehr' : 'weniger')
             + ' aus als das Finanzamt offen hat. Ursache klären – häufig fehlt die Abgrenzung eines Voranmeldungszeitraums, eine berichtigte Voranmeldung ist noch nicht gebucht, oder eine Erstattung wurde bereits vereinnahmt.')
           const betr = Math.abs(diff)
-          if (diff > 0) buchungen.push({ s: K.verb, st: 'Verbindlichkeiten aus USt-Vorauszahlungen', h: K.vz, ht: 'Umsatzsteuer-Vorauszahlungen', betr, text: 'Korrektur Abgrenzung auf den Steuerkontostand' })
+          // diff < 0: die Buecher weisen mehr Verbindlichkeit aus als das
+          // Finanzamt offen hat -> Verbindlichkeit im Soll mindern (1797 an 1780).
+          // diff > 0: umgekehrt, es fehlt Abgrenzung -> 1780 an 1797.
+          if (diff < 0) buchungen.push({ s: K.verb, st: 'Verbindlichkeiten aus USt-Vorauszahlungen', h: K.vz, ht: 'Umsatzsteuer-Vorauszahlungen', betr, text: 'Korrektur Abgrenzung auf den Steuerkontostand' })
           else buchungen.push({ s: K.vz, st: 'Umsatzsteuer-Vorauszahlungen', h: K.verb, ht: 'Verbindlichkeiten aus USt-Vorauszahlungen', betr, text: 'Korrektur Abgrenzung auf den Steuerkontostand' })
         }
         if (!w.standFa) hinweise.push('Bitte den Stand der Steuerkonto-Abfrage eintragen. In der Betriebsprüfung ist die erste Frage, worauf sich die Zahl stützt.')

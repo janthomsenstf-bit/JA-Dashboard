@@ -121,6 +121,7 @@ export const JAC2_CSS = `
 .jac2 .rhtext{flex:1;min-height:36px;resize:vertical;padding:6px 9px;border:1px solid var(--line2);border-radius:7px;font:inherit;font-size:13px;background:#fff}
 .jac2 .rowhinweis .del{border:none;background:none;color:var(--muted);cursor:pointer;font-size:16px;flex:0 0 auto}
 .jac2 .addbtn{border:1px dashed var(--line2);background:none;color:var(--accent);border-radius:7px;padding:7px 12px;font-size:12.5px;font-weight:600;cursor:pointer;margin-top:6px}
+.jac2 .addbtn.seed{margin-left:8px;border-style:solid;border-color:var(--accent);background:var(--accent-wash)}
 .jac2 input.flash{outline:3px solid #f59e0b;outline-offset:1px;background:#fffbeb}
 
 .jac2 .ergebnis{margin-top:14px;background:var(--surface);border:1px solid var(--line);border-radius:9px;padding:14px 16px}
