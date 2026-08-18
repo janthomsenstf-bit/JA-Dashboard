@@ -1932,7 +1932,12 @@ export function ustRolleGuess(konto, bez) { const b = (bez || '').toLowerCase()
 export function klassifiziereKonto(konto, bez) { const n = +konto; const b = (bez || '').toLowerCase()
   if (n >= 8000 && n <= 8999) return erloesKategorie(bez, konto)
   if (/gewerbesteuer|gewst/.test(b)) return 'gewerbesteuer'
-  if (/umsatzsteuer|vorsteuer|13\s*b|voranmeldung|ust-?va|ust-?zahllast|ust[\s-]?voraus/.test(b)) return 'ustModul'
+  // "Vorsteuer" und "Umsatzsteuer" stehen bei DATEV auch als Steuerschluessel-
+  // Zusatz am ENDE ganz normaler Konten: "Wareneingang 19% Vorsteuer",
+  // "Geleistete Anzahlungen 19% Vorsteuer". Als Steuerkonto zaehlt deshalb nur,
+  // was das Wort FUEHRT. Die eindeutigen Kuerzel duerfen weiter ueberall stehen.
+  if (/13\s*b|voranmeldung|ust-?va|ust-?zahllast|ust[\s-]?voraus/.test(b)) return 'ustModul'
+  if (/umsatzsteuer|vorsteuer/.test(b.split(/[\s.,;/()-]+/).slice(0, 2).join(' '))) return 'ustModul'
   if (n >= 1 && n <= 999) {
     if (/rückstell|rueckstell/.test(b) || (n >= 950 && n <= 989)) return 'konRueckst'
     if (/darlehen|kredit|kreditinstitut|hypothek/.test(b) || (n >= 630 && n <= 699)) return 'konVerbindl'
