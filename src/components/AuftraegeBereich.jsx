@@ -2,13 +2,15 @@ import { useState, useMemo } from 'react'
 import { alleFristen, fristenGruppen, QUELLE_CFG } from '../utils/fristen.js'
 
 /**
- * Bereich „Aufgaben" – hier laufen alle Dinge mit Datum zusammen.
+ * Bereich „Aufträge" – hier laufen alle Dinge mit Datum zusammen.
+ * (Der frühere eigene Menüpunkt „Aufgaben" ist hier aufgegangen.)
  *
  * Zwei Ansichten:
- *  · Cockpit  – Kennzahlen + chronologische Agenda (der Überblick)
- *  · Aufgaben – die vollständige Auftrags-/Fristen-Übersicht (das Arbeitstier)
+ *  · Cockpit           – Kennzahlen + chronologische Agenda (der Überblick)
+ *  · Aufträge & Fristen – die vollständige Übersicht (das Arbeitstier); dort
+ *    grenzt der Quellen-Filter auf reine Aufträge, auto-Fristen oder Aufgaben ein.
  *
- * Kalender und Honorare sind eigene Hauptmenüpunkte und liegen nicht mehr hier.
+ * Kalender und Honorare sind eigene Hauptmenüpunkte und liegen nicht hier.
  *
  * Die Agenda kommt aus `utils/fristen.js` – derselben Quelle, aus der auch die
  * Startseite speist. So zeigen beide dieselbe Wahrheit, statt jeweils eine
@@ -17,11 +19,11 @@ import { alleFristen, fristenGruppen, QUELLE_CFG } from '../utils/fristen.js'
  * Rein lesend – es werden nur vorhandene Daten ausgewertet.
  */
 
-const FARBE = '#7c3aed' // Farbwelt des Bereichs „Aufgaben"
+const FARBE = '#2563eb' // Farbwelt des Bereichs „Aufträge"
 
 const ANSICHTEN = [
-  { key: 'cockpit',  label: 'Cockpit',   icon: '🎛' },
-  { key: 'aufgaben', label: 'Aufgaben',  icon: '📋' },
+  { key: 'cockpit',  label: 'Cockpit',            icon: '🎛' },
+  { key: 'aufgaben', label: 'Aufträge & Fristen', icon: '📋' },
 ]
 
 // ── Zeit-Helfer ───────────────────────────────────────────────────────────────
@@ -47,7 +49,7 @@ function tagLabel(diff) {
   return null
 }
 
-export default function AufgabenBereich({
+export default function AuftraegeBereich({
   clients = [],
   termine = [],
   aufgabenListe = [],
@@ -56,9 +58,9 @@ export default function AufgabenBereich({
   slotAufgaben,      // bestehende Auftrags-/Fristen-Übersicht
 }) {
   const [ansicht, setAnsicht] = useState(() => {
-    try { return localStorage.getItem('aufgaben-ansicht') || 'cockpit' } catch { return 'cockpit' }
+    try { return localStorage.getItem('auftraege-ansicht') || 'cockpit' } catch { return 'cockpit' }
   })
-  const wechsel = a => { setAnsicht(a); try { localStorage.setItem('aufgaben-ansicht', a) } catch {} }
+  const wechsel = a => { setAnsicht(a); try { localStorage.setItem('auftraege-ansicht', a) } catch {} }
 
   // EINE Quelle für alles mit Datum: Aufträge, auto-Fristen, manuelle Aufgaben,
   // Termine und Erinnerungen.
@@ -107,7 +109,7 @@ export default function AufgabenBereich({
       <div style={{ padding: '14px 20px 0', background: 'var(--surface)', borderBottom: '1px solid var(--border)' }}>
         <nav aria-label="Pfad" style={{ display: 'flex', gap: '7px', fontSize: '12px', color: 'var(--text-muted)', marginBottom: '12px' }}>
           <span>Spielbuch</span><span style={{ opacity: 0.5 }}>›</span>
-          <span style={{ color: FARBE, fontWeight: 700 }}>Aufgaben</span>
+          <span style={{ color: FARBE, fontWeight: 700 }}>Aufträge</span>
         </nav>
         <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
           {ANSICHTEN.map(a => {

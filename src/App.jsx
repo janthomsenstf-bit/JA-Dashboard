@@ -35,7 +35,7 @@ import BereichPlatzhalter from './components/BereichPlatzhalter.jsx'
 import PersonenBereich from './components/PersonenBereich.jsx'
 import KommunikationBereich from './components/KommunikationBereich.jsx'
 import DokumenteBereich from './components/DokumenteBereich.jsx'
-import AufgabenBereich from './components/AufgabenBereich.jsx'
+import AuftraegeBereich from './components/AuftraegeBereich.jsx'
 import ProzesseBereich from './components/ProzesseBereich.jsx'
 import ChecklistenBereich from './components/ChecklistenBereich.jsx'
 import LeistungspoolBereich from './components/LeistungspoolBereich.jsx'
@@ -1424,20 +1424,6 @@ export default function App() {
     />
   )
 
-  // Gleiche Ansicht, fest auf die Quelle „Aufträge" gestellt – eigener
-  // Menüpunkt, aber KEINE zweite Auftragslogik.
-  const auftraegeEl = (
-    <GlobalTodoView
-      modus="auftraege"
-      clients={clients}
-      aufgabenListe={aufgabenListe}
-      onUpdateAufgabe={updateAufgabe}
-      onAddAufgabe={addAufgabe}
-      onUpdateClient={updateClient}
-      onSelectClient={id => setSelectedId(id)}
-      onNavigateToAuftrag={oeffneAuftrag}
-    />
-  )
 
   const honorareEl = (
     <BudgetView
@@ -1781,7 +1767,7 @@ export default function App() {
         const klientOffen = hauptbereich === 'personen' && !!selectedId && clients.some(c => c.id === selectedId)
         const zeigeUebersicht = hauptbereich === 'personen' && !klientOffen
         const zeigeArbeitsbereich = klientOffen
-        const eigeneBereiche = ['ki_empfehlungen', 'personen', 'kommunikation', 'dokumente', 'aufgaben', 'auftraege', 'kalender', 'honorare', 'prozesse', 'checklisten', 'leistungspool', 'ustreg']
+        const eigeneBereiche = ['ki_empfehlungen', 'personen', 'kommunikation', 'dokumente', 'auftraege', 'kalender', 'honorare', 'prozesse', 'checklisten', 'leistungspool', 'ustreg']
         const zeigePlatzhalter = !eigeneBereiche.includes(hauptbereich)
         const offenerKlient = klientOffen ? clients.find(c => c.id === selectedId) : null
         // Löst mandantId aus einem (evtl. per MCP gemeldeten) Namen auf – so werden
@@ -1954,9 +1940,10 @@ export default function App() {
               />
             )}
 
-            {/* Bereich „Aufgaben" – hier laufen alle Dinge mit Datum zusammen */}
-            {hauptbereich === 'aufgaben' && (
-              <AufgabenBereich
+            {/* Bereich „Aufträge" – hier laufen alle Dinge mit Datum zusammen
+                (der frühere eigene Menüpunkt „Aufgaben" ist hier aufgegangen) */}
+            {hauptbereich === 'auftraege' && (
+              <AuftraegeBereich
                 clients={clients}
                 termine={termine}
                 aufgabenListe={aufgabenListe}
@@ -1968,13 +1955,6 @@ export default function App() {
                 onOeffneBereich={wechselBereich}
                 slotAufgaben={aufgabenEl}
               />
-            )}
-
-            {/* Bereich „Aufträge" – nur die echten Aufträge aller Mandanten */}
-            {hauptbereich === 'auftraege' && (
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}>
-                {auftraegeEl}
-              </div>
             )}
 
             {/* Bereich „Kalender" – bestehende Kalenderansicht, jetzt eigenständig */}
