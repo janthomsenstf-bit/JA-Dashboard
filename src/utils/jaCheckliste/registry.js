@@ -6,6 +6,8 @@
  */
 
 import { SE_JAHRE, SE_JAHRE_LISTE, SE_KONTEN, SE_ALTERSSTAFFEL, seFaktor } from './pauschbetraege.js'
+import { LOHN_LISTEN, LOHN_GRUPPEN, LOHN_LEIT, lohnZielListe, lohnGruppe } from './lohnkonten.js'
+export { LOHN_LISTEN, LOHN_GRUPPEN, LOHN_LEIT, lohnZielListe, lohnGruppe }
 export { SE_JAHRE, SE_KONTEN, SE_ALTERSSTAFFEL }
 
 // ── Helfer ──────────────────────────────────────────────────────────────────
@@ -1135,7 +1137,122 @@ export const MODULE = {
   igErwerb: { name: 'Innergemeinschaftliche Erwerbe', bereich: 'ba', typ: 'A' },
   durchlaufend: { name: 'Durchlaufende Posten', bereich: 'ba', typ: 'A' },
   ustZahllast: { name: 'Umsatzsteuer-Verbindlichkeit', bereich: 'ba', typ: 'B', konto: '1776', bez: 'USt' },
-  lohn: { name: 'Lohn und Gehalt', bereich: 'ba', typ: 'A' },
+  lohn: { name: 'Lohnverprobung', bereich: 'ba', typ: 'C',
+    stand: '08/2026', konten: LOHN_LEIT, kontoListe: true,
+    quellen: ['DATEV Dok. 5301558 (Lohnabrechnung – Konten), 5301525, 5301563, 5301755',
+              'DATEV Dok. 5360651 (Verbindlichkeiten aus Lohn und Gehalt)',
+              '§ 11 Abs. 2 S. 2 EStG (regelmäßig wiederkehrende Ausgaben, Zehn-Tage-Regel)',
+              'Konten und Paragraphen sind Vorschläge und vom Bearbeiter zu prüfen'],
+    rechenweg: [
+      ['Quelle', 'Konten kommen aus dem SuSa-Import und verteilen sich selbst auf die beiden Blöcke'],
+      ['Aufwand', 'je Konto Saldo gegen Vorjahr, Summe je Gruppe und gesamt'],
+      ['Quote', 'soziale Abgaben zum Bruttolohn – Ausreißer deuten auf fehlende oder doppelte Buchungen'],
+      ['Verrechnung', 'das Lohn- und Gehaltsverrechnungskonto muss nach Auszahlung ausgeglichen sein'],
+      ['Richtung', 'Verbindlichkeiten im Soll und Forderungen im Haben werden gemeldet'],
+      ['Folgejahr', 'den Abgleich mit der Zahlung im Folgejahr macht der Bearbeiter – das Modul stellt die Salden bereit'],
+    ],
+    flags: [
+      { k: 'fBrutto', label: 'Bruttolohnverbuchung (sonst Nettolohnverbuchung)' },
+      { k: 'fLodas', label: 'Lohnbuchungen aus DATEV LODAS / Lohn und Gehalt übernommen' },
+      { k: 'fAbgestimmt', label: 'Salden mit der Lohnbuchhaltung abgestimmt' },
+    ],
+    felder: [
+      { k: 'skr', l: 'Kontenrahmen', t: 'select', def: '03', opt: [['03', 'SKR 03'], ['04', 'SKR 04']] },
+      { k: 'lohnbuero', l: 'Lohnbuchhaltung durch', t: 'text' },
+    ],
+    listen: LOHN_LISTEN.map(L => ({ key: L.key, label: L.label, rowNotes: true, felder: [
+      { k: 'konto', l: 'Konto', t: 'text' }, { k: 'bez', l: 'Bezeichnung', t: 'text' },
+      { k: 'saldo', l: 'Saldo', t: 'num' }, { k: 'vj', l: 'Vorjahr', t: 'num' },
+      { k: 'ok', l: 'geprüft / unauffällig', t: 'check' }] })),
+    // Weiche für den SuSa-Import: Aufwand in den oberen Block, Forderungen und
+    // Verbindlichkeiten in den unteren.
+    kontoZiel: (konto, w) => {
+      const skr = (w && w.skr) === '04' ? '04' : '03'
+      const z = lohnZielListe(konto, skr); if (z) return z
+      // Unbekanntes Konto: Bestandskonten (unter 4000) sind Forderungen oder
+      // Verbindlichkeiten, alles darueber Aufwand. Sonst landet etwa eine
+      // Kaution im Aufwandsblock.
+      const n = parseInt(String(konto).trim(), 10)
+      return isFinite(n) && n < 4000 ? 'verbfor' : 'aufwand'
+    },
+    rechnen: (w) => {
+      const r2 = x => Math.round(x * 100) / 100
+      const skr = w.skr === '04' ? '04' : '03'
+      const K = LOHN_LEIT[skr]
+      const erg = [], hinweise = [], buchungen = []
+      const echt = a => (a || []).filter(x => x && (x.konto || x.saldo || x.vj))
+      const auf = echt(w.aufwand), vf = echt(w.verbfor)
+
+      if (!auf.length && !vf.length) {
+        hinweise.push('Noch keine Konten übernommen. Über „SuSa / Kontenabstimmliste importieren" die Lohnkonten diesem Modul zuordnen – sie verteilen sich dann selbst auf die beiden Blöcke.')
+        return { ergebnisse: erg, total: { l: 'Lohnaufwand gesamt', v: 0 }, hinweise, buchungen }
+      }
+
+      // ── Aufwand nach Gruppen ──────────────────────────────────────────────
+      const gruppen = new Map()
+      auf.forEach(x => {
+        const g = lohnGruppe(x.konto, skr) || { gruppe: 'Weitere Personalaufwendungen', key: 'sonstige' }
+        if (!gruppen.has(g.gruppe)) gruppen.set(g.gruppe, { s: 0, v: 0, n: 0, key: g.key })
+        const e = gruppen.get(g.gruppe); e.s += num(x.saldo); e.v += num(x.vj); e.n++
+      })
+      let sAuf = 0, vAuf = 0
+      gruppen.forEach((e, name) => {
+        sAuf += e.s; vAuf += e.v
+        const a = vjAbweichung(e.s, e.v)
+        erg.push({ l: name + ' (' + e.n + (e.n === 1 ? ' Konto' : ' Konten') + (a.prozent != null ? ', ' + (a.prozent > 0 ? '+' : '') + a.prozent + ' %' : '') + ')', v: r2(e.s) })
+      })
+      const aAuf = vjAbweichung(sAuf, vAuf)
+      erg.push({ l: 'Lohnaufwand gesamt' + (aAuf.prozent != null ? ' (Vorjahr ' + eur(vAuf) + ', ' + (aAuf.prozent > 0 ? '+' : '') + aAuf.prozent + ' %)' : ''), v: r2(sAuf), stark: 1 })
+
+      // ── Quote soziale Abgaben zum Bruttolohn ──────────────────────────────
+      const summeGruppe = key => { let s = 0; auf.forEach(x => { const g = lohnGruppe(x.konto, skr); if (g && g.key === key) s += num(x.saldo) }); return s }
+      const brutto = summeGruppe('loehne'), sozial = summeGruppe('sozial')
+      if (brutto > 0 && sozial > 0) {
+        const q = Math.round(sozial / brutto * 1000) / 10
+        erg.push({ l: 'Soziale Abgaben zum Bruttolohn: ' + String(q).replace('.', ',') + ' %', v: null })
+        if (q < 12 || q > 30) hinweise.push('Die Quote der sozialen Abgaben zum Bruttolohn liegt bei ' + String(q).replace('.', ',') + ' % und damit außerhalb des üblichen Rahmens von rund 20 %. Prüfen, ob Buchungen fehlen oder doppelt erfasst sind – Minijobber und Gesellschafter-Geschäftsführer verschieben die Quote ebenfalls.')
+      }
+
+      // ── Auffällige Einzelkonten im Aufwand ────────────────────────────────
+      auf.forEach(x => {
+        const a = vjAbweichung(x.saldo, x.vj); const g = lohnGruppe(x.konto, skr)
+        const bez = ((x.konto || '') + ' ' + (x.bez || (g && g.bez) || '')).trim()
+        if (a.vzWechsel) hinweise.push(bez + ': Vorzeichenwechsel gegenüber Vorjahr – immer erklären.')
+        else if (a.prozent != null && Math.abs(a.prozent) >= 25 && !x.ok) hinweise.push(bez + ': ' + (a.prozent > 0 ? '+' : '') + a.prozent + ' % gegenüber Vorjahr – Ursache dokumentieren (Zu- oder Abgänge beim Personal, Einmalzahlungen, Tarifrunde).')
+      })
+
+      // ── Forderungen und Verbindlichkeiten ─────────────────────────────────
+      if (vf.length) {
+        const sVf = vf.reduce((s, x) => s + num(x.saldo), 0)
+        erg.push({ l: 'Forderungen und Verbindlichkeiten Lohn (' + vf.length + (vf.length === 1 ? ' Konto' : ' Konten') + ')', v: r2(sVf) })
+        const finde = k => vf.find(x => String(x.konto).trim() === String(k))
+
+        const vk = finde(K.verrechnung)
+        if (vk && Math.abs(num(vk.saldo)) > 0.005)
+          hinweise.push('Konto ' + K.verrechnung + ' (Lohn- und Gehaltsverrechnung) weist ' + eur(num(vk.saldo)) + ' aus. Nach Auszahlung der Löhne muss dieses Konto ausgeglichen sein (Dok. 5360651) – Differenz klären.')
+
+        vf.forEach(x => {
+          const s = num(x.saldo); if (!s) return
+          const g = lohnGruppe(x.konto, skr)
+          const bez = ((x.konto || '') + ' ' + (x.bez || (g && g.bez) || '')).trim()
+          if (g && g.key === 'verb' && s > 0) hinweise.push(bez + ': Verbindlichkeitskonto mit Soll-Saldo (' + eur(s) + ') – Richtung prüfen, meist eine Überzahlung oder eine falsch gebuchte Erstattung.')
+          if (g && g.key === 'forderung' && s < 0) hinweise.push(bez + ': Forderungskonto mit Haben-Saldo (' + eur(s) + ') – Richtung prüfen.')
+        })
+
+        const fp = finde(K.fordPersonal)
+        if (fp && num(fp.saldo)) hinweise.push('Konto ' + K.fordPersonal + ' (Forderungen gegen Personal) ist mit ' + eur(num(fp.saldo)) + ' bebucht. Prüfen, ob darin Mitarbeiterdarlehen stecken – die gehören getrennt ausgewiesen und verzinst.')
+        if (finde(K.par11) || finde(K.par11Sv)) hinweise.push('§ 11 Abs. 2 S. 2 EStG: Lohnsteuer und Sozialversicherung für Dezember sind regelmäßig wiederkehrende Ausgaben. Zahlung innerhalb von zehn Tagen nach dem Jahreswechsel gehört wirtschaftlich ins alte Jahr (Konten ' + K.par11 + ' / ' + K.par11Sv + ').')
+        if (finde(K.vorausSv)) hinweise.push('Konto ' + K.vorausSv + ' (voraussichtliche Beitragsschuld) ist bebucht – die Schätzung gegen die tatsächliche Beitragsabrechnung des Folgemonats halten.')
+      } else {
+        hinweise.push('Der Block „Forderungen und Verbindlichkeiten" ist leer. Ohne diese Konten lässt sich nicht beurteilen, ob Lohnsteuer, Sozialversicherung und Nettolöhne zum Stichtag richtig abgegrenzt sind.')
+      }
+
+      hinweise.push('Den Abgleich mit der Zahlung im Folgejahr nimmt das Modul nicht vor – dafür fehlt die Summen- und Saldenliste des Folgejahres. Die Salden stehen oben; der Vermerk je Konto wandert in das Excel-Arbeitspapier.')
+      if (!w.fBrutto) hinweise.push('Bei Nettolohnverbuchung wird das Verrechnungskonto nur bebucht, wenn zum Stichtag noch Zahlungen offen sind (Dok. 5360651).')
+      hinweise.push('Gegenprobe außerhalb dieses Moduls: Sachbezugskonten ' + (K.sachbezug || []).join(', ') + ' – sind Fahrzeuggestellung, Gutscheine und sonstige Sachbezüge erfasst und korrespondierend im Lohnaufwand gebucht?')
+
+      return { ergebnisse: erg, total: { l: 'Lohnaufwand gesamt', v: r2(sAuf) }, hinweise, buchungen }
+    } },
   gewerbesteuer: { name: 'Gewerbesteuer (Abstimmung & Berechnung)', bereich: 'steuern', typ: 'C', kontoListe: true,
     listen: [{ key: 'konten', label: 'Gewerbesteuer-Konten (Vorauszahlungen, Rückstellung …)', rowNotes: true, felder: [
       { k: 'konto', l: 'Konto', t: 'text' }, { k: 'bez', l: 'Bezeichnung', t: 'text' }, { k: 'saldo', l: 'Saldo', t: 'num' }, { k: 'vj', l: 'Vorjahr', t: 'num' }, { k: 'ok', l: 'geprüft', t: 'check' } ] }],
@@ -1660,12 +1777,15 @@ export function applyKonten(d, rows) { let nP = 0, nMod = 0
   rows.forEach(r => { if (r.ziel === '__ignore' || !r.ziel) return; const m = MODULE[r.ziel]; if (!m) return
     const kat = ensureKat(d, m.bereich)
     let p = alleP(d).find(x => x.modul === r.ziel); if (!p) { p = neuerModulPunkt(r.ziel); kat.punkte.push(p); nMod++ }
-    if (!Array.isArray(p.werte.konten)) p.werte.konten = []
-    p.werte.konten = p.werte.konten.filter(x => x && (x.konto || x.saldo || x.vj))
-    const ex = p.werte.konten.find(x => String(x.konto).trim() === r.konto)
+    // Module mit mehreren Kontenlisten duerfen selbst bestimmen, wohin ein Konto
+    // gehoert (kontoZiel). Ohne Weiche bleibt es wie bisher bei 'konten'.
+    const lk = (typeof m.kontoZiel === 'function' ? m.kontoZiel(r.konto, p.werte) : null) || 'konten'
+    if (!Array.isArray(p.werte[lk])) p.werte[lk] = []
+    p.werte[lk] = p.werte[lk].filter(x => x && (x.konto || x.saldo || x.vj))
+    const ex = p.werte[lk].find(x => String(x.konto).trim() === r.konto)
     if (ex) { ex.saldo = r.saldo; ex.vj = r.vj; if (!ex.bez) ex.bez = r.bez }
-    else p.werte.konten.push({ konto: r.konto, bez: r.bez || '', saldo: r.saldo || '', vj: r.vj || '', ok: false })
-    if (p.status === 'offen') p.status = 'arbeit'; if (!p.werte.konten.length) p.werte.konten = [{}]; nP++ })
+    else p.werte[lk].push({ konto: r.konto, bez: r.bez || '', saldo: r.saldo || '', vj: r.vj || '', ok: false })
+    if (p.status === 'offen') p.status = 'arbeit'; if (!p.werte[lk].length) p.werte[lk] = [{}]; nP++ })
   return { nP, nMod } }
 
 // Nur bestehende Kontenprüfungen/-listen mit Salden füllen. map: {konto:{s,v}}
@@ -1782,8 +1902,17 @@ export function buildExportSheets(cl, meta) {
     if (mod.flags) { mod.flags.forEach(fl => rows.push([fl.label, p.werte[fl.k] ? 'ja' : '—'])); rows.push([]) }
     if (mod.felder) { const felder = typeof mod.felder === 'function' ? mod.felder(ctx, p.werte) : mod.felder
       felder.forEach(f => rows.push([f.l, f.t === 'num' ? num(p.werte[f.k]) : (p.werte[f.k] || '')])); rows.push([]) }
-    modLists(mod).forEach(L => { rows.push([L.label || '']); rows.push((L.felder || []).map(f => f.l))
-      ;(p.werte[L.key] || []).forEach(x => rows.push((L.felder || []).map(f => f.t === 'num' ? num(x[f.k]) : (x[f.k] || '')))); rows.push([]) })
+    modLists(mod).forEach(L => { rows.push([L.label || ''])
+      // Bei Listen mit Zeilenvermerk wandern Vermerk und Rueckfragen als eigene
+      // Spalten ins Arbeitspapier - sonst waere die Begruendung nur am Bildschirm.
+      const zusatz = L.rowNotes ? ['Vermerk', 'Rueckfragen'] : []
+      rows.push((L.felder || []).map(f => f.l).concat(zusatz))
+      ;(p.werte[L.key] || []).forEach(x => {
+        const basis = (L.felder || []).map(f => f.t === 'num' ? num(x[f.k]) : (x[f.k] || ''))
+        if (L.rowNotes) basis.push(x.notiz || '',
+          (Array.isArray(x.rueck) ? x.rueck.filter(q => (q.t || '').trim()).map(q => q.t).join(' | ') : ''))
+        rows.push(basis) })
+      rows.push([]) })
     if (mod.rechnen) { const r = mod.rechnen(p.werte, ctx); rows.push(['Berechnung', '']); r.ergebnisse.forEach(e => rows.push([e.l, e.v]))
       if (r.total) rows.push([r.total.l, r.total.v]); (r.hinweise || []).forEach(h => rows.push(['Hinweis', h])) }
     bl.push({ name: mod.name.slice(0, 28), rows }) })
