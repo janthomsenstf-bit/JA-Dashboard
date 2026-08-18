@@ -6,10 +6,11 @@ export default function CommandPalette({ clients, onClose, onSelectClient, onNew
   const inputRef = useRef(null)
 
   // Statische Befehle
+  // „Aufgaben-Übersicht öffnen" ist entfallen – die Ansicht liegt im Hauptmenü
+  // unter „Aufträge" und braucht keinen zweiten Einstieg unter altem Namen.
   const baseCommands = useMemo(() => [
     { id: '__new__',   icon: '➕', label: 'Neuer Mandant erstellen',   hint: '',          action: onNewClient },
-    { id: '__todo__',  icon: '📋', label: 'Aufgaben-Übersicht öffnen', hint: '',          action: () => onSelectClient('__todo__') },
-  ], [onNewClient, onSelectClient])
+  ], [onNewClient])
 
   // Mandanten-Befehle
   const clientCommands = useMemo(() =>

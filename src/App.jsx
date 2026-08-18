@@ -540,7 +540,15 @@ export default function App() {
     if (dataLoading || sessionValidatedRef.current) return
     const restored = _restoredSession.current
     if (!restored?.selectedId) { sessionValidatedRef.current = true; return }
-    // Spezial-IDs (__todo__, __budget__, __bot_inbox__) sind immer gültig
+    // '__todo__' gibt es nicht mehr (Ansicht liegt im Hauptmenü unter „Aufträge") –
+    // eine alte gespeicherte Sitzung darf sonst in einer toten Ansicht landen.
+    if (restored.selectedId === '__todo__') {
+      sessionValidatedRef.current = true
+      setSelectedId(null)
+      setDetailInitialTab(0)
+      return
+    }
+    // Spezial-IDs (__budget__, __bot_inbox__) sind immer gültig
     if (typeof restored.selectedId === 'string' && restored.selectedId.startsWith('__')) {
       sessionValidatedRef.current = true
       setBackupToast('✓ Letzte Ansicht wiederhergestellt')
@@ -1406,10 +1414,27 @@ export default function App() {
   // Aufgaben-, Auftrags-, Kalender- und Honorar-Ansicht einmalig erzeugen –
   // werden im bisherigen Arbeitsbereich UND in den eigenen Hauptmenüpunkten
   // verwendet.
-  const oeffneAuftrag = (clientId, auftragId) => {
-    localStorage.setItem('sda-expanded-auftrag_' + clientId, auftragId)
-    setDetailInitialTab(TAB.auftraege)
+  // Mandant öffnen – auch aus einem anderen Hauptbereich heraus. Ohne den
+  // Bereichswechsel bleibt die Detailansicht unsichtbar (sie hängt an „personen"),
+  // der Klick sähe dann wirkungslos aus.
+  const oeffneMandant = (clientId, tab) => {
+    setDetailInitialTab(tab ?? 0)
     setSelectedId(clientId)
+    wechselBereich('personen')
+  }
+
+  // Auftrag öffnen – im ZUSTÄNDIGEN Reiter. Jahresabschluss und Lohn haben
+  // eigene Reiter; im allgemeinen Auftrags-Reiter werden sie herausgefiltert,
+  // der Sprung liefe also ins Leere.
+  const oeffneAuftrag = (clientId, auftragId) => {
+    const c  = clients.find(x => x.id === clientId)
+    const au = (c?.auftraege ?? []).find(a => a.id === auftragId)
+            ?? (c?.auftraege ?? []).find(a => String(auftragId).startsWith(a.id + '_'))  // Serieninstanz
+    localStorage.setItem('sda-expanded-auftrag_' + clientId, au?.id ?? auftragId)
+    const tab = au?.typ === 'jahresabschluss' ? TAB.jahresabschluss
+              : au?.typ === 'lohn'            ? TAB.lohn
+              :                                 TAB.auftraege
+    oeffneMandant(clientId, tab)
   }
 
   const aufgabenEl = (
@@ -1419,7 +1444,7 @@ export default function App() {
       onUpdateAufgabe={updateAufgabe}
       onAddAufgabe={addAufgabe}
       onUpdateClient={updateClient}
-      onSelectClient={id => setSelectedId(id)}
+      onSelectClient={id => oeffneMandant(id)}
       onNavigateToAuftrag={oeffneAuftrag}
     />
   )
@@ -2036,20 +2061,10 @@ export default function App() {
             {sidebarOpen ? '◀' : '▶'}
           </button>
 
+          {/* „Aufgaben-Übersicht" stand hier früher als zweiter Weg zu derselben
+              Ansicht – die liegt jetzt im Hauptmenü unter „Aufträge". */}
           {sidebarOpen && (
             <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              <button
-                onClick={() => setSelectedId('__todo__')}
-                style={{
-                  width: '100%', padding: '8px 12px', borderRadius: '8px', border: 'none', cursor: 'pointer', textAlign: 'left',
-                  background: selectedId === '__todo__' ? 'var(--accent)' : 'var(--surface2)',
-                  color: selectedId === '__todo__' ? '#fff' : 'var(--text)',
-                  fontWeight: 600, fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px',
-                  transition: 'all 0.15s',
-                }}
-              >
-                📋 Aufgaben-Übersicht
-              </button>
               <button
                 onClick={() => setSelectedId('__budget__')}
                 style={{
@@ -2130,11 +2145,7 @@ export default function App() {
 
         {/* Right column */}
         <div className="col-right">
-          {selectedId === '__todo__' ? (
-            <div style={{ flex: 1, overflowY: 'auto' }}>
-              {aufgabenEl}
-            </div>
-          ) : selectedId === '__bot_inbox__' ? (
+          {selectedId === '__bot_inbox__' ? (
             <div style={{ flex: 1, overflowY: 'auto' }}>
               {botInboxEl}
             </div>

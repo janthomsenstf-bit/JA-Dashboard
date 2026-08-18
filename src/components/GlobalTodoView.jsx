@@ -399,6 +399,41 @@ function EiligTable({ items, onSelectClient, onCycleStatus, onToggleDone, onNavi
   )
 }
 
+// ── Suchtreffer-Ansicht ───────────────────────────────────────────────────────
+// Ergebnis der Mandantensuche: alle Einträge des gesuchten Mandanten, ohne
+// Zeitraumgrenze. Nutzt dieselbe Zeile wie die übrigen Tabellen – damit sind
+// „Typ → Auftrag öffnen" und „Mandant → Mandant öffnen" automatisch identisch.
+function SuchTable({ items, suche, onSelectClient, onCycleStatus, onToggleDone, onNavigateToAuftrag }) {
+  return (
+    <div style={{ flex:1, overflowY:'auto', background:'var(--bg)' }}>
+      {items.length === 0 ? (
+        <div style={{ padding:'48px', textAlign:'center', color:'var(--text-muted)', fontSize:'14px' }}>
+          Kein Mandant mit „{suche}" gefunden – oder er hat keinen Eintrag, der zu den Filtern oben passt.
+        </div>
+      ) : (
+        <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'13px' }}>
+          <thead>
+            <tr style={{ background:'var(--surface)', position:'sticky', top:0, zIndex:1 }}>
+              <th style={thStyle}>Mandant</th>
+              <th style={thStyle}>Typ</th>
+              <th style={thStyle}>Bezeichnung</th>
+              <th style={thStyle}>Zeitraum</th>
+              <th style={thStyle}>Frist</th>
+              <th style={thStyle}>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((au, idx) => (
+              <AuftragRow key={au.id} au={au} idx={idx} onSelectClient={onSelectClient} onCycleStatus={onCycleStatus}
+                onToggleDone={onToggleDone} onNavigateToAuftrag={onNavigateToAuftrag} />
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  )
+}
+
 // ── Mandanten-Ansicht ─────────────────────────────────────────────────────────
 // Ein verdichteter Eintrag pro Mandant: Ampel = dringlichster Punkt, Klartext-Zeile
 // und Zähler-Badges. Sortiert nach Dringlichkeit – „wo brennt was".
@@ -891,6 +926,9 @@ export default function GlobalTodoView({ clients, aufgabenListe = [], onUpdateAu
   const [navDate,       setNavDate]       = useState(() => saved.navDate ? new Date(saved.navDate) : new Date())
   const [quickCreateDay, setQuickCreateDay] = useState(null)
   const [showNew,        setShowNew]        = useState(false)
+  // Mandantensuche – bewusst NICHT gespeichert: eine Suche soll nicht über
+  // Sitzungen hinweg kleben und den Blick auf den Monat verstellen.
+  const [suche,          setSuche]          = useState('')
 
   // ── Filter (letzte Auswahl wiederhergestellt) ─────────────────────────────
   const [filterJahr,       setFilterJahr]       = useState(saved.filterJahr ?? CUR_JAHR)
@@ -1012,6 +1050,26 @@ export default function GlobalTodoView({ clients, aufgabenListe = [], onUpdateAu
     if (filterQuelle === 'manuell'   && !au._manuell)   return false
     return passesStatus(au)
   }, [filterTyp, filterMandatstyp, filterQuelle, passesStatus])
+
+  // ── Mandantensuche ────────────────────────────────────────────────────────
+  // Sucht über Mandantenname und Mandantennummer und zeigt ALLE Einträge dieses
+  // Mandanten – bewusst OHNE Monats-/Jahresgrenze, sonst findet man den Auftrag
+  // nur, wenn man zufällig im richtigen Monat steht. Typ-, Quellen- und
+  // Statusfilter gelten weiter, damit die Knöpfe oben nicht wirkungslos wirken.
+  const sucheAktiv = suche.trim().length >= 2
+  const suchTreffer = useMemo(() => {
+    if (!sucheAktiv) return null
+    const q = suche.trim().toLowerCase()
+    const passt = (c) => String(c.name ?? '').toLowerCase().includes(q)
+                      || String(c.mandantennummer ?? '').toLowerCase().includes(q)
+    return sortByUrgency(alleAuftraege.filter(au => passt(au.client) && passesCommon(au)))
+  }, [sucheAktiv, suche, alleAuftraege, passesCommon])
+
+  // Wie viele Mandanten stecken hinter den Treffern? (für die Ergebniszeile)
+  const suchMandanten = useMemo(() => {
+    if (!suchTreffer) return 0
+    return new Set(suchTreffer.map(au => au.client.id)).size
+  }, [suchTreffer])
 
   // ── Monatssicht: gefilterte Aufträge (inkl. mitgenommene überfällige) ─────
   const gefiltert = useMemo(() => {
@@ -1468,6 +1526,27 @@ export default function GlobalTodoView({ clients, aufgabenListe = [], onUpdateAu
             ))}
           </div>
 
+          {/* Mandantensuche – findet Aufträge unabhängig vom eingestellten Monat */}
+          <div style={{ position:'relative', display:'flex', alignItems:'center', marginLeft:'4px' }}>
+            <span style={{ position:'absolute', left:'9px', fontSize:'12px', opacity:0.6, pointerEvents:'none' }} aria-hidden="true">🔎</span>
+            <input
+              value={suche}
+              onChange={e => setSuche(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Escape') setSuche('') }}
+              placeholder="Mandant suchen …"
+              aria-label="Mandant suchen"
+              style={{
+                padding:'6px 26px 6px 27px', width:'190px', borderRadius:'8px', fontSize:'12px',
+                border:`1px solid ${sucheAktiv ? '#22d3ee' : 'rgba(255,255,255,0.2)'}`,
+                background:'rgba(255,255,255,0.08)', color:'#fff',
+              }}
+            />
+            {suche && (
+              <button onClick={() => setSuche('')} title="Suche zurücksetzen"
+                style={{ position:'absolute', right:'6px', background:'none', border:'none', color:'rgba(255,255,255,0.55)', cursor:'pointer', fontSize:'13px', lineHeight:1, padding:'2px' }}>×</button>
+            )}
+          </div>
+
           {/* Neuer Auftrag */}
           <button onClick={() => setShowNew(true)}
             style={{ padding:'7px 14px', borderRadius:'8px', border:'none', background:'#0891b2', color:'#fff', fontWeight:700, fontSize:'12px', cursor:'pointer', whiteSpace:'nowrap', marginLeft:'4px' }}>
@@ -1589,21 +1668,48 @@ export default function GlobalTodoView({ clients, aufgabenListe = [], onUpdateAu
         </div>
       </div>
 
+      {/* ── Ergebniszeile der Mandantensuche ── */}
+      {sucheAktiv && (
+        <div style={{
+          display:'flex', alignItems:'center', gap:'10px', flexWrap:'wrap', flexShrink:0,
+          padding:'8px 16px', background:'rgba(34,211,238,0.08)', borderBottom:'1px solid var(--border)',
+          fontSize:'12px', color:'var(--text)',
+        }}>
+          <strong>🔎 Suchtreffer für „{suche.trim()}"</strong>
+          <span style={{ color:'var(--text-muted)' }}>
+            {suchTreffer.length} Eintr{suchTreffer.length === 1 ? 'ag' : 'äge'}
+            {suchMandanten > 0 && ` bei ${suchMandanten} Mandant${suchMandanten === 1 ? 'en' : 'en'}`}
+            {' '}· alle Zeiträume (Monatsfilter ausgesetzt)
+          </span>
+          <button onClick={() => setSuche('')}
+            style={{ marginLeft:'auto', padding:'3px 10px', borderRadius:'20px', border:'1px solid var(--border2)', background:'var(--surface)', color:'var(--text)', fontSize:'11.5px', fontWeight:600, cursor:'pointer' }}>
+            ✕ Suche beenden
+          </button>
+        </div>
+      )}
+
       {/* ── Inhalt ── */}
-      {viewMode === 'mandanten' && (
-        <MandantenView rows={mandantenItems} onSelectClient={onSelectClient} />
-      )}
-      {viewMode === 'monat' && (
-        <MonthTable gefiltert={gefiltert} alleAuftraege={alleAuftraege} onSelectClient={onSelectClient} onCycleStatus={cycleStatus} onToggleDone={markDone} onNavigateToAuftrag={onNavigateToAuftrag} />
-      )}
-      {viewMode === 'woche' && weekDays && (
-        <WeekView weekDays={weekDays} onSelectClient={onSelectClient} onCycleStatus={cycleStatus} onQuickCreate={setQuickCreateDay} onNavigateToAuftrag={onNavigateToAuftrag} />
-      )}
-      {viewMode === 'tag' && dayItems && (
-        <DayTable items={dayItems} date={navDate} onSelectClient={onSelectClient} onCycleStatus={cycleStatus} onToggleDone={markDone} onQuickCreate={setQuickCreateDay} onNavigateToAuftrag={onNavigateToAuftrag} />
-      )}
-      {viewMode === 'eilig' && (
-        <EiligTable items={eiligItems} onSelectClient={onSelectClient} onCycleStatus={cycleStatus} onToggleDone={markDone} onNavigateToAuftrag={onNavigateToAuftrag} />
+      {sucheAktiv ? (
+        <SuchTable items={suchTreffer} suche={suche.trim()} onSelectClient={onSelectClient}
+          onCycleStatus={cycleStatus} onToggleDone={markDone} onNavigateToAuftrag={onNavigateToAuftrag} />
+      ) : (
+        <>
+          {viewMode === 'mandanten' && (
+            <MandantenView rows={mandantenItems} onSelectClient={onSelectClient} />
+          )}
+          {viewMode === 'monat' && (
+            <MonthTable gefiltert={gefiltert} alleAuftraege={alleAuftraege} onSelectClient={onSelectClient} onCycleStatus={cycleStatus} onToggleDone={markDone} onNavigateToAuftrag={onNavigateToAuftrag} />
+          )}
+          {viewMode === 'woche' && weekDays && (
+            <WeekView weekDays={weekDays} onSelectClient={onSelectClient} onCycleStatus={cycleStatus} onQuickCreate={setQuickCreateDay} onNavigateToAuftrag={onNavigateToAuftrag} />
+          )}
+          {viewMode === 'tag' && dayItems && (
+            <DayTable items={dayItems} date={navDate} onSelectClient={onSelectClient} onCycleStatus={cycleStatus} onToggleDone={markDone} onQuickCreate={setQuickCreateDay} onNavigateToAuftrag={onNavigateToAuftrag} />
+          )}
+          {viewMode === 'eilig' && (
+            <EiligTable items={eiligItems} onSelectClient={onSelectClient} onCycleStatus={cycleStatus} onToggleDone={markDone} onNavigateToAuftrag={onNavigateToAuftrag} />
+          )}
+        </>
       )}
 
       {/* ── Footer ── */}
