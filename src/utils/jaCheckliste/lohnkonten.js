@@ -108,11 +108,17 @@ export const LOHN_GRUPPEN = [
 export const LOHN_BEREICHE = {
   '03': {
     aufwand: [[4100, 4199]],
-    verbfor: [[1520, 1520], [1530, 1537], [1544, 1544], [1740, 1759], [1795, 1795]],
+    // Nur die im Dokument genannten Konten. Frueher standen hier weite Bereiche
+    // (1530-1537, 1740-1759); dadurch waeren auch Kautionen oder eine Forderung
+    // aus Gewerbesteuerueberzahlung im Lohnblock gelandet.
+    verbfor: [[1520, 1520], [1530, 1531], [1537, 1537], [1544, 1544],
+              [1740, 1745], [1748, 1748], [1750, 1753], [1755, 1756], [1759, 1759], [1795, 1795]],
   },
   '04': {
     aufwand: [[6000, 6199]],
-    verbfor: [[1340, 1345], [1369, 1369], [1457, 1457], [3720, 3796]],
+    verbfor: [[1340, 1341], [1345, 1345], [1369, 1369], [1457, 1457],
+              [3720, 3720], [3725, 3725], [3730, 3730], [3740, 3741], [3750, 3750], [3755, 3755],
+              [3759, 3759], [3770, 3771], [3780, 3780], [3785, 3785], [3790, 3791], [3796, 3796]],
   },
 }
 

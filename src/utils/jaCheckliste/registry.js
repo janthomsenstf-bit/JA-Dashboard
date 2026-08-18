@@ -1247,6 +1247,13 @@ export const MODULE = {
         hinweise.push('Der Block „Forderungen und Verbindlichkeiten" ist leer. Ohne diese Konten lässt sich nicht beurteilen, ob Lohnsteuer, Sozialversicherung und Nettolöhne zum Stichtag richtig abgegrenzt sind.')
       }
 
+      // Konten, die nicht zum Lohnbereich gehoeren, werden benannt statt still
+      // mitgefuehrt - sonst stehen Kautionen oder Gewerbesteuerforderungen im
+      // Lohnblock und verfaelschen Summe und Quote.
+      const fremd = [...auf, ...vf].filter(x => x.konto && !lohnZielListe(x.konto, skr))
+      if (fremd.length) hinweise.push('⚠️ Nicht zum Lohnbereich: ' +
+        fremd.map(x => (x.konto + ' ' + (x.bez || '')).trim()).join(' · ') +
+        '. Diese Konten aus dem Modul entfernen oder dem passenden Modul zuordnen – sie gehen sonst in Summe und Quote ein.')
       hinweise.push('Den Abgleich mit der Zahlung im Folgejahr nimmt das Modul nicht vor – dafür fehlt die Summen- und Saldenliste des Folgejahres. Die Salden stehen oben; der Vermerk je Konto wandert in das Excel-Arbeitspapier.')
       if (!w.fBrutto) hinweise.push('Bei Nettolohnverbuchung wird das Verrechnungskonto nur bebucht, wenn zum Stichtag noch Zahlungen offen sind (Dok. 5360651).')
       hinweise.push('Gegenprobe außerhalb dieses Moduls: Sachbezugskonten ' + (K.sachbezug || []).join(', ') + ' – sind Fahrzeuggestellung, Gutscheine und sonstige Sachbezüge erfasst und korrespondierend im Lohnaufwand gebucht?')
