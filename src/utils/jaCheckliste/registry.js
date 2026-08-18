@@ -327,6 +327,10 @@ export const MODULE = {
       ['Monatswert', 'Brutto ÷ Monate; der letzte Monat gleicht die Rundung aus'],
       ['Buchung', 'Gegenkonto an Entnahmekonto, BRUTTO auf die Automatikkonten'],
     ],
+    // Nur die Entnahmekonten. Gegenkonto und Umsatzsteuerkonten gehoeren
+    // anderen Modulen bzw. mehreren gleichzeitig.
+    erkennt: (konto, bez, skr) => { const K = SE_KONTEN[skr === '04' ? '04' : '03']
+      const k = String(konto).trim(); return k === K.entnahme7 || k === K.entnahme19 },
     flags: [
       { k: 'fPersonal', label: 'Betrieb beschäftigt Personal (Personalessen ist Sachbezug, nicht Sachentnahme)' },
       { k: 'fNonFood', label: 'Non-Food-Entnahmen (Tabak, Bekleidung, Elektro …) sind gesondert aufgezeichnet' } ],
@@ -600,6 +604,10 @@ export const MODULE = {
       ['Vergleich', 'gegen Jahrespauschale 1.260 € (105 €/Monat, zeitanteilig) – günstigere Variante'],
       ['Buchung', 'abziehbarer Anteil an Privateinlage; bei Deckelung zusätzlich Umbuchung des nicht abziehbaren Anteils'],
     ],
+    // Meldet dem SuSa-Import die eigenen Konten. Das Gegenkonto (Privateinlage)
+    // bleibt bewusst aussen vor – es teilen sich mehrere Module.
+    erkennt: (konto, bez, skr) => { const K = AZ_KONTEN[skr === '04' ? '04' : '03']
+      const k = String(konto).trim(); return k === K.aufwand || k === K.nichtAbz },
     // Ausfüll-Vorlage zum Versand an den Mandanten. Bauplan in vorlagen.js.
     vorlage: { id: 'arbeitszimmer', titel: 'Mandanten-Vorlage (Excel)' },
     quellen: ['§ 4 Abs. 5 S. 1 Nr. 6b EStG (Arbeitszimmer, Jahrespauschale)',
