@@ -58,6 +58,29 @@ function getDisplayPeriod(au) {
   return { monat: au.monat, jahr: au.jahr }
 }
 
+// Wann wurde der Eintrag angelegt? Automatisch erzeugte Fristen haben kein
+// Anlagedatum – sie entstehen bei jeder Berechnung neu.
+function erstelltAmVon(au) {
+  if (au._generiert) return null
+  const iso = au.erstelltAm ?? au.createdAt ?? null
+  if (!iso) return null
+  const d = new Date(iso)
+  return isNaN(d.getTime()) ? null : d
+}
+
+function fmtErstellt(au) {
+  const d = erstelltAmVon(au)
+  return d ? `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}.${d.getFullYear()}` : null
+}
+
+function tageSeitErstellt(au) {
+  const d = erstelltAmVon(au)
+  if (!d) return null
+  d.setHours(0,0,0,0)
+  const heute = new Date(); heute.setHours(0,0,0,0)
+  return Math.max(0, Math.round((heute - d) / 86400000))
+}
+
 // Wochen-/Tagessicht: exaktes Datum (frist oder serieKey)
 function getExactDate(au) {
   if (au.istSerie && au.serieKey) return au.serieKey
@@ -207,6 +230,8 @@ function AuftragRow({ au, idx, onSelectClient, onCycleStatus, onToggleDone, onNa
   const zeitraum    = au.monat ? `${MONAT_KURZ[au.monat-1]} ${au.jahr}` : au.jahr ? String(au.jahr) : '—'
   const dp          = getDisplayPeriod(au)
   const fristAbweicht = !au.istSerie && au.frist && au.monat && (dp.monat !== au.monat || dp.jahr !== au.jahr)
+  const angelegtAm  = fmtErstellt(au)
+  const alterTage   = tageSeitErstellt(au)
 
   return (
     <tr style={{
@@ -315,6 +340,13 @@ function AuftragRow({ au, idx, onSelectClient, onCycleStatus, onToggleDone, onNa
           <span style={{ color:frist.color, fontWeight:frist.overfaellig ? 700 : 400 }}>{frist.overfaellig ? '⚠ ' : ''}{frist.text}</span>
         ) : (
           <span style={{ color:'var(--text-muted)' }}>–</span>
+        )}
+        {/* Woher kommt der Eintrag – hilft bei Altlasten, die lange mitwandern. */}
+        {angelegtAm && (
+          <div style={{ fontSize:'10px', color:'var(--text-muted)', marginTop:'2px' }}>
+            angelegt am {angelegtAm}
+            {alterTage != null && alterTage >= 14 && ` · ${alterTage} T alt`}
+          </div>
         )}
       </td>
       <td style={{ padding:'8px 12px' }}>
@@ -587,7 +619,11 @@ function WeekCard({ au, onSelectClient, onCycleStatus, onNavigateToAuftrag, zieh
       draggable={ziehbar}
       onDragStart={e => { if (!ziehbar) { e.preventDefault(); return } e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', au.id); onZiehStart?.() }}
       onDragEnd={() => onZiehEnde?.()}
-      title={ziehbar ? 'Zum Verschieben auf einen anderen Tag ziehen' : grund}
+      title={[
+        isOverdue ? `Seit ${overdueDays} Tag${overdueDays !== 1 ? 'en' : ''} offen` : null,
+        fmtErstellt(au) ? `angelegt am ${fmtErstellt(au)}` : null,
+        ziehbar ? 'Zum Verschieben auf einen anderen Tag ziehen' : grund,
+      ].filter(Boolean).join(' · ')}
       style={{
       padding:'5px 7px', borderRadius:'6px', marginBottom:'3px',
       border:`1px solid ${isOverdue ? 'rgba(239,68,68,0.4)' : typCfg.border}`,
@@ -1053,6 +1089,7 @@ export default function GlobalTodoView({ clients, aufgabenListe = [], onUpdateAu
         frist:        isoToLocalYMD(t.faellig),
         status:       t.erledigt ? 'erledigt' : 'offen',
         erledigtAm:   t.erledigtAm ?? null,
+        erstelltAm:   t.erstelltAm ?? null,
         istSerie:     false,
         client,
       })
