@@ -10,12 +10,14 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { einwilligung87aKoerperschaft } from './einwilligung87a.js'
 import { einwilligung87aNatuerlich }    from './einwilligung87aNatuerlich.js'
+import { empfangsvollmacht }            from './empfangsvollmacht.js'
 import { loadKanzlei } from '../ustRegPdf.js'
 import { txt } from './pdfKit.js'
 
 export const VORLAGEN = [
   einwilligung87aKoerperschaft,
   einwilligung87aNatuerlich,
+  empfangsvollmacht,
 ]
 
 export function vorlageNachId(id) {
