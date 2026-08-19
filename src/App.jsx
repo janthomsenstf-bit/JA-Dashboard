@@ -35,7 +35,6 @@ import BereichPlatzhalter from './components/BereichPlatzhalter.jsx'
 import PersonenBereich from './components/PersonenBereich.jsx'
 import KommunikationBereich from './components/KommunikationBereich.jsx'
 import DokumenteBereich from './components/DokumenteBereich.jsx'
-import AuftraegeBereich from './components/AuftraegeBereich.jsx'
 import ProzesseBereich from './components/ProzesseBereich.jsx'
 import ChecklistenBereich from './components/ChecklistenBereich.jsx'
 import LeistungspoolBereich from './components/LeistungspoolBereich.jsx'
@@ -440,12 +439,6 @@ export default function App() {
   // ── Manuelle Aufgaben (global, mandantenübergreifend) ─────────────────────────
   const [aufgabenListe, setAufgabenListe] = useState([])
 
-  // ── Merkliste „Meine Liste" ───────────────────────────────────────────────────
-  // Reine Auswahl, KEINE Kopie: gemerkt wird nur ein Verweis { id, clientId } auf
-  // eine Zeile der Auftrags-/Fristenübersicht. Entfernen nimmt den Eintrag aus der
-  // Liste, nie aus den Daten.
-  const [merkliste, setMerkliste] = useState([])
-
   // ── Zeiterfassung (global, mandantenunabhängiges Logbuch) ─────────────────────
   const [zeiterfassung, setZeiterfassung] = useState([])
 
@@ -503,7 +496,6 @@ export default function App() {
         setClients(Array.isArray(raw) ? raw.map(migrateClient).filter(Boolean) : [])
         if (Array.isArray(cloudData['sdb-termine']))        setTermine(cloudData['sdb-termine'])
         if (Array.isArray(cloudData['sdb-aufgaben-liste'])) setAufgabenListe(cloudData['sdb-aufgaben-liste'])
-        if (Array.isArray(cloudData['sdb-merkliste']))      setMerkliste(cloudData['sdb-merkliste'])
         if (Array.isArray(cloudData['sdb-zeiterfassung']))  setZeiterfassung(cloudData['sdb-zeiterfassung'])
         if (cloudData['spielbuch-checklisten-v1'])    setChecklistenTypen(cloudData['spielbuch-checklisten-v1'])
         if (cloudData['spielbuch-vorlagen-v1'])       setVorlagen(cloudData['spielbuch-vorlagen-v1'])
@@ -615,10 +607,6 @@ export default function App() {
     if (!authUser || dataLoading) return
     cloudSave('sdb-termine', termine)
   }, [termine])
-  useEffect(() => {
-    if (!authUser || dataLoading) return
-    cloudSave('sdb-merkliste', merkliste)
-  }, [merkliste])
   useEffect(() => {
     if (!authUser || dataLoading) return
     cloudSave('sdb-aufgaben-liste', aufgabenListe)
@@ -1187,15 +1175,6 @@ export default function App() {
     updateClient(clientId, { auftraege: [au, ...(c.auftraege ?? [])] })
   }
 
-  // ── Merkliste „Meine Liste" ───────────────────────────────────────────────────
-  function merken(eintrag) {
-    if (!eintrag?.id) return
-    setMerkliste(prev => prev.some(m => m.id === eintrag.id)
-      ? prev
-      : [...prev, { id: eintrag.id, clientId: eintrag.clientId ?? null, hinzugefuegtAm: new Date().toISOString() }])
-  }
-  function vergessen(id) { setMerkliste(prev => prev.filter(m => m.id !== id)) }
-
   // ── Manuelle Aufgaben CRUD ────────────────────────────────────────────────────
   function addAufgabe(data) {
     setAufgabenListe(prev => [...prev, {
@@ -1461,22 +1440,6 @@ export default function App() {
   const auftraegeEl = (
     <GlobalTodoView
       modus="auftraege"
-      clients={clients}
-      aufgabenListe={aufgabenListe}
-      onUpdateAufgabe={updateAufgabe}
-      onAddAufgabe={addAufgabe}
-      onUpdateClient={updateClient}
-      onSelectClient={id => oeffneMandant(id)}
-      onNavigateToAuftrag={oeffneAuftrag}
-    />
-  )
-
-  // Persönliche Merkliste – zeigt nur, was per Ziehen vorgemerkt wurde.
-  const merklisteEl = (
-    <GlobalTodoView
-      modus="merkliste"
-      merkliste={merkliste}
-      onVergessen={vergessen}
       clients={clients}
       aufgabenListe={aufgabenListe}
       onUpdateAufgabe={updateAufgabe}
@@ -2002,14 +1965,11 @@ export default function App() {
               />
             )}
 
-            {/* Bereich „Aufträge" – Auftragsübersicht und „Meine Liste" */}
+            {/* Bereich „Aufträge" – direkt die Auftragsübersicht, ohne Zwischenebene */}
             {hauptbereich === 'auftraege' && (
-              <AuftraegeBereich
-                slotAuftraege={auftraegeEl}
-                slotAufgaben={merklisteEl}
-                onMerken={merken}
-                merkAnzahl={merkliste.length}
-              />
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}>
+                {auftraegeEl}
+              </div>
             )}
 
             {/* Bereich „Kalender" – bestehende Kalenderansicht, jetzt eigenständig */}
