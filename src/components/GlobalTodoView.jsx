@@ -219,7 +219,13 @@ function istRadarRelevant(au) {
 // ── Gemeinsame Tabellenzeile ───────────────────────────────────────────────────
 const thStyle = { padding:'8px 12px', textAlign:'left', fontWeight:600, color:'var(--text-muted)', fontSize:'11px', borderBottom:'2px solid var(--border)' }
 
-function AuftragRow({ au, idx, onSelectClient, onCycleStatus, onToggleDone, onNavigateToAuftrag, overdueDays }) {
+// Was beim Ziehen mitgegeben wird – die Merkliste speichert nur diesen Verweis.
+export const MERK_MIME = 'application/x-spielbuch-eintrag'
+function merkNutzlast(au) {
+  return JSON.stringify({ id: au.id, clientId: au.client?.id ?? null })
+}
+
+function AuftragRow({ au, idx, onSelectClient, onCycleStatus, onToggleDone, onNavigateToAuftrag, overdueDays, onVergessen }) {
   const typCfg    = AUFTRAGS_TYP_CFG[au.typ]      ?? AUFTRAGS_TYP_CFG.freitext
   const statusCfg = AUFTRAGS_STATUS_CFG[au.status] ?? AUFTRAGS_STATUS_CFG.offen
   const frist     = fmtFrist(au.frist)
@@ -234,10 +240,20 @@ function AuftragRow({ au, idx, onSelectClient, onCycleStatus, onToggleDone, onNa
   const alterTage   = tageSeitErstellt(au)
 
   return (
-    <tr style={{
+    <tr
+      draggable
+      onDragStart={e => { e.dataTransfer.effectAllowed = 'copy'; e.dataTransfer.setData(MERK_MIME, merkNutzlast(au)); e.dataTransfer.setData('text/plain', au.bezeichnung || '') }}
+      title={'Auf den Reiter „Meine Liste" ziehen, um den Eintrag vorzumerken'}
+      style={{
       background: erledigt ? 'transparent' : frist?.overfaellig ? 'rgba(239,68,68,0.03)' : idx % 2 === 0 ? 'var(--surface)' : 'transparent',
       borderBottom: '1px solid var(--border)', opacity: erledigt ? 0.55 : 1, transition: 'background 0.1s',
     }}>
+      {onVergessen && (
+        <td style={{ padding:'8px 4px 8px 10px', width:'28px' }}>
+          <button onClick={() => onVergessen(au.id)} title={'Aus „Meine Liste" nehmen (der Eintrag selbst bleibt bestehen)'}
+            style={{ background:'none', border:'none', cursor:'pointer', color:'var(--text-muted)', fontSize:'13px', padding:'2px 4px', lineHeight:1 }}>✕</button>
+        </td>
+      )}
       <td style={{ padding:'8px 12px' }}>
         <button onClick={() => onSelectClient(au.client.id)}
           style={{ background:'none', border:'none', cursor:'pointer', color:'var(--accent)', fontWeight:600, fontSize:'13px', padding:0, textAlign:'left' }}>
@@ -467,6 +483,56 @@ function SuchTable({ items, suche, onSelectClient, onCycleStatus, onToggleDone, 
             ))}
           </tbody>
         </table>
+      )}
+    </div>
+  )
+}
+
+// ── Merkliste „Meine Liste" ───────────────────────────────────────────────────
+// Zeigt ausschließlich die vorgemerkten Einträge – unabhängig von Monat und
+// Filtern. Gemerkt wird nur ein Verweis; „✕" nimmt aus der Liste, nie aus den Daten.
+function MerkTable({ items, verwaist, onSelectClient, onCycleStatus, onToggleDone, onNavigateToAuftrag, onVergessen }) {
+  return (
+    <div style={{ flex:1, overflowY:'auto', background:'var(--bg)' }}>
+      {items.length === 0 ? (
+        <div style={{ padding:'56px 24px', textAlign:'center', color:'var(--text-muted)', fontSize:'13.5px', lineHeight:1.8 }}>
+          <div style={{ fontSize:'30px', marginBottom:'8px' }}>📌</div>
+          <strong style={{ color:'var(--text)', display:'block', fontSize:'14px', marginBottom:'4px' }}>Deine Liste ist noch leer</strong>
+          Zieh im Reiter „Aufträge" eine Zeile auf den Reiter <strong>📋 Meine Liste</strong> –<br />
+          dann steht sie hier, unabhängig von Monat und Filtern.
+        </div>
+      ) : (
+        <>
+          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'13px' }}>
+            <thead>
+              <tr style={{ background:'var(--surface)', position:'sticky', top:0, zIndex:1 }}>
+                <th style={{ ...thStyle, width:'28px' }} />
+                <th style={thStyle}>Mandant</th>
+                <th style={thStyle}>Typ</th>
+                <th style={thStyle}>Bezeichnung</th>
+                <th style={thStyle}>Zeitraum</th>
+                <th style={thStyle}>Frist</th>
+                <th style={thStyle}>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((au, idx) => (
+                <AuftragRow key={au.id} au={au} idx={idx} onSelectClient={onSelectClient} onCycleStatus={onCycleStatus}
+                  onToggleDone={onToggleDone} onNavigateToAuftrag={onNavigateToAuftrag} onVergessen={onVergessen} />
+              ))}
+            </tbody>
+          </table>
+          {verwaist.length > 0 && (
+            <div style={{ padding:'10px 16px', fontSize:'11.5px', color:'var(--text-muted)', borderTop:'1px solid var(--border)' }}>
+              {verwaist.length} vorgemerkte{verwaist.length === 1 ? 'r' : ''} Eintrag{verwaist.length === 1 ? '' : 'e'} ist nicht mehr auffindbar
+              (gelöscht oder Mandant archiviert).{' '}
+              <button onClick={() => verwaist.forEach(m => onVergessen(m.id))}
+                style={{ background:'none', border:'none', padding:0, color:'var(--accent)', fontSize:'11.5px', fontWeight:600, cursor:'pointer' }}>
+                aus der Liste entfernen
+              </button>
+            </div>
+          )}
+        </>
       )}
     </div>
   )
@@ -987,10 +1053,12 @@ function StatBadge({ label, count, color, bg }) {
 }
 
 // ── Hauptkomponente ───────────────────────────────────────────────────────────
-export default function GlobalTodoView({ clients, aufgabenListe = [], onUpdateAufgabe, onAddAufgabe, onUpdateClient, onSelectClient, onNavigateToAuftrag, modus = 'alle' }) {
-  // modus 'auftraege' → nur echte Aufträge (der Quellen-Filter entfällt)
-  // modus 'alle'      → zusätzlich auto-Fristen und manuelle Aufgaben
+export default function GlobalTodoView({ clients, aufgabenListe = [], onUpdateAufgabe, onAddAufgabe, onUpdateClient, onSelectClient, onNavigateToAuftrag, modus = 'alle', merkliste = [], onVergessen }) {
+  // modus 'auftraege' → Auftragsübersicht (Quellen-Filter startet auf „Aufträge")
+  // modus 'merkliste' → nur die vorgemerkten Einträge, ohne Zeitraumgrenze
+  // modus 'alle'      → alles zusammen
   const nurAuftraege  = modus === 'auftraege'
+  const istMerkliste  = modus === 'merkliste'
   const speicherKey   = filterKeyFuer(modus)
   const aktiveClients = useMemo(() => clients.filter(c => !c.archiviert), [clients])
   const saved = useMemo(() => loadTodoFilters(speicherKey), [speicherKey])
@@ -1145,6 +1213,21 @@ export default function GlobalTodoView({ clients, aufgabenListe = [], onUpdateAu
     if (!suchTreffer) return 0
     return new Set(suchTreffer.map(au => au.client.id)).size
   }, [suchTreffer])
+
+  // ── Merkliste auflösen ────────────────────────────────────────────────────
+  // Gemerkt ist nur ein Verweis. Was sich nicht mehr auflösen lässt (gelöscht,
+  // Mandant archiviert), wird nicht still verschluckt, sondern unten benannt.
+  const merkItems = useMemo(() => {
+    if (!istMerkliste) return []
+    const nachId = new Map(alleAuftraege.map(au => [au.id, au]))
+    return sortByUrgency(merkliste.map(m => nachId.get(m.id)).filter(Boolean))
+  }, [istMerkliste, merkliste, alleAuftraege])
+
+  const merkVerwaist = useMemo(() => {
+    if (!istMerkliste) return []
+    const vorhanden = new Set(alleAuftraege.map(au => au.id))
+    return merkliste.filter(m => !vorhanden.has(m.id))
+  }, [istMerkliste, merkliste, alleAuftraege])
 
   // ── Monatssicht: gefilterte Aufträge (inkl. mitgenommene überfällige) ─────
   const gefiltert = useMemo(() => {
@@ -1580,6 +1663,7 @@ export default function GlobalTodoView({ clients, aufgabenListe = [], onUpdateAu
 
   // ── Footer-Info ───────────────────────────────────────────────────────────
   const footerInfo = useMemo(() => {
+    if (istMerkliste) return `${merkItems.length} vorgemerkt`
     if (viewMode === 'monat') return `${gefiltert.length} Einträge angezeigt`
     if (viewMode === 'woche') return `${weekDays?.flatMap(d => d.items).length ?? 0} Einträge diese Woche`
     if (viewMode === 'tag') {
@@ -1615,16 +1699,20 @@ export default function GlobalTodoView({ clients, aufgabenListe = [], onUpdateAu
 
         {/* Zeile 1: Titel + View-Mode + Stats */}
         <div style={{ display:'flex', alignItems:'center', gap:'10px', marginBottom:'10px', flexWrap:'wrap' }}>
-          <span style={{ fontSize:'20px' }}>{nurAuftraege ? '📑' : '📋'}</span>
+          <span style={{ fontSize:'20px' }}>{istMerkliste ? '📌' : nurAuftraege ? '📑' : '📋'}</span>
           <div>
-            <div style={{ fontWeight:800, fontSize:'15px' }}>{nurAuftraege ? 'Auftrags-Übersicht' : 'Meine Liste'}</div>
+            <div style={{ fontWeight:800, fontSize:'15px' }}>
+              {istMerkliste ? 'Meine Liste' : nurAuftraege ? 'Auftrags-Übersicht' : 'Aufgaben & Fristen'}
+            </div>
             <div style={{ fontSize:'10px', opacity:0.55 }}>
-              {nurAuftraege ? 'Alle Mandate · nur echte Aufträge' : 'Alle Mandate · Aufträge, Fristen und Aufgaben'}
+              {istMerkliste
+                ? `${merkItems.length} vorgemerkt · unabhängig von Monat und Filtern`
+                : nurAuftraege ? 'Alle Mandate · nur echte Aufträge' : 'Alle Mandate · Aufträge, Fristen und Aufgaben'}
             </div>
           </div>
 
-          {/* Ansicht-Umschalter */}
-          <div style={{ display:'flex', background:'rgba(255,255,255,0.07)', borderRadius:'8px', padding:'2px', border:'1px solid rgba(255,255,255,0.12)', marginLeft:'4px' }}>
+          {/* Ansicht-Umschalter – in der Merkliste ohne Bedeutung (kein Zeitraum) */}
+          <div style={{ display: istMerkliste ? 'none' : 'flex', background:'rgba(255,255,255,0.07)', borderRadius:'8px', padding:'2px', border:'1px solid rgba(255,255,255,0.12)', marginLeft:'4px' }}>
             {[['mandanten','🏢 Mandanten'],['monat','📅 Monat'],['woche','📆 Woche'],['tag','🗓 Tag'],['eilig','🔥 Eilig']].map(([m,l]) => (
               <button key={m} onClick={() => switchView(m)} style={{
                 padding:'4px 11px', borderRadius:'6px', fontSize:'11px', fontWeight:600, cursor:'pointer', border:'none',
@@ -1688,8 +1776,9 @@ export default function GlobalTodoView({ clients, aufgabenListe = [], onUpdateAu
           )}
         </div>
 
-        {/* Zeile 2: Navigation + Filter */}
-        <div style={{ display:'flex', gap:'6px', flexWrap:'wrap', alignItems:'center' }}>
+        {/* Zeile 2: Navigation + Filter – in der Merkliste komplett aus,
+            dort gilt bewusst nur die eigene Auswahl. */}
+        <div style={{ display: istMerkliste ? 'none' : 'flex', gap:'6px', flexWrap:'wrap', alignItems:'center' }}>
 
           {/* Zeitraum-Navigation (im Eilig-/Mandanten-Modus ausgeblendet) */}
           {viewMode !== 'eilig' && viewMode !== 'mandanten' && (
@@ -1763,16 +1852,14 @@ export default function GlobalTodoView({ clients, aufgabenListe = [], onUpdateAu
             <button key={k} onClick={() => setFilterMandatstyp(k)} style={btnFilter(filterMandatstyp === k, '#f59e0b')}>{l}</button>
           ))}
 
+          {divider}
+
           {/* Quellen-Filter: eigene Aufträge · auto-Fristen · manuelle Aufgaben.
-              In der reinen Auftragsansicht fest auf Aufträge gestellt – daher aus. */}
-          {!nurAuftraege && (
-            <>
-              {divider}
-              {[['alle','🗂 Alle Quellen'],['auftraege','📋 Aufträge'],['fristen','📅 Fristen (auto)'],['manuell','📌 Aufgaben']].map(([k,l]) => (
-                <button key={k} onClick={() => setFilterQuelle(k)} style={btnFilter(filterQuelle === k, '#22d3ee')}>{l}</button>
-              ))}
-            </>
-          )}
+              Startet in dieser Ansicht auf „Aufträge", bleibt aber umschaltbar –
+              sonst wären Fristen und Aufgaben nirgends mehr erreichbar. */}
+          {[['alle','🗂 Alle Quellen'],['auftraege','📋 Aufträge'],['fristen','📅 Fristen (auto)'],['manuell','📌 Aufgaben']].map(([k,l]) => (
+            <button key={k} onClick={() => setFilterQuelle(k)} style={btnFilter(filterQuelle === k, '#22d3ee')}>{l}</button>
+          ))}
 
           {divider}
           <button onClick={resetFilters} title="Alle Filter auf Standard zurücksetzen (aktueller Monat, alle Typen, aktiv, alle Quellen)"
@@ -1801,7 +1888,11 @@ export default function GlobalTodoView({ clients, aufgabenListe = [], onUpdateAu
       )}
 
       {/* ── Inhalt ── */}
-      {sucheAktiv ? (
+      {istMerkliste ? (
+        <MerkTable items={merkItems} verwaist={merkVerwaist} onSelectClient={onSelectClient}
+          onCycleStatus={cycleStatus} onToggleDone={markDone} onNavigateToAuftrag={onNavigateToAuftrag}
+          onVergessen={onVergessen} />
+      ) : sucheAktiv ? (
         <SuchTable items={suchTreffer} suche={suche.trim()} onSelectClient={onSelectClient}
           onCycleStatus={cycleStatus} onToggleDone={markDone} onNavigateToAuftrag={onNavigateToAuftrag} />
       ) : (
