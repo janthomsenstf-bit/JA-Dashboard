@@ -81,6 +81,24 @@ function tageSeitErstellt(au) {
   return Math.max(0, Math.round((heute - d) / 86400000))
 }
 
+// Der Jahresabschluss führt einen eigenen Arbeitsstatus (11 Stufen + selbst
+// angelegte). Eigene Status stehen nicht im Katalog – dafür liegt am Auftrag ein
+// Schnappschuss (jaStatusSnap), damit sie auch hier korrekt erscheinen.
+function fmtDatumKurz(ymd) {
+  if (!ymd) return ''
+  const d = new Date(String(ymd).slice(0, 10) + 'T12:00:00')
+  return isNaN(d.getTime()) ? '' : `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getFullYear()).slice(2)}`
+}
+
+function jaStatusKey(au) {
+  if (au.typ !== 'jahresabschluss' || au._generiert || au._manuell) return null
+  return au.jaWorkflowStatus ?? 'neu'
+}
+function jaStatusCfg(au) {
+  if (!jaStatusKey(au)) return null
+  return JA_WORKFLOW_STATUS[au.jaWorkflowStatus ?? 'neu'] ?? au.jaStatusSnap ?? JA_WORKFLOW_STATUS.neu
+}
+
 // Wochen-/Tagessicht: exaktes Datum (frist oder serieKey)
 function getExactDate(au) {
   if (au.istSerie && au.serieKey) return au.serieKey
@@ -232,6 +250,7 @@ function AuftragRow({ au, idx, onSelectClient, onCycleStatus, onToggleDone, onNa
   const fristAbweicht = !au.istSerie && au.frist && au.monat && (dp.monat !== au.monat || dp.jahr !== au.jahr)
   const angelegtAm  = fmtErstellt(au)
   const alterTage   = tageSeitErstellt(au)
+  const jaCfg       = jaStatusCfg(au)
 
   return (
     <tr style={{
@@ -286,6 +305,24 @@ function AuftragRow({ au, idx, onSelectClient, onCycleStatus, onToggleDone, onNa
           )}
           <span style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{bezeichnung ?? (istJA ? typCfg.label : `${typCfg.label} ${zeitraum}`)}</span>
         </div>
+        {/* Arbeitsstatus des Jahresabschlusses – eigene Zeile, weil eigene
+            Status-Bezeichnungen lang werden können. */}
+        {jaCfg && (
+          <div style={{ marginTop:'3px' }}>
+            <span title={au.jaWorkflowStatusDatum ? `seit ${fmtDatumKurz(au.jaWorkflowStatusDatum)}` : 'Arbeitsstatus des Jahresabschlusses'}
+              style={{
+                display:'inline-block', maxWidth:'100%', fontSize:'10px', fontWeight:700,
+                padding:'1px 7px', borderRadius:'6px', whiteSpace:'nowrap',
+                overflow:'hidden', textOverflow:'ellipsis', verticalAlign:'bottom',
+                color: jaCfg.color, background: jaCfg.bg, border:`1px solid ${jaCfg.border}`,
+              }}>
+              {jaCfg.icon} {jaCfg.label}
+              {au.jaWorkflowStatusDatum && (
+                <span style={{ fontWeight:400, opacity:0.75 }}> · {fmtDatumKurz(au.jaWorkflowStatusDatum)}</span>
+              )}
+            </span>
+          </div>
+        )}
         {au.emailRef && (
           <div style={{ fontSize:'10px', marginTop:'2px', display:'flex', alignItems:'center', gap:'4px' }}>
             <span style={{ padding:'1px 6px', borderRadius:'8px', background:'rgba(22,163,74,0.08)', color:'#16a34a', fontWeight:600, border:'1px solid rgba(22,163,74,0.15)' }}>📧 E-Mail</span>
@@ -1011,6 +1048,7 @@ export default function GlobalTodoView({ clients, aufgabenListe = [], onUpdateAu
   const [filterStatus,     setFilterStatus]     = useState(saved.filterStatus ?? 'aktiv')
   const [filterMandatstyp, setFilterMandatstyp] = useState(saved.filterMandatstyp ?? 'alle')
   const [filterQuelle,     setFilterQuelle]     = useState(nurAuftraege ? 'auftraege' : (saved.filterQuelle ?? 'alle'))
+  const [filterJaStatus,   setFilterJaStatus]   = useState(saved.filterJaStatus ?? 'alle')
 
   // Letzte Ansicht automatisch merken (gerätelokal, nur Anzeige-Einstellungen)
   useEffect(() => {
@@ -1018,10 +1056,10 @@ export default function GlobalTodoView({ clients, aufgabenListe = [], onUpdateAu
       localStorage.setItem(speicherKey, JSON.stringify({
         viewMode,
         navDate: (navDate instanceof Date && !isNaN(navDate)) ? navDate.toISOString() : null,
-        filterJahr, filterMonat, filterTyp, filterStatus, filterMandatstyp, filterQuelle,
+        filterJahr, filterMonat, filterTyp, filterStatus, filterMandatstyp, filterQuelle, filterJaStatus,
       }))
     } catch {}
-  }, [speicherKey, viewMode, navDate, filterJahr, filterMonat, filterTyp, filterStatus, filterMandatstyp, filterQuelle])
+  }, [speicherKey, viewMode, navDate, filterJahr, filterMonat, filterTyp, filterStatus, filterMandatstyp, filterQuelle, filterJaStatus])
 
   // ── Alle Aufträge (Serien expandiert) ─────────────────────────────────────
   const alleAuftraege = useMemo(() => {
@@ -1123,8 +1161,11 @@ export default function GlobalTodoView({ clients, aufgabenListe = [], onUpdateAu
     if (filterQuelle === 'auftraege' && (au._generiert || au._manuell)) return false
     if (filterQuelle === 'fristen'   && !au._generiert) return false
     if (filterQuelle === 'manuell'   && !au._manuell)   return false
+    // JA-Arbeitsstatus: greift nur auf Jahresabschlüsse; alles andere fällt raus,
+    // sonst stünden Fristen und Aufgaben unkommentiert zwischen den Treffern.
+    if (filterJaStatus !== 'alle' && jaStatusKey(au) !== filterJaStatus) return false
     return passesStatus(au)
-  }, [filterTyp, filterMandatstyp, filterQuelle, passesStatus])
+  }, [filterTyp, filterMandatstyp, filterQuelle, filterJaStatus, passesStatus])
 
   // ── Mandantensuche ────────────────────────────────────────────────────────
   // Sucht über Mandantenname und Mandantennummer und zeigt ALLE Einträge dieses
@@ -1139,6 +1180,20 @@ export default function GlobalTodoView({ clients, aufgabenListe = [], onUpdateAu
                       || String(c.mandantennummer ?? '').toLowerCase().includes(q)
     return sortByUrgency(alleAuftraege.filter(au => passt(au.client) && passesCommon(au)))
   }, [sucheAktiv, suche, alleAuftraege, passesCommon])
+
+  // Auswahlliste für den JA-Status: eingebaute Stufen plus die selbst angelegten,
+  // die tatsächlich an einem Auftrag hängen (erkennbar am Schnappschuss).
+  const jaStatusOptionen = useMemo(() => {
+    const opts = Object.entries(JA_WORKFLOW_STATUS).map(([k, v]) => [k, `${v.icon} ${v.label}`])
+    const gesehen = new Map()
+    for (const au of alleAuftraege) {
+      const k = jaStatusKey(au)
+      if (!k || JA_WORKFLOW_STATUS[k] || gesehen.has(k)) continue
+      const snap = au.jaStatusSnap
+      gesehen.set(k, `${snap?.icon ?? '🏷️'} ${snap?.label ?? 'Eigener Status'}`)
+    }
+    return [...opts, ...gesehen.entries()]
+  }, [alleAuftraege])
 
   // Wie viele Mandanten stecken hinter den Treffern? (für die Ergebniszeile)
   const suchMandanten = useMemo(() => {
@@ -1379,6 +1434,7 @@ export default function GlobalTodoView({ clients, aufgabenListe = [], onUpdateAu
     setFilterJahr(t.getFullYear()); setFilterMonat(t.getMonth() + 1)
     setFilterTyp('alle'); setFilterStatus('aktiv'); setFilterMandatstyp('alle')
     setFilterQuelle(nurAuftraege ? 'auftraege' : 'alle')
+    setFilterJaStatus('alle')
   }
 
   function goPrev() {
@@ -1627,7 +1683,7 @@ export default function GlobalTodoView({ clients, aufgabenListe = [], onUpdateAu
     } else {
       const zeilen = exportZeilen()
       sheets.push({ name: 'Aufträge', rows: [
-        ['Mandant', 'Mandantennr.', 'Mandatstyp', 'Quelle', 'Typ', 'Bezeichnung', 'Zeitraum', 'Frist', 'Überfällig (Tage)', 'Status', 'Erledigt am', 'Angelegt am', 'Notiz'],
+        ['Mandant', 'Mandantennr.', 'Mandatstyp', 'Quelle', 'Typ', 'Bezeichnung', 'Zeitraum', 'Frist', 'Überfällig (Tage)', 'Status', 'JA-Status', 'JA-Status seit', 'Erledigt am', 'Angelegt am', 'Notiz'],
         ...zeilen.map(au => [
           au.client?.name ?? '', au.client?.mandantennummer ?? '', au.client?.mandatstyp ?? 'extern',
           QUELLE_TEXT(au),
@@ -1637,6 +1693,8 @@ export default function GlobalTodoView({ clients, aufgabenListe = [], onUpdateAu
           alsDatum(getExactDate(au)),
           ueberfaelligTage(au),
           AUFTRAGS_STATUS_CFG[au.status]?.label ?? au.status ?? '',
+          jaStatusCfg(au)?.label ?? '',
+          alsDatum(au.jaWorkflowStatusDatum),
           alsDatum(au.erledigtAm),
           alsDatum(erstelltAmVon(au)?.toISOString()),
           au.notiz ?? '',
@@ -1656,6 +1714,7 @@ export default function GlobalTodoView({ clients, aufgabenListe = [], onUpdateAu
         : navLabel],
       ['Typ-Filter', filterTyp === 'alle' ? 'alle Typen' : (AUFTRAGS_TYP_CFG[filterTyp]?.label ?? filterTyp)],
       ['Status-Filter', filterStatus],
+      ['JA-Status-Filter', filterJaStatus === 'alle' ? 'alle' : (jaStatusOptionen.find(([k]) => k === filterJaStatus)?.[1] ?? filterJaStatus)],
       ['Mandatstyp', filterMandatstyp],
       ['Quelle', quelleText],
       ['Zeilen', (sheets[0].rows.length - 1)],
@@ -1866,6 +1925,17 @@ export default function GlobalTodoView({ clients, aufgabenListe = [], onUpdateAu
           {[['alle','🗂 Alle Quellen'],['auftraege','📋 Aufträge'],['fristen','📅 Fristen (auto)'],['manuell','📌 Aufgaben']].map(([k,l]) => (
             <button key={k} onClick={() => setFilterQuelle(k)} style={btnFilter(filterQuelle === k, '#22d3ee')}>{l}</button>
           ))}
+
+          {divider}
+
+          {/* Arbeitsstatus des Jahresabschlusses – zeigt, wo man dran muss und
+              was warten kann. Greift nur auf Jahresabschlüsse. */}
+          <select value={filterJaStatus} onChange={e => setFilterJaStatus(e.target.value)}
+            title="Nach dem Arbeitsstatus des Jahresabschlusses filtern"
+            style={{ ...inputStyle, borderColor: filterJaStatus !== 'alle' ? '#f59e0b' : 'rgba(255,255,255,0.2)', maxWidth:'210px' }}>
+            <option value="alle">📁 JA-Status: alle</option>
+            {jaStatusOptionen.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+          </select>
 
           {divider}
           <button onClick={resetFilters} title="Alle Filter auf Standard zurücksetzen (aktueller Monat, alle Typen, aktiv, alle Quellen)"
