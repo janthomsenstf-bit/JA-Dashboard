@@ -1661,6 +1661,94 @@ export default function GlobalTodoView({ clients, aufgabenListe = [], onUpdateAu
     setQuickCreateDay(null)
   }
 
+  // ── Excel-Export ──────────────────────────────────────────────────────────
+  // Exportiert genau das, was gerade auf dem Bildschirm steht – gleiche Ansicht,
+  // gleiche Filter, gleiche Sortierung. Ein zweites Blatt hält fest, unter
+  // welchen Bedingungen die Liste entstanden ist, damit die Datei für sich steht.
+  const QUELLE_TEXT = (au) => au._generiert ? 'Frist (automatisch)' : au._manuell ? 'Aufgabe' : au.istSerie ? 'Auftrag (Serie)' : 'Auftrag'
+
+  function exportZeilen() {
+    if (istMerkliste)          return merkItems
+    if (sucheAktiv)            return suchTreffer
+    if (viewMode === 'monat')  return sortByUrgency(gefiltert)
+    if (viewMode === 'woche')  return weekDays?.flatMap(d => d.items) ?? []
+    if (viewMode === 'tag')    return dayItems ?? []
+    if (viewMode === 'eilig')  return eiligItems
+    return []
+  }
+
+  // Als echtes Datum ausgeben, nicht als Text – sonst kann Excel nicht sortieren
+  // oder filtern. SheetJS macht aus einem Date-Objekt eine Datumszelle.
+  function alsDatum(wert) {
+    if (!wert) return ''
+    const s = String(wert).slice(0, 10)
+    const d = new Date(s + 'T00:00:00')
+    return isNaN(d.getTime()) ? '' : d
+  }
+
+  function ueberfaelligTage(au) {
+    const d = getExactDate(au)
+    if (!d || au.status === 'erledigt') return ''
+    const diff = Math.floor((new Date().setHours(0,0,0,0) - new Date(d + 'T00:00:00')) / 86400000)
+    return diff > 0 ? diff : ''
+  }
+
+  async function exportierenExcel() {
+    const { exportSheets } = await import('../utils/jaCheckliste/exportExcel.js')
+    const heute = new Date()
+    const stempel = `${heute.getFullYear()}-${String(heute.getMonth()+1).padStart(2,'0')}-${String(heute.getDate()).padStart(2,'0')}`
+    const sheets = []
+
+    if (viewMode === 'mandanten' && !istMerkliste && !sucheAktiv) {
+      sheets.push({ name: 'Mandanten', rows: [
+        ['Mandant', 'Mandantennr.', 'Mandatstyp', 'Offene Punkte', 'Überfällig', 'Nachfassen', 'Frist bald', 'Eilig', 'Dringlichster Punkt'],
+        ...mandantenItems.map(r => [
+          r.client.name, r.client.mandantennummer ?? '', r.client.mandatstyp ?? 'extern',
+          r.offen, r.overfaellig, r.nachfassen, r.bald, r.eilig,
+          r.top ? (r.top.au.bezeichnung || AUFTRAGS_TYP_CFG[r.top.au.typ]?.label || '') : '',
+        ]),
+      ]})
+    } else {
+      const zeilen = exportZeilen()
+      sheets.push({ name: 'Aufträge', rows: [
+        ['Mandant', 'Mandantennr.', 'Mandatstyp', 'Quelle', 'Typ', 'Bezeichnung', 'Zeitraum', 'Frist', 'Überfällig (Tage)', 'Status', 'Erledigt am', 'Angelegt am', 'Notiz'],
+        ...zeilen.map(au => [
+          au.client?.name ?? '', au.client?.mandantennummer ?? '', au.client?.mandatstyp ?? 'extern',
+          QUELLE_TEXT(au),
+          au._manuell ? 'Aufgabe' : (AUFTRAGS_TYP_CFG[au.typ]?.label ?? au.typ ?? ''),
+          au.bezeichnung ?? '',
+          au.monat ? `${MONAT_KURZ[au.monat-1]} ${au.jahr}` : (au.jahr ?? ''),
+          alsDatum(getExactDate(au)),
+          ueberfaelligTage(au),
+          AUFTRAGS_STATUS_CFG[au.status]?.label ?? au.status ?? '',
+          alsDatum(au.erledigtAm),
+          alsDatum(erstelltAmVon(au)?.toISOString()),
+          au.notiz ?? '',
+        ]),
+      ]})
+    }
+
+    const ansichtText = istMerkliste ? 'Meine Liste (Merkliste)'
+      : sucheAktiv ? `Suche „${suche.trim()}"`
+      : { mandanten:'Mandanten', monat:'Monat', woche:'Woche', tag:'Tag', eilig:'Eilig' }[viewMode] ?? viewMode
+    const quelleText = { alle:'Alle Quellen', auftraege:'nur Aufträge', fristen:'nur automatische Fristen', manuell:'nur Aufgaben' }[filterQuelle] ?? filterQuelle
+
+    sheets.push({ name: 'Filter', rows: [
+      ['Exportiert am', fmtDE(heute, { day:'2-digit', month:'2-digit', year:'numeric' })],
+      ['Ansicht', ansichtText],
+      ['Zeitraum', istMerkliste || sucheAktiv ? 'alle (ohne Zeitgrenze)'
+        : viewMode === 'monat' ? (filterMonat === null ? `Ganzes Jahr ${filterJahr}` : `${MONAT_KURZ[filterMonat-1]} ${filterJahr}`)
+        : navLabel],
+      ['Typ-Filter', filterTyp === 'alle' ? 'alle Typen' : (AUFTRAGS_TYP_CFG[filterTyp]?.label ?? filterTyp)],
+      ['Status-Filter', filterStatus],
+      ['Mandatstyp', filterMandatstyp],
+      ['Quelle', quelleText],
+      ['Zeilen', (sheets[0].rows.length - 1)],
+    ]})
+
+    exportSheets(sheets, `Auftragsuebersicht_${stempel}`)
+  }
+
   // ── Footer-Info ───────────────────────────────────────────────────────────
   const footerInfo = useMemo(() => {
     if (istMerkliste) return `${merkItems.length} vorgemerkt`
@@ -1748,6 +1836,13 @@ export default function GlobalTodoView({ clients, aufgabenListe = [], onUpdateAu
           <button onClick={() => setShowNew(true)}
             style={{ padding:'7px 14px', borderRadius:'8px', border:'none', background:'#0891b2', color:'#fff', fontWeight:700, fontSize:'12px', cursor:'pointer', whiteSpace:'nowrap', marginLeft:'4px' }}>
             ➕ Neuer Auftrag
+          </button>
+
+          {/* Excel-Export – gibt genau die aktuelle Ansicht aus */}
+          <button onClick={exportierenExcel}
+            title={'Die Liste so, wie sie gerade angezeigt wird, als Excel-Datei herunterladen'}
+            style={{ padding:'7px 12px', borderRadius:'8px', border:'1px solid rgba(255,255,255,0.25)', background:'rgba(255,255,255,0.08)', color:'#fff', fontWeight:600, fontSize:'12px', cursor:'pointer', whiteSpace:'nowrap' }}>
+            ⤓ Excel
           </button>
 
           {/* Stat-Badges */}
