@@ -274,6 +274,10 @@ function StammdatenErweitertSection({ client, onUpdate, onedriveTokens, onUpdate
   function updateGF(id, name) {
     onUpdate({ geschaeftsfuehrer: geschaeftsfuehrer.map(g => g.id === id ? { ...g, name } : g) })
   }
+  // Zusatzangaben (Geburtsdatum, Privatanschrift) – additiv, für Vordrucke
+  function updateGFFeld(id, patch) {
+    onUpdate({ geschaeftsfuehrer: geschaeftsfuehrer.map(g => g.id === id ? { ...g, ...patch } : g) })
+  }
   function deleteGF(id) {
     onUpdate({ geschaeftsfuehrer: geschaeftsfuehrer.filter(g => g.id !== id) })
   }
@@ -302,6 +306,12 @@ function StammdatenErweitertSection({ client, onUpdate, onedriveTokens, onUpdate
         />
       </SetupRow>
 
+      {/* Steuer-Identifikationsnummer (natürliche Personen – Vordrucke) */}
+      <SetupRow label="Steuer-IdNr.">
+        <input className="input" value={client.steuerIdNr ?? ''} onChange={e => onUpdate({ steuerIdNr: e.target.value })}
+          placeholder="11-stellig, nur natürliche Personen" style={{ ...inputStyle, width: '220px', fontFamily: 'var(--font-mono)' }} />
+      </SetupRow>
+
       {/* USt-ID */}
       <SetupRow label="USt-IdNr.">
         <input className="input" value={client.ustId ?? ''} onChange={e => onUpdate({ ustId: e.target.value })}
@@ -312,6 +322,44 @@ function StammdatenErweitertSection({ client, onUpdate, onedriveTokens, onUpdate
       <SetupRow label="Handelsregister">
         <input className="input" value={client.handelsregister ?? ''} onChange={e => onUpdate({ handelsregister: e.target.value })}
           placeholder="z. B. HRB 12345, AG Flensburg" style={{ ...inputStyle, width: '260px' }} />
+      </SetupRow>
+
+      {/* ── Angaben für Vordrucke/Vollmachten ──────────────────────────────
+          Die amtlichen Formulare haben getrennte Felder für Straße, PLZ und Ort
+          sowie ein Geburtsdatum – deshalb hier strukturiert statt als
+          Freitext-Anschrift. Leer lassen ist ok: der Vorlagen-Reiter zerlegt
+          dann ersatzweise die Freitext-Anschrift. */}
+      <SetupRow label="Straße, Hausnr.">
+        <input className="input" value={client.strasse ?? ''} onChange={e => onUpdate({ strasse: e.target.value })}
+          placeholder="z. B. Hauptstraße 24a" style={{ ...inputStyle, width: '260px' }} />
+      </SetupRow>
+
+      <SetupRow label="PLZ / Ort">
+        <input className="input" value={client.plz ?? ''} onChange={e => onUpdate({ plz: e.target.value })}
+          placeholder="PLZ" style={{ ...inputStyle, width: '90px' }} />
+        <input className="input" value={client.ort ?? ''} onChange={e => onUpdate({ ort: e.target.value })}
+          placeholder="Ort" style={{ ...inputStyle, width: '200px' }} />
+      </SetupRow>
+
+      <SetupRow label="Geburtsdatum">
+        <input className="input" value={client.geburtsdatum ?? ''} onChange={e => onUpdate({ geburtsdatum: e.target.value })}
+          placeholder="TT.MM.JJJJ – nur natürliche Personen" style={{ ...inputStyle, width: '260px' }} />
+      </SetupRow>
+
+      <SetupRow label="Telefon">
+        <input className="input" value={client.telefon ?? ''} onChange={e => onUpdate({ telefon: e.target.value })}
+          placeholder="tagsüber erreichbar" style={{ ...inputStyle, width: '190px' }} />
+        <input className="input" value={client.mobil ?? ''} onChange={e => onUpdate({ mobil: e.target.value })}
+          placeholder="mobil" style={{ ...inputStyle, width: '190px' }} />
+      </SetupRow>
+
+      <SetupRow label="Finanzamt">
+        <input className="input" value={client.finanzamt ?? ''} onChange={e => onUpdate({ finanzamt: e.target.value })}
+          placeholder="z. B. Finanzamt Flensburg" style={{ ...inputStyle, width: '220px' }} />
+        <input className="input" value={client.finanzamtStrasse ?? ''} onChange={e => onUpdate({ finanzamtStrasse: e.target.value })}
+          placeholder="Straße" style={{ ...inputStyle, width: '190px' }} />
+        <input className="input" value={client.finanzamtPlzOrt ?? ''} onChange={e => onUpdate({ finanzamtPlzOrt: e.target.value })}
+          placeholder="PLZ Ort" style={{ ...inputStyle, width: '160px' }} />
       </SetupRow>
 
       {/* Korrespondenzsprache */}
@@ -403,14 +451,30 @@ function StammdatenErweitertSection({ client, onUpdate, onedriveTokens, onUpdate
             Geschäftsführer
           </span>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', flex: 1 }}>
+            {/* Geburtsdatum + Privatanschrift werden von den Finanzamts-Vordrucken
+                (§ 87a-Einwilligung, Vollmachten) verlangt – deshalb hier pflegbar. */}
             {geschaeftsfuehrer.map(gf => (
-              <div key={gf.id} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <div key={gf.id} style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                 <input
                   className="input"
                   value={gf.name}
                   onChange={e => updateGF(gf.id, e.target.value)}
-                  placeholder="Name des Geschäftsführers"
-                  style={{ ...inputStyle, width: '240px' }}
+                  placeholder="Name, Vorname"
+                  style={{ ...inputStyle, width: '200px' }}
+                />
+                <input
+                  className="input"
+                  value={gf.geburtsdatum ?? ''}
+                  onChange={e => updateGFFeld(gf.id, { geburtsdatum: e.target.value })}
+                  placeholder="Geburtsdatum"
+                  style={{ ...inputStyle, width: '120px' }}
+                />
+                <input
+                  className="input"
+                  value={gf.anschrift ?? ''}
+                  onChange={e => updateGFFeld(gf.id, { anschrift: e.target.value })}
+                  placeholder="Privatanschrift (Straße, PLZ Ort)"
+                  style={{ ...inputStyle, width: '260px' }}
                 />
                 <button
                   onClick={() => deleteGF(gf.id)}

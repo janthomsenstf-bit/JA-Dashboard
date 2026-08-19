@@ -18,6 +18,7 @@ const ALL_TABS = [
   { icon: '🧠', short: 'Beratung'        },  // 8
   { icon: '📊', short: 'Historie'        },  // 9
   { icon: '✨', short: 'Claude'          },  // 10
+  { icon: '📄', short: 'Vorlagen'        },  // 11
 ]
 
 // 5 Tabs in der Bottom Bar
