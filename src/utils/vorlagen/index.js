@@ -9,11 +9,13 @@
 //      „Vorlagen" am Mandanten zeigt sie automatisch an.
 // ─────────────────────────────────────────────────────────────────────────────
 import { einwilligung87aKoerperschaft } from './einwilligung87a.js'
+import { einwilligung87aNatuerlich }    from './einwilligung87aNatuerlich.js'
 import { loadKanzlei } from '../ustRegPdf.js'
 import { txt } from './pdfKit.js'
 
 export const VORLAGEN = [
   einwilligung87aKoerperschaft,
+  einwilligung87aNatuerlich,
 ]
 
 export function vorlageNachId(id) {

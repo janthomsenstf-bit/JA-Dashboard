@@ -23,7 +23,10 @@ import {
 export default function VorlagenTab({ client, onUpdate }) {
   const basis = useMemo(() => stammdatenBasis(client), [client])
 
-  const [aktivId, setAktivId] = useState(VORLAGEN[0]?.id ?? null)
+  // Vorausgewählt ist die Vorlage, die zur Rechtsform des Mandanten passt.
+  const [aktivId, setAktivId] = useState(
+    () => (VORLAGEN.find(v => !v.passtZu || v.passtZu(stammdatenBasis(client))) ?? VORLAGEN[0])?.id ?? null,
+  )
   const [quelle,  setQuelle]  = useState('stammdaten')   // 'stammdaten' | 'manuell'
   const [werte,   setWerte]   = useState({})
   const [toast,   setToast]   = useState('')
@@ -132,8 +135,12 @@ export default function VorlagenTab({ client, onUpdate }) {
                       <span style={{ fontSize: '13px', fontWeight: 600 }}>{v.titel}</span>
                     </div>
                     {v.untertitel && (
-                      <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '3px', marginLeft: '23px' }}>
+                      <div style={{
+                        fontSize: '11px', marginTop: '3px', marginLeft: '23px',
+                        color: (v.passtZu && v.passtZu(basis)) ? 'var(--accent, #3b82f6)' : 'var(--text-muted)',
+                      }}>
                         {v.untertitel}
+                        {v.passtZu && v.passtZu(basis) && ' · passt zu diesem Mandanten'}
                       </div>
                     )}
                   </button>
@@ -188,8 +195,8 @@ export default function VorlagenTab({ client, onUpdate }) {
                     marginBottom: '12px', padding: '8px 11px', borderRadius: '8px', fontSize: '12px',
                     background: 'rgba(234,179,8,0.10)', color: '#a16207', border: '1px solid rgba(234,179,8,0.35)',
                   }}>
-                    Hinweis: Diese Vorlage ist für Körperschaften gedacht. Rechtsform laut Stammdaten:{' '}
-                    <strong>{basis.rechtsform || 'nicht gesetzt'}</strong>.
+                    Hinweis: Diese Vorlage ist für {vorlage.untertitel || 'einen anderen Fall'} gedacht.
+                    Rechtsform laut Stammdaten: <strong>{basis.rechtsform || 'nicht gesetzt'}</strong>.
                   </div>
                 )}
 
@@ -365,6 +372,9 @@ function Feld({ feld, wert, stammwert, onChange }) {
         placeholder={feld.platzhalter ?? ''}
         style={{ width: feld.breit ? '100%' : '220px', fontSize: '12.5px' }}
       />
+      {feld.hinweis && (
+        <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', marginTop: '2px' }}>{feld.hinweis}</div>
+      )}
     </div>
   )
 }

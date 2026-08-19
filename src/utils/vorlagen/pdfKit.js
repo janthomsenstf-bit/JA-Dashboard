@@ -60,9 +60,18 @@ export function hinweisKasten(doc, zeilen, y, { size = SCHRIFT.text, lh = 5.6, p
   return y + h
 }
 
-/** Leerer Kasten (z. B. Adressfeld des Finanzamts – wird handschriftlich gefüllt). */
-export function leerKasten(doc, y, { breite = 110, hoehe = 24 } = {}) {
+/**
+ * Adressfeld-Kasten (z. B. für das zuständige Finanzamt). Ohne `zeilen` bleibt
+ * er leer und wird von Hand ausgefüllt.
+ */
+export function leerKasten(doc, y, { breite = 110, hoehe = 24, zeilen = [], size = SCHRIFT.text, lh = 5.6 } = {}) {
   doc.setDrawColor(0).setLineWidth(0.4).rect(PAGE.L, y, breite, hoehe)
+  const gefuellt = zeilen.map(txt).filter(Boolean)
+  if (gefuellt.length) {
+    doc.setFont('helvetica', 'normal').setFontSize(size).setTextColor(0)
+    gefuellt.slice(0, 4).forEach((z, i) => doc.text(z, PAGE.L + 3, y + 7 + i * lh, { maxWidth: breite - 6 }))
+    doc.setFontSize(SCHRIFT.text)
+  }
   return y + hoehe
 }
 

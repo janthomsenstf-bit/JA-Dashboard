@@ -43,6 +43,8 @@ else {
   const demo = {
     id: 'demo', name: 'Nordisk Møbler GmbH', rechtsform: 'GmbH', steuernummer: '15/123/45678',
     anschriften: [{ typ: 'post', text: 'Hauptstraße 24a, 24986 Mittelangeln' }],
+    geburtsdatum: '13.12.1967', steuerIdNr: '12 345 678 901',
+    finanzamt: 'Finanzamt Flensburg', finanzamtStrasse: 'Duburger Str. 58-64', finanzamtPlzOrt: '24939 Flensburg',
     geschaeftsfuehrer: [{ name: 'Thomsen, Jan' }],
     vorlagenDaten: { vertreterGeburtsdatum: '17.04.1980', vertreterAnschrift: 'Am Deich 3, 24937 Flensburg' },
   }
