@@ -561,14 +561,18 @@ function TelefonVorbereitungSection({ au, onUpdate, client, onAddRueckfrage, onT
 }
 
 // ── Jahresabschluss-Checkliste ──────────────────────────────────────────────────
+// Drei Stadien je Erklärung: fertiggestellt (col0, intern) → an Mandant
+// gesendet (col1, wartet auf Rückmeldung) → ans Finanzamt (col2, erledigt).
+// Jedes Stadium hält sein eigenes Datum, damit später nachvollziehbar bleibt,
+// wann was passiert ist.
 const JA_CHECKLISTE_ITEMS = [
-  { key: 'est',         label: 'Einkommensteuererklärung',    col1: 'an Mandant gesendet', col2: 'ans Finanzamt gesendet' },
-  { key: 'gewst',       label: 'Gewerbesteuererklärung',      col1: 'an Mandant gesendet', col2: 'ans Finanzamt gesendet' },
-  { key: 'kst',         label: 'Körperschaftsteuererklärung', col1: 'an Mandant gesendet', col2: 'ans Finanzamt gesendet' },
-  { key: 'ust',         label: 'Umsatzsteuererklärung',       col1: 'an Mandant gesendet', col2: 'ans Finanzamt gesendet' },
-  { key: 'ebilanz',     label: 'E-Bilanz',                    col1: 'an Mandant gesendet', col2: 'übermittelt' },
-  { key: 'offenlegung', label: 'Offenlegung',                 col1: 'an Mandant gesendet', col2: 'offengelegt' },
-  { key: 'rechnung',    label: 'Rechnung',                    col1: null,                   col2: 'an Mandant gesendet' },
+  { key: 'est',         label: 'Einkommensteuererklärung',    col0: 'fertiggestellt', col1: 'an Mandant gesendet', col2: 'ans Finanzamt gesendet' },
+  { key: 'gewst',       label: 'Gewerbesteuererklärung',      col0: 'fertiggestellt', col1: 'an Mandant gesendet', col2: 'ans Finanzamt gesendet' },
+  { key: 'kst',         label: 'Körperschaftsteuererklärung', col0: 'fertiggestellt', col1: 'an Mandant gesendet', col2: 'ans Finanzamt gesendet' },
+  { key: 'ust',         label: 'Umsatzsteuererklärung',       col0: 'fertiggestellt', col1: 'an Mandant gesendet', col2: 'ans Finanzamt gesendet' },
+  { key: 'ebilanz',     label: 'E-Bilanz',                    col0: 'fertiggestellt', col1: 'an Mandant gesendet', col2: 'übermittelt' },
+  { key: 'offenlegung', label: 'Offenlegung',                 col0: 'fertiggestellt', col1: 'an Mandant gesendet', col2: 'offengelegt' },
+  { key: 'rechnung',    label: 'Rechnung',                    col0: null,             col1: null,                   col2: 'an Mandant gesendet' },
 ]
 
 // ── Batch-Serien (Feature 4): Mehrere Einzelaufträge auf einmal anlegen ───────
@@ -907,6 +911,9 @@ function JAChecklisteSection({ jaCheckliste = {}, onUpdate }) {
     setDatum(itemKey, field, hasDatum ? '' : today)
   }
 
+  // Fortschritt zählt bewusst NUR die beiden Außen-Stadien (an Mandant / ans FA).
+  // „Fertiggestellt" ist ein interner Zwischenschritt – sonst fielen alle bereits
+  // abgeschlossenen Aufträge rückwirkend von „vollständig" auf zwei Drittel.
   const totalFields = JA_CHECKLISTE_ITEMS.reduce((n, it) => n + (it.col1 ? 1 : 0) + 1, 0)
   const doneFields = JA_CHECKLISTE_ITEMS.reduce((n, it) => {
     const d = jaCheckliste[it.key] ?? {}
@@ -948,14 +955,16 @@ function JAChecklisteSection({ jaCheckliste = {}, onUpdate }) {
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr>
-              <th style={{ ...headerCell, textAlign: 'left', width: '35%' }}>Erklärung / Meldung</th>
-              <th style={{ ...headerCell, textAlign: 'center', width: '32.5%' }}>an Mandant gesendet</th>
-              <th style={{ ...headerCell, textAlign: 'center', width: '32.5%' }}>ans FA / erledigt</th>
+              <th style={{ ...headerCell, textAlign: 'left', width: '28%' }}>Erklärung / Meldung</th>
+              <th style={{ ...headerCell, textAlign: 'center', width: '24%' }}>fertiggestellt</th>
+              <th style={{ ...headerCell, textAlign: 'center', width: '24%' }}>an Mandant gesendet</th>
+              <th style={{ ...headerCell, textAlign: 'center', width: '24%' }}>ans FA / erledigt</th>
             </tr>
           </thead>
           <tbody>
             {JA_CHECKLISTE_ITEMS.map((item, idx) => {
               const data = jaCheckliste[item.key] ?? {}
+              const hasFertig = !!data.fertigDatum
               const hasMandant = !!data.mandantDatum
               const hasFa = !!data.faDatum
               const isLast = idx === JA_CHECKLISTE_ITEMS.length - 1
@@ -971,6 +980,34 @@ function JAChecklisteSection({ jaCheckliste = {}, onUpdate }) {
                       }
                       {item.label}
                     </div>
+                  </td>
+
+                  {/* Spalte 0: fertiggestellt (intern – vor dem Versand) */}
+                  <td style={{ ...cellBase, textAlign: 'center', borderBottom: isLast ? 'none' : cellBase.borderBottom }}>
+                    {item.col0 ? (
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                        <input
+                          type="checkbox"
+                          checked={hasFertig}
+                          onChange={() => toggleCheck(item.key, 'fertigDatum')}
+                          style={{ accentColor: '#7c3aed', cursor: 'pointer', width: '14px', height: '14px' }}
+                          title={item.col0}
+                        />
+                        <input
+                          type="date"
+                          value={data.fertigDatum || ''}
+                          onChange={e => setDatum(item.key, 'fertigDatum', e.target.value)}
+                          style={{
+                            padding: '3px 6px', borderRadius: '5px', fontSize: '11px',
+                            border: '1px solid var(--border)', background: hasFertig ? 'rgba(124,58,237,0.06)' : 'var(--surface2)',
+                            color: hasFertig ? '#7c3aed' : 'var(--text)', fontFamily: 'var(--font-mono)',
+                            width: '115px',
+                          }}
+                        />
+                      </div>
+                    ) : (
+                      <span style={{ color: 'var(--text-muted)', fontSize: '11px' }}>—</span>
+                    )}
                   </td>
 
                   {/* Spalte 1: an Mandant */}
@@ -992,7 +1029,7 @@ function JAChecklisteSection({ jaCheckliste = {}, onUpdate }) {
                             padding: '3px 6px', borderRadius: '5px', fontSize: '11px',
                             border: '1px solid var(--border)', background: hasMandant ? 'rgba(22,163,74,0.06)' : 'var(--surface2)',
                             color: hasMandant ? '#16a34a' : 'var(--text)', fontFamily: 'var(--font-mono)',
-                            width: '120px',
+                            width: '115px',
                           }}
                         />
                       </div>
@@ -1019,7 +1056,7 @@ function JAChecklisteSection({ jaCheckliste = {}, onUpdate }) {
                           padding: '3px 6px', borderRadius: '5px', fontSize: '11px',
                           border: '1px solid var(--border)', background: hasFa ? 'rgba(22,163,74,0.06)' : 'var(--surface2)',
                           color: hasFa ? '#16a34a' : 'var(--text)', fontFamily: 'var(--font-mono)',
-                          width: '120px',
+                          width: '115px',
                         }}
                       />
                     </div>
@@ -1032,7 +1069,9 @@ function JAChecklisteSection({ jaCheckliste = {}, onUpdate }) {
       </div>
 
       <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '6px', fontStyle: 'italic' }}>
+        Drei Stadien je Zeile: fertiggestellt → an Mandant gesendet (wartet auf Rückmeldung) → ans Finanzamt.
         Haken setzen → heutiges Datum wird automatisch eingetragen. Datum kann manuell angepasst werden.
+        Der Fortschritt oben zählt weiterhin nur „an Mandant" und „ans FA".
       </div>
     </div>
   )
