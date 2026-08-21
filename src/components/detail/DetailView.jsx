@@ -29,6 +29,7 @@ export const TAB = {
   historie:        9,
   claude:          10,
   vorlagen:        11,
+  rechnungen:      12,
 }
 
 const TAB_NAV = [
@@ -44,6 +45,7 @@ const TAB_NAV = [
   { icon: '📊', short: 'Historie'        },  // 9
   { icon: '✨', short: 'Claude'          },  // 10
   { icon: '📄', short: 'Vorlagen'        },  // 11
+  { icon: '🧾', short: 'Rechnungen'      },  // 12
 ]
 
 export default function DetailView({
@@ -426,6 +428,10 @@ export default function DetailView({
 
           {activeTab === TAB.honorare && (
             <HonorareTab key={client.id} client={client} onUpdate={onUpdate} emailSignaturen={emailSignaturen} />
+          )}
+
+          {activeTab === TAB.rechnungen && (
+            <HonorareTab key={client.id + '-rechnung'} client={client} onUpdate={onUpdate} emailSignaturen={emailSignaturen} initialSub="rechnung" />
           )}
 
           {activeTab === TAB.beratung && (

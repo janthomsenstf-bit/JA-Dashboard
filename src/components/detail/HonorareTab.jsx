@@ -746,9 +746,9 @@ function ZeiterfassungBlock({ client, onUpdate }) {
 }
 
 // ── Haupt-Tab ─────────────────────────────────────────────────────────────────────
-export default function HonorareTab({ client, onUpdate, emailSignaturen = [] }) {
+export default function HonorareTab({ client, onUpdate, emailSignaturen = [], initialSub = 'honorare' }) {
   const [showForm, setShowForm] = useState(false)
-  const [sub, setSub] = useState('honorare')   // 'honorare' | 'rechnung' | 'dauer'
+  const [sub, setSub] = useState(initialSub)   // 'honorare' | 'rechnung' | 'dauer'
   const honorare = client.honorare ?? []
 
   function addHonorar(h)     { onUpdate({ honorare: [...honorare, h] }); setShowForm(false) }
