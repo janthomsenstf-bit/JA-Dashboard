@@ -39,7 +39,7 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end()
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' })
 
-  const { uid, account = 'hostinger', name } = req.query
+  const { uid, account = 'hostinger', folder = 'INBOX', messageId = '', name } = req.query
   if (!uid) return res.status(400).json({ error: 'Parameter uid fehlt' })
 
   const cfg = ACCOUNTS[account]
@@ -58,11 +58,37 @@ export default async function handler(req, res) {
 
   try {
     await client.connect()
-    await client.mailboxOpen('INBOX')
 
+    // UIDs sind nur innerhalb eines Ordners eindeutig → erst Herkunftsordner, dann INBOX.
     let rawBuffer = null
-    for await (const msg of client.fetch(String(uid), { source: true }, { uid: true })) {
-      rawBuffer = msg.source
+    for (const p of [folder, 'INBOX'].filter((v, i, a) => v && a.indexOf(v) === i)) {
+      try {
+        await client.mailboxOpen(p, { readOnly: true })
+        for await (const msg of client.fetch(String(uid), { source: true }, { uid: true })) {
+          rawBuffer = msg.source
+        }
+        if (rawBuffer) break
+      } catch { /* Ordner nicht öffenbar → nächster */ }
+    }
+
+    // Letzte Chance: per global eindeutiger Message-ID über alle Ordner suchen
+    // (greift, wenn die Mail zwischenzeitlich verschoben wurde).
+    const wantedMsgId = String(messageId || '').replace(/^<|>$/g, '').trim()
+    if (!rawBuffer && wantedMsgId) {
+      let boxes = []
+      try { boxes = await client.list() } catch {}
+      for (const b of boxes) {
+        if (rawBuffer) break
+        try {
+          await client.mailboxOpen(b.path, { readOnly: true })
+          const ids = await client.search({ header: { 'message-id': wantedMsgId } }, { uid: true })
+          if (ids?.length) {
+            for await (const msg of client.fetch(ids[ids.length - 1], { source: true }, { uid: true })) {
+              rawBuffer = msg.source
+            }
+          }
+        } catch { /* nächster Ordner */ }
+      }
     }
 
     if (!rawBuffer) {

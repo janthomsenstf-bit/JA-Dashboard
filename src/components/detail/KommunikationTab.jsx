@@ -493,6 +493,7 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
   const [sucheError,    setSucheError]    = useState('')
   const [sucheErgebnis, setSucheErgebnis] = useState(null)  // { antwort, treffer:[{id,zitat,warum}] }
   const [mailModus,     setMailModus]     = useState('suchen') // 'suchen' | 'briefing'
+  const [kiOffen,       setKiOffen]       = useState(false)    // KI-Leiste eingeklappt → Liste startet weiter oben
   const [briefErgebnis, setBriefErgebnis] = useState(null)  // { kurzfazit, themen[{thema,anzahl,kurz}], offenePunkte[], naechsteSchritte[], fehlerhaft? }
   const [istDiktat,     setIstDiktat]     = useState(false)
   const diktatRef = useRef(null)
@@ -864,6 +865,9 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
     const p = new URLSearchParams()
     p.set('uid', entry.sourceUid ?? '')
     p.set('account', entry.sourceAccount ?? '')
+    // Herkunftsordner mitgeben: UIDs sind nur INNERHALB eines Ordners eindeutig.
+    // Ohne den Wert sucht der Server in INBOX und findet Mails aus Unterordnern nicht.
+    p.set('folder', entry.sourceFolder || 'INBOX')
     if (entry.messageId) p.set('messageId', entry.messageId)
     if (entry.betreff)   p.set('subject', entry.betreff)
     const abs = entry.absender || entry.von || ''
@@ -890,6 +894,8 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
         anlagen:       data.attachments.map(a => ({ name: a.name, size: a.size, contentType: a.contentType, tooLarge: a.tooLarge ?? false })),
         contentLoaded: true,
         messageId:     data.messageId ?? e.messageId,
+        // Fundort merken → beim nächsten Öffnen greift sofort der schnelle UID-Pfad
+        ...(data.folder ? { sourceFolder: data.folder } : {}),
         ...(data.cc  ? { cc: data.cc }            : {}),
         ...(data.to  ? { empfaenger: data.to }     : {}),
         ...(data.from ? { absender: data.from }     : {}),
@@ -1396,6 +1402,10 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
           gesendetAm:    email.datum,
           sourceUid:     String(email.uid),
           sourceAccount: email.account,
+          sourceFolder:  selectedFolder || 'INBOX',
+          // Message-ID ist global eindeutig – damit findet der Server die Mail auch,
+          // wenn sie später verschoben wird und die UID nicht mehr passt.
+          messageId:     email.messageId ?? null,
         })
       }
 
@@ -1428,6 +1438,8 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
       gesendetAm: email.datum,
       sourceUid: String(email.uid),
       sourceAccount: email.account,
+      sourceFolder: selectedFolder || 'INBOX',
+      messageId: email.messageId ?? null,
     }
     saveKomm({ events: [entry, ...events] })
     setPosteingangEmails(prev => prev.filter(e => e.uid !== email.uid || e.account !== email.account))
@@ -1466,10 +1478,17 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
   }
 
   return (
-    <div style={{ padding: '20px', maxWidth: '100%' }}>
+    /* Der Reiter füllt die Höhe des Detailbereichs aus und scrollt NICHT selbst.
+       Gescrollt wird ausschließlich in der Fläche unter der Werkzeugleiste – so gibt
+       es genau einen Scrollbereich statt mehrerer, die je nach Mausposition reagieren. */
+    <div style={{
+      height: '100%', minHeight: 0, maxWidth: '100%',
+      display: 'flex', flexDirection: 'column', overflow: 'hidden',
+      padding: '12px 20px 0',
+    }}>
 
       {/* ── Kompakte Werkzeugleiste (Schnellaktion-Dropdown + Mail-Werkzeuge in einer Reihe) ── */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center', marginBottom: '14px' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center', marginBottom: '10px', flexShrink: 0 }}>
         <SchnellaktionMenu typConfig={TYP_CONFIG} vorlagen={emailVorlagen} onAction={openQuickAction} onVorlage={openWithVorlage} />
         {!editorOpen && (
           <>
@@ -1505,6 +1524,9 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
         {foldersLoading && <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Ordner werden geladen…</span>}
         {posteingangError && <span style={{ fontSize: '11px', color: '#dc2626' }}>⚠️ {posteingangError}</span>}
       </div>
+
+      {/* ── Einziger Scrollbereich des Reiters ── */}
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', paddingBottom: '16px' }}>
 
       {/* ── 2. E-Mail-Editor ── */}
       {editorOpen && (
@@ -2181,6 +2203,14 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
                 }
               </span>
             )}
+            {/* KI-Leiste ist standardmäßig zu – sie hat sonst dauerhaft ~90px Höhe belegt */}
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => setKiOffen(v => !v)}
+              style={{ fontSize: '11px', color: '#7c3aed', ...(kiOffen ? { background: 'rgba(124,58,237,0.10)' } : {}) }}
+              title="KI-Suche und Briefing über die Mails dieses Mandanten">
+              🤖 KI-Nachrichten {kiOffen ? '▴' : '▾'}
+            </button>
           </div>
           <div style={{ display: 'flex', gap: '4px' }}>
             {[['alle','Alle'], ['gesendet','Gesendet'], ['entwuerfe','Entwürfe']].map(([key, label]) => (
@@ -2193,10 +2223,10 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
           </div>
         </div>
 
-        {/* KI-Mailsuche */}
+        {/* KI-Mailsuche – nur bei Bedarf ausgeklappt (Schalter oben in der Kopfzeile) */}
+        {kiOffen && (
         <div style={{ margin: '0 0 12px', border: '1px solid var(--border)', borderRadius: '8px', padding: '10px 12px', background: 'var(--surface)' }}>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: '12px', fontWeight: 700, color: '#7c3aed', whiteSpace: 'nowrap' }}>🤖 KI-Nachrichten</span>
             <div style={{ display: 'flex', gap: '2px', border: '1px solid var(--border)', borderRadius: '7px', padding: '2px' }}>
               {[['suchen', '🔎 Suchen'], ['briefing', '🧾 Briefing']].map(([k, l]) => (
                 <button key={k} onClick={() => setMailModus(k)} className="btn btn-ghost btn-sm"
@@ -2283,10 +2313,10 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
             )
           })()}
         </div>
+        )}
 
-        <style>{`.komm-split{display:grid;grid-template-columns:360px 1fr;gap:14px;align-items:start}@media(max-width:900px){.komm-split{grid-template-columns:1fr}}`}</style>
-        <div className="komm-split">
-          <div style={{ minWidth: 0 }}>
+        {/* Mailliste – volle Breite. Gelesen wird im Drawer, der von rechts einfliegt. */}
+        <div style={{ minWidth: 0 }}>
         {filteredEvents.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text-muted)', fontSize: '13px' }}>
             {events.length === 0 ? 'Noch keine E-Mails gesendet oder gespeichert.' : 'Keine Einträge für diesen Filter.'}
@@ -2374,13 +2404,12 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
             })}
           </div>
         )}
-          </div>{/* /linke Spalte (Liste) */}
+        </div>{/* /Mailliste */}
 
-          {/* rechte Spalte: Lesebereich (inline) */}
-          <div style={{ position: 'sticky', top: '12px' }}>
-            {detailEntry ? (
+        {/* Lesebereich: fliegt als Drawer von rechts ein (eigene Scrollfläche, überlagert die Liste) */}
+        {detailEntry && (
               <EmailDetailPanel
-                inline
+                drawer
                 entry={detailEntry}
                 contentLoading={contentLoading}
                 contentError={contentError}
@@ -2410,15 +2439,10 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
                 onedriveTokens={onedriveTokens}
                 onUpdateOnedriveTokens={onUpdateOnedriveTokens}
               />
-            ) : (
-              <div style={{ border: '1px dashed var(--border)', borderRadius: '14px', minHeight: '520px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '10px', color: 'var(--text-muted)', textAlign: 'center', padding: '40px 20px' }}>
-                <div style={{ fontSize: '32px', opacity: 0.55 }}>✉️</div>
-                <div style={{ fontSize: '13px' }}>Wähle links eine Nachricht,<br />um sie hier zu lesen.</div>
-              </div>
-            )}
-          </div>
-        </div>{/* /komm-split */}
+        )}
       </div>
+
+      </div>{/* /Scrollbereich */}
 
       {/* ── Absender-Modal ── */}
       {showAbsenderModal && (
@@ -2443,6 +2467,7 @@ function EmailDetailPanel({
   onedriveTokens = null,
   onUpdateOnedriveTokens,
   inline = false,
+  drawer = false,
 }) {
   const [toast,          setToast]          = useState('')
   const [aufgabeTitel,   setAufgabeTitel]   = useState(entry.betreff ?? '')
@@ -2824,7 +2849,7 @@ function EmailDetailPanel({
           base64Data = bin.data
         } else if (a.tooLarge) {
           // Große Anhänge über Download-API laden
-          const url = `/api/download-attachment?uid=${encodeURIComponent(entry.sourceUid)}&account=${encodeURIComponent(entry.sourceAccount)}&name=${encodeURIComponent(a.name)}`
+          const url = `/api/download-attachment?uid=${encodeURIComponent(entry.sourceUid)}&account=${encodeURIComponent(entry.sourceAccount)}&folder=${encodeURIComponent(entry.sourceFolder || "INBOX")}&messageId=${encodeURIComponent(entry.messageId || "")}&name=${encodeURIComponent(a.name)}`
           const response = await fetch(url)
           if (!response.ok) throw new Error(`Download fehlgeschlagen: ${a.name}`)
           const buffer = await response.arrayBuffer()
@@ -2881,6 +2906,14 @@ function EmailDetailPanel({
 
   const isNarrow = typeof window !== 'undefined' && window.innerWidth < 768
 
+  // Drawer: mit Esc schließen (wie in jedem Mailprogramm erwartet)
+  useEffect(() => {
+    if (!drawer) return
+    const onKey = e => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [drawer, onClose])
+
   // Sidebar action button style helper
   const sideBtn = (extra = {}) => ({
     width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '8px',
@@ -2900,13 +2933,37 @@ function EmailDetailPanel({
     color: color || (active ? 'var(--accent)' : 'var(--text-secondary)'),
   })
 
+  // Rahmen des Lesebereichs: Drawer (von rechts einfliegend), inline oder zentriertes Modal.
+  const drawerFrame = {
+    position: 'fixed',
+    top: 0, right: 0, bottom: 0,
+    width: isNarrow ? '100vw' : 'min(920px, 82vw)',
+    maxWidth: '100vw',
+    background: 'var(--surface)',
+    borderLeft: '1px solid var(--border)',
+    boxShadow: '-18px 0 48px rgba(0,0,0,0.28)',
+    zIndex: 1800,
+    display: 'flex', flexDirection: 'column', overflow: 'hidden',
+    animation: 'kommDrawerIn 0.22s cubic-bezier(0.22, 1, 0.36, 1)',
+  }
+
   return (
     <>
-      {!inline && <div onClick={onClose} style={{
+      {drawer && (
+        <style>{`
+          @keyframes kommDrawerIn { from { transform: translateX(100%) } to { transform: translateX(0) } }
+          @keyframes kommScrimIn  { from { opacity: 0 } to { opacity: 1 } }
+          @media (prefers-reduced-motion: reduce) {
+            @keyframes kommDrawerIn { from { transform: none } to { transform: none } }
+          }
+        `}</style>
+      )}
+      {(!inline || drawer) && <div onClick={onClose} style={{
         position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1799,
+        animation: drawer ? 'kommScrimIn 0.22s ease' : undefined,
         display: 'flex', alignItems: 'center', justifyContent: 'center', padding: isNarrow ? '8px' : '24px',
       }} />}
-      <div onClick={e => e.stopPropagation()} style={inline ? {
+      <div onClick={e => e.stopPropagation()} style={drawer ? drawerFrame : inline ? {
         position: 'relative',
         width: '100%',
         height: 'calc(100vh - 150px)',
@@ -3005,6 +3062,14 @@ function EmailDetailPanel({
               {contentError[entry.id] && !entry.text && (
                 <div style={{ fontSize: '12px', color: 'var(--text-muted)', padding: '10px 14px', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: '10px', marginBottom: '12px', display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
                   <span>ℹ️ Inhalt aktuell nicht abrufbar – die Nachricht liegt evtl. im Papierkorb, in „Gesendet" oder in einem Unterordner. Die gespeicherten Angaben (Betreff, Absender, Datum) sind oben zu sehen.</span>
+                  {/* Klartext-Fehler vom Server – ohne den ist nicht erkennbar, ob es an
+                      IMAP-Zugangsdaten, am Ordner oder an einer gelöschten Mail liegt. */}
+                  <code style={{ fontSize: '11px', color: '#b91c1c', background: 'rgba(220,38,38,0.07)', padding: '2px 6px', borderRadius: '5px', wordBreak: 'break-word' }}>
+                    {contentError[entry.id]}
+                  </code>
+                  <span style={{ fontSize: '10.5px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                    Konto {entry.sourceAccount || '—'} · Ordner {entry.sourceFolder || 'INBOX'} · UID {entry.sourceUid || '—'}
+                  </span>
                   <button className="btn btn-ghost btn-sm" onClick={() => onFetch(entry)} style={{ fontSize: '10px' }}>Erneut versuchen</button>
                 </div>
               )}
@@ -3466,7 +3531,7 @@ function EmailDetailPanel({
                             style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent)', fontSize: '14px', padding: '2px', flexShrink: 0 }}
                             title="Herunterladen">⬇</button>
                         ) : a.tooLarge ? (
-                          <a href={`/api/download-attachment?uid=${encodeURIComponent(entry.sourceUid)}&account=${encodeURIComponent(entry.sourceAccount)}&name=${encodeURIComponent(a.name)}`}
+                          <a href={`/api/download-attachment?uid=${encodeURIComponent(entry.sourceUid)}&account=${encodeURIComponent(entry.sourceAccount)}&folder=${encodeURIComponent(entry.sourceFolder || "INBOX")}&messageId=${encodeURIComponent(entry.messageId || "")}&name=${encodeURIComponent(a.name)}`}
                             download={a.name} onClick={e => e.stopPropagation()}
                             style={{ color: 'var(--accent)', fontSize: '14px', textDecoration: 'none', flexShrink: 0 }}
                             title="Herunterladen">⬇</a>

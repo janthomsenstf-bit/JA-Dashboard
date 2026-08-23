@@ -36,7 +36,7 @@ export default async function handler(req, res) {
 
   const {
     uid, account = 'hostinger', folder = 'INBOX', messageId = '',
-    subject = '', from = '', date = '',
+    subject = '', from = '', date = '', debug = '',
   } = req.query
   if (!uid && !messageId && !subject) {
     return res.status(400).json({ error: 'Parameter uid, messageId oder subject fehlt' })
@@ -59,86 +59,122 @@ export default async function handler(req, res) {
   const wantedMsgId = String(messageId || '').replace(/^<|>$/g, '').trim()
 
   // Betreff für die Fallback-Suche: gängige Präfixe (Re:/AW:/Fwd:/WG:) entfernen,
-  // damit die Substring-Suche auch greift, wenn ein Präfix dazukam/wegfiel.
+  // damit die Suche auch greift, wenn ein Präfix dazukam oder wegfiel.
   const subjCore = String(subject || '')
     .replace(/^\s*((re|aw|fwd?|wg|antw|sv|vs)\s*(\[\d+\])?\s*:\s*)+/i, '')
     .trim()
-  const fromAddr = String(from || '').trim()
+  // Nur die nackte Mailadresse (ohne "Name <...>") – sonst matcht IMAP FROM schlecht.
+  const fromAddr = (String(from || '').match(/[\w.+-]+@[\w.-]+/) || [''])[0].toLowerCase()
   const dateObj  = date ? new Date(date) : null
   const dateOk   = dateObj && !isNaN(dateObj.getTime())
+  const canSearchSubject = subjCore.length >= 4
+
+  const trace = []                       // Diagnose – landet im Response nur bei ?debug=1
+  const t0 = Date.now()
+  const DEADLINE_MS = 45000              // Zeitbudget, damit kein Gateway-Timeout entsteht
+  const outOfTime = () => (Date.now() - t0) > DEADLINE_MS
 
   try {
     await client.connect()
 
     let rawBuffer   = null
     let foundFolder = null
+    let foundVia    = null
 
-    // 1) Schnellpfad: per UID im angegebenen Ordner (Standard INBOX). Sicher – UID ist pro Ordner eindeutig.
-    if (uid) {
+    // Neueste Mail zu einer Suchbedingung im aktuell geöffneten Ordner holen.
+    async function tryFetch(crit, label, path) {
+      if (rawBuffer || outOfTime()) return
+      let ids = []
       try {
-        await client.mailboxOpen(folder)
-        for await (const msg of client.fetch(String(uid), { source: true }, { uid: true })) rawBuffer = msg.source
-        if (rawBuffer) foundFolder = folder
-      } catch { /* Ordner nicht öffenbar → weiter zur ordnerübergreifenden Suche */ }
+        ids = await client.search(crit, { uid: true })
+      } catch (e) { trace.push({ path, label, error: e.message }); return }
+      if (!ids || !ids.length) { trace.push({ path, label, hits: 0 }); return }
+      trace.push({ path, label, hits: ids.length })
+      for await (const msg of client.fetch(ids[ids.length - 1], { source: true }, { uid: true })) {
+        rawBuffer = msg.source
+      }
+      if (rawBuffer) { foundFolder = path; foundVia = label }
     }
 
-    // Alle Ordner des Kontos ermitteln (inkl. Gesendet/Papierkorb/Archiv/Unterordner),
-    // wahrscheinlichste zuerst. Wird für Message-ID- UND Betreff/Absender-Suche genutzt.
+    // 1) Schnellpfad: per UID im Herkunftsordner. UIDs sind nur INNERHALB eines
+    //    Ordners eindeutig – deshalb zählt der mitgelieferte Ordner, nicht pauschal INBOX.
+    if (uid) {
+      const cand = [folder, 'INBOX'].filter((v, i, a) => v && a.indexOf(v) === i)
+      for (const p of cand) {
+        try {
+          await client.mailboxOpen(p, { readOnly: true })
+          for await (const msg of client.fetch(String(uid), { source: true }, { uid: true })) rawBuffer = msg.source
+          if (rawBuffer) { foundFolder = p; foundVia = 'uid'; break }
+          trace.push({ path: p, label: 'uid', hits: 0 })
+        } catch (e) { trace.push({ path: p, label: 'uid', error: e.message }) }
+      }
+    }
+
+    // Ordnerliste (inkl. Gesendet/Papierkorb/Archiv/Unterordner) in sinnvoller Reihenfolge:
+    // Herkunftsordner → INBOX → Sent/Trash → normale Mandantenordner → Archiv → Junk.
     let allPaths = []
-    if (!rawBuffer && (wantedMsgId || (subjCore && subjCore.length >= 4))) {
+    if (!rawBuffer && (wantedMsgId || canSearchSubject)) {
       let boxes = []
-      try { boxes = await client.list() } catch {}
-      const rank = p => /sent|gesend|papierkorb|trash|deleted|junk|spam|archiv/i.test(p) ? 0 : 1
+      try { boxes = await client.list() } catch (e) { trace.push({ label: 'list', error: e.message }) }
+      const rank = (p) => {
+        if (p === folder)                                    return 0
+        if (/^inbox$/i.test(p))                              return 1
+        if (/sent|gesend|papierkorb|trash|deleted/i.test(p)) return 2
+        if (/archiv/i.test(p))                               return 5
+        if (/junk|spam/i.test(p))                            return 6
+        return 3
+      }
       allPaths = boxes
+        .filter(b => b.path && !(b.flags && typeof b.flags.has === 'function' && b.flags.has('\\Noselect')))
         .map(b => b.path)
-        .filter(p => p && !/\bnoselect\b/i.test(p))
-        .sort((a, b) => rank(a) - rank(b))
-        .slice(0, 40)
+        .sort((a, b) => rank(a) - rank(b) || a.localeCompare(b))
+      trace.push({ label: 'folders', count: allPaths.length })
     }
 
-    // Datumsfenster (±4 Tage) für die Betreff/Absender-Suche – grenzt Treffer ein.
+    // Datumsfenster (±7 Tage) – grenzt die Betreff-Suche ein, ohne an
+    // Zeitzonen- oder Ablageverschiebungen zu scheitern.
     let sinceD = null, beforeD = null
     if (dateOk) {
-      sinceD  = new Date(dateObj.getTime() - 4 * 24 * 60 * 60 * 1000)
-      beforeD = new Date(dateObj.getTime() + 4 * 24 * 60 * 60 * 1000)
+      sinceD  = new Date(dateObj.getTime() - 7 * 864e5)
+      beforeD = new Date(dateObj.getTime() + 7 * 864e5)
     }
 
-    // 2) + 3) Ordnerübergreifend suchen: pro Ordner erst per Message-ID (global eindeutig →
-    //     nie eine falsche Mail), sonst per Betreff + Absender + Datumsfenster (für Altmails
-    //     ohne Message-ID). So werden auch verschobene/gesendete/gelöschte Mails gefunden.
+    // 2) Ordnerübergreifend suchen, pro Ordner in absteigender Präzision:
+    //    a) Message-ID (global eindeutig – trifft nie die falsche Mail)
+    //    b) Betreff + Absender + Datumsfenster
+    //    c) Betreff + Datumsfenster  (Absender im Header anders geschrieben)
+    //    d) Betreff                  (Datum in der Ablage verschoben)
+    //
+    //    Wichtig: `subject:` = IMAP SUBJECT und sucht im dekodierten Envelope.
+    //    Das frühere `header: { subject }` = HEADER SUBJECT sucht im rohen,
+    //    MIME-kodierten Header und findet Betreffs mit Umlauten oder mit
+    //    Zeilenumbruch (Header-Folding) nicht – deshalb schlug der Fallback fehl.
     if (!rawBuffer && allPaths.length) {
       for (const p of allPaths) {
-        try {
-          await client.mailboxOpen(p)
+        if (rawBuffer || outOfTime()) break
+        try { await client.mailboxOpen(p, { readOnly: true }) }
+        catch (e) { trace.push({ path: p, label: 'open', error: e.message }); continue }
 
-          // a) Präzise per Message-ID
-          if (wantedMsgId) {
-            const ids = await client.search({ header: { 'message-id': wantedMsgId } }, { uid: true })
-            if (ids && ids.length) {
-              for await (const msg of client.fetch(ids[ids.length - 1], { source: true }, { uid: true })) rawBuffer = msg.source
-              if (rawBuffer) { foundFolder = p; break }
-            }
-          }
-
-          // b) Fallback per Betreff (+ Absender + Datumsfenster) – IMAP verknüpft alle Kriterien mit UND
-          if (subjCore && subjCore.length >= 4) {
-            const crit = { header: { subject: subjCore } }
-            if (fromAddr) crit.from = fromAddr
-            if (sinceD)   crit.since  = sinceD
-            if (beforeD)  crit.before = beforeD
-            const ids = await client.search(crit, { uid: true })
-            if (ids && ids.length) {
-              for await (const msg of client.fetch(ids[ids.length - 1], { source: true }, { uid: true })) rawBuffer = msg.source
-              if (rawBuffer) { foundFolder = p; break }
-            }
-          }
-        } catch { /* dieser Ordner nicht durchsuchbar → nächster */ }
+        if (wantedMsgId) await tryFetch({ header: { 'message-id': wantedMsgId } }, 'message-id', p)
+        if (!rawBuffer && canSearchSubject) {
+          const base = { subject: subjCore }
+          if (sinceD)  base.since  = sinceD
+          if (beforeD) base.before = beforeD
+          if (fromAddr) await tryFetch({ ...base, from: fromAddr }, 'subject+from+date', p)
+          if (sinceD)   await tryFetch(base, 'subject+date', p)
+          await tryFetch({ subject: subjCore }, 'subject', p)
+        }
       }
     }
 
     if (!rawBuffer) {
       await client.logout()
-      return res.status(404).json({ error: 'E-Mail in keinem Ordner gefunden (evtl. endgültig gelöscht)' })
+      return res.status(404).json({
+        error:   'E-Mail in keinem Ordner gefunden (evtl. endgültig gelöscht)',
+        gesucht: { uid: uid || null, folder, account, messageId: wantedMsgId || null, subject: subjCore || null, from: fromAddr || null },
+        timeout: outOfTime(),
+        ...(debug ? { trace, ms: Date.now() - t0 } : {}),
+      })
     }
 
     // Größen-Guard: > 25 MB → Vercel-Memory-Limit
@@ -173,6 +209,7 @@ export default async function handler(req, res) {
     await client.logout()
     return res.status(200).json({
       folder:      foundFolder,
+      foundVia,
       text:        parsed.text  ?? null,
       html:        parsed.html  ?? null,
       from:        parsed.from?.value?.[0]?.address ?? null,
@@ -180,11 +217,12 @@ export default async function handler(req, res) {
       cc:          (parsed.cc?.value ?? []).map(a => a.address).join(', ') || null,
       messageId:   parsed.messageId ?? null,
       attachments,
+      ...(debug ? { trace, ms: Date.now() - t0 } : {}),
     })
 
   } catch (e) {
     console.error('[get-email-content]', e.message)
     try { await client.logout() } catch {}
-    return res.status(500).json({ error: e.message })
+    return res.status(500).json({ error: e.message, ...(debug ? { trace } : {}) })
   }
 }
