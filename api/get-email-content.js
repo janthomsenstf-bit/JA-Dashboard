@@ -157,9 +157,15 @@ export default async function handler(req, res) {
 
         if (wantedMsgId) await tryFetch({ header: { 'message-id': wantedMsgId } }, 'message-id', p)
         if (!rawBuffer && canSearchSubject) {
+          // sentSince/sentBefore statt since/before: imapflow schreibt `since`/`before`
+          // still auf YOUNGER/OLDER um, sobald der Server die WITHIN-Extension kann –
+          // und rechnet dabei relativ zu "jetzt". Ein Fensterende in der Zukunft
+          // (bei frischen Mails immer der Fall) wird auf 0 geklemmt → `OLDER 0` →
+          // null Treffer. sentSince/sentBefore gehen direkt als SENTSINCE/SENTBEFORE
+          // raus und filtern über den Date:-Header, der zu unserem gesendetAm passt.
           const base = { subject: subjCore }
-          if (sinceD)  base.since  = sinceD
-          if (beforeD) base.before = beforeD
+          if (sinceD)  base.sentSince  = sinceD
+          if (beforeD) base.sentBefore = beforeD
           if (fromAddr) await tryFetch({ ...base, from: fromAddr }, 'subject+from+date', p)
           if (sinceD)   await tryFetch(base, 'subject+date', p)
           await tryFetch({ subject: subjCore }, 'subject', p)
