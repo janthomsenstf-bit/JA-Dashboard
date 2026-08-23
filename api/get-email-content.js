@@ -28,7 +28,7 @@ const ATTACHMENT_INLINE_LIMIT = 4 * 1024 * 1024
 
 // Bei ?debug=1 mitgeliefert – so ist erkennbar, ob ein Deploy schon live ist.
 // Bei inhaltlichen Änderungen an der Suchlogik hochzählen.
-const REV = 5
+const REV = 6
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*')
@@ -46,10 +46,28 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Parameter uid, messageId oder subject fehlt' })
   }
 
-  const cfg = ACCOUNTS[account]
+  // account=auto: Konto anhand der Absenderadresse bestimmen. Nötig für Mails,
+  // die im Dashboard verfasst wurden – die haben kein sourceAccount.
+  const adrDomain = a => String(a || '').toLowerCase().split('@')[1] || ''
+  let accountKey = account
+  if (account === 'auto') {
+    const ziel = String(from || '').toLowerCase().match(/[\w.+-]+@[\w.-]+/)?.[0] || ''
+    accountKey =
+      Object.keys(ACCOUNTS).find(k => (ACCOUNTS[k].user || '').toLowerCase() === ziel) ||
+      Object.keys(ACCOUNTS).find(k => ACCOUNTS[k].user && adrDomain(ACCOUNTS[k].user) === adrDomain(ziel)) ||
+      ''
+    if (!accountKey) {
+      return res.status(400).json({
+        error: `Kein IMAP-Konto für ${ziel || '(keine Absenderadresse)'} hinterlegt`,
+        konten: Object.keys(ACCOUNTS).filter(k => ACCOUNTS[k].user),
+      })
+    }
+  }
+
+  const cfg = ACCOUNTS[accountKey]
   if (!cfg) return res.status(400).json({ error: `Unbekanntes Konto: ${account}` })
   if (!cfg.user || !cfg.pass) {
-    return res.status(500).json({ error: `IMAP-Zugangsdaten für ${account} nicht konfiguriert` })
+    return res.status(500).json({ error: `IMAP-Zugangsdaten für ${accountKey} nicht konfiguriert` })
   }
 
   const client = new ImapFlow({
@@ -94,7 +112,26 @@ export default async function handler(req, res) {
     let foundFolder = null
     let foundVia    = null
 
-    // Neueste Mail zu einer Suchbedingung im aktuell geöffneten Ordner holen.
+    // Gegenprobe, BEVOR ein Treffer übernommen wird.
+    //
+    // Ein Betreff allein beweist nichts: „Post – Bank" existiert mehrfach in
+    // verschiedenen Postfächern. Ohne diese Prüfung lieferte die Betreff-Stufe
+    // eine wildfremde Mail zurück – und das Frontend schrieb deren Text und
+    // Anhänge in den Mandanten-Eintrag. Also: erst Briefkopf holen, prüfen,
+    // dann erst den Inhalt.
+    function passtZurAnfrage(env) {
+      if (!env) return true                                  // nichts zum Prüfen da
+      const mid = String(env.messageId || '').replace(/^<|>$/g, '')
+      if (wantedMsgId) return mid === wantedMsgId            // exakt oder gar nicht
+      if (!fromAddr && !dateOk) return true                  // keine Prüfkriterien vorhanden
+      const adr = list => (list || []).map(x => String(x.address || '').toLowerCase())
+      const beteiligte = [...adr(env.from), ...adr(env.sender), ...adr(env.replyTo), ...adr(env.to), ...adr(env.cc)]
+      if (fromAddr && beteiligte.includes(fromAddr)) return true
+      if (dateOk && env.date) return Math.abs(new Date(env.date).getTime() - dateObj.getTime()) <= 8 * 864e5
+      return false
+    }
+
+    // Passende Mail zu einer Suchbedingung im aktuell geöffneten Ordner holen.
     async function tryFetch(crit, label, path) {
       if (rawBuffer || outOfTime()) return
       let ids = []
@@ -102,11 +139,19 @@ export default async function handler(req, res) {
         ids = await client.search(crit, { uid: true })
       } catch (e) { trace.push({ path, label, error: e.message }); return }
       if (!ids || !ids.length) { trace.push({ path, label, hits: 0 }); return }
-      trace.push({ path, label, hits: ids.length })
-      for await (const msg of client.fetch(ids[ids.length - 1], { source: true }, { uid: true })) {
-        rawBuffer = msg.source
+
+      let verworfen = 0
+      for (const u of ids.slice(-5).reverse()) {             // neueste zuerst, höchstens 5
+        if (outOfTime()) break
+        let env = null
+        try {
+          for await (const m of client.fetch(String(u), { envelope: true }, { uid: true })) env = m.envelope
+        } catch { /* Briefkopf nicht lesbar → Kandidat überspringen */ continue }
+        if (!passtZurAnfrage(env)) { verworfen++; continue }
+        for await (const m of client.fetch(String(u), { source: true }, { uid: true })) rawBuffer = m.source
+        if (rawBuffer) { foundFolder = path; foundVia = label; break }
       }
-      if (rawBuffer) { foundFolder = path; foundVia = label }
+      trace.push({ path, label, hits: ids.length, ...(verworfen ? { verworfen } : {}) })
     }
 
     // 1) Schnellpfad: per UID im Herkunftsordner. UIDs sind nur INNERHALB eines
@@ -116,9 +161,14 @@ export default async function handler(req, res) {
       for (const p of cand) {
         try {
           await client.mailboxOpen(p, { readOnly: true })
-          for await (const msg of client.fetch(String(uid), { source: true }, { uid: true })) rawBuffer = msg.source
+          // Auch hier erst den Briefkopf prüfen: Eine veraltete UID kann in einem
+          // anderen Ordner längst einer ganz anderen Mail gehören.
+          let env = null
+          for await (const m of client.fetch(String(uid), { envelope: true }, { uid: true })) env = m.envelope
+          if (!env) { trace.push({ path: p, label: 'uid', hits: 0 }); continue }
+          if (!passtZurAnfrage(env)) { trace.push({ path: p, label: 'uid', hits: 1, verworfen: 1 }); continue }
+          for await (const m of client.fetch(String(uid), { source: true }, { uid: true })) rawBuffer = m.source
           if (rawBuffer) { foundFolder = p; foundVia = 'uid'; break }
-          trace.push({ path: p, label: 'uid', hits: 0 })
         } catch (e) { trace.push({ path: p, label: 'uid', error: e.message }) }
       }
     }
@@ -245,6 +295,7 @@ export default async function handler(req, res) {
     await client.logout()
     return res.status(200).json({
       folder:      foundFolder,
+      account:     accountKey,   // bei account=auto: welches Konto es wirklich war
       foundVia,
       text:        parsed.text  ?? null,
       html:        parsed.html  ?? null,

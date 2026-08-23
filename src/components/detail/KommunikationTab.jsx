@@ -864,7 +864,9 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
   function buildContentQuery(entry) {
     const p = new URLSearchParams()
     p.set('uid', entry.sourceUid ?? '')
-    p.set('account', entry.sourceAccount ?? '')
+    // Im Dashboard verfasste Mails haben kein sourceAccount – dann bestimmt der
+    // Server das Konto anhand der Absenderadresse.
+    p.set('account', entry.sourceAccount || 'auto')
     // Herkunftsordner mitgeben: UIDs sind nur INNERHALB eines Ordners eindeutig.
     // Ohne den Wert sucht der Server in INBOX und findet Mails aus Unterordnern nicht.
     p.set('folder', entry.sourceFolder || 'INBOX')
@@ -882,8 +884,20 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
   }
 
   // ── E-Mail-Vollinhalt nachladen (Fetch-on-Open) ──────────────────────────────
+  // Reicht das, was wir über den Eintrag wissen, für einen Abruf?
+  // Entweder UID+Konto (schneller Weg) oder genug für die Suche: Betreff plus
+  // Absender oder Datum. Damit sind auch selbst gesendete Mails abrufbar, die
+  // per IMAP im „Gesendet"-Ordner liegen.
+  function istAbrufbar(entry) {
+    if (entry.sourceUid && entry.sourceAccount) return true
+    if (entry.messageId) return true
+    const betreff = (entry.betreff ?? '').trim()
+    const absender = entry.absender || entry.von || ''
+    return betreff.length >= 4 && !!absender
+  }
+
   async function fetchEmailContent(entry) {
-    if (contentLoading[entry.id] || !entry.sourceUid || !entry.sourceAccount) return
+    if (contentLoading[entry.id] || !istAbrufbar(entry)) return
     setContentLoading(prev => ({ ...prev, [entry.id]: true }))
     setContentError(prev => ({ ...prev, [entry.id]: '' }))
     try {
@@ -899,7 +913,8 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
         contentLoaded: true,
         messageId:     data.messageId ?? e.messageId,
         // Fundort merken → beim nächsten Öffnen greift sofort der schnelle UID-Pfad
-        ...(data.folder ? { sourceFolder: data.folder } : {}),
+        ...(data.folder  ? { sourceFolder: data.folder }   : {}),
+        ...(data.account ? { sourceAccount: data.account } : {}),
         ...(data.cc  ? { cc: data.cc }            : {}),
         ...(data.to  ? { empfaenger: data.to }     : {}),
         ...(data.from ? { absender: data.from }     : {}),
@@ -2351,7 +2366,9 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
                   onClick={() => {
                     setDetailEntry(entry)
                     setActionForm(null)
-                    if (entry.typ === 'eingehend' && !entry.contentLoaded && entry.sourceUid) {
+                    // Auch für gesendete Mails nachladen: slimForCloud entfernt den
+                    // Text vor jedem Speichern, sonst steht dort dauerhaft „(kein Text)".
+                    if (!entry.text && !entry.contentLoaded) {
                       fetchEmailContent(entry)
                     }
                   }}
@@ -3089,7 +3106,7 @@ function EmailDetailPanel({
                       ? '(Inhalt wird geladen…)'
                       : contentError[entry.id]
                         ? '(Kein zwischengespeicherter Text – Inhalt derzeit nicht abrufbar.)'
-                        : (entry.sourceUid && !entry.contentLoaded ? '(Inhalt wird geladen…)' : '(kein Text)'))}
+                        : (!entry.contentLoaded ? '(Inhalt wird geladen…)' : '(kein Text)'))}
                   </pre>
                 )
               )}

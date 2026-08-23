@@ -320,8 +320,21 @@ function neuerClientAusStotax(sd) {
 }
 
 // Entfernt große E-Mail-Inhalte (text/html) aus kommunikation.events, bevor in die Cloud
-// gespeichert wird. Die Inhalte sind jederzeit per IMAP neu abrufbar – so bleibt der
-// Cloud-Block klein (sonst läuft die Datenbank in 500-Fehler / Datenverlust).
+// gespeichert wird – sonst läuft die Datenbank in 500-Fehler / Datenverlust.
+//
+// ABER nur dort, wo der Inhalt auch wirklich wiederbeschaffbar ist. Ein Event ist
+// wiederbeschaffbar, wenn es eine messageId oder UID+Konto hat – dann holt
+// /api/get-email-content den Text beim Öffnen per IMAP zurück. Fehlt beides
+// (typisch für im Dashboard verfasste Nachrichten), war das Wegwerfen endgültiger
+// Datenverlust: der Lesebereich zeigte dauerhaft „(kein Text)".
+// Für diese Fälle bleibt der reine Text erhalten, gekappt – das HTML, das die
+// eigentliche Aufblähung verursacht, fliegt immer raus.
+const TEXT_KAPPUNG = 8000
+
+function istWiederbeschaffbar(e) {
+  return !!(e?.messageId || (e?.sourceUid && e?.sourceAccount))
+}
+
 function slimForCloud(clients) {
   if (!Array.isArray(clients)) return clients
   return clients.map(c => {
@@ -329,12 +342,21 @@ function slimForCloud(clients) {
     if (!Array.isArray(evs) || evs.length === 0) return c
     let changed = false
     const slim = evs.map(e => {
-      if (e && (e.text != null || e.html != null)) {
-        changed = true
-        const { text, html, ...rest } = e
+      if (!e || (e.text == null && e.html == null)) return e
+      changed = true
+      const { text, html, ...rest } = e
+      if (istWiederbeschaffbar(e)) {
         return { ...rest, contentLoaded: false }
       }
-      return e
+      // Nicht wiederbeschaffbar → Text behalten (gekappt), HTML verwerfen.
+      const behalten = typeof text === 'string' && text.length
+        ? text.slice(0, TEXT_KAPPUNG)
+        : (typeof html === 'string' && html.length
+            ? html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, TEXT_KAPPUNG)
+            : null)
+      return behalten
+        ? { ...rest, text: behalten, contentLoaded: true }
+        : { ...rest, contentLoaded: false }
     })
     return changed ? { ...c, kommunikation: { ...c.kommunikation, events: slim } } : c
   })
@@ -490,7 +512,13 @@ export default function App() {
           if (totalZeit > 0) cloudSnapshot(STORAGE_KEY, slim).catch(() => {})
           // Einmaliges Aufräumen: enthielt der geladene Stand gecachte E-Mail-Inhalte,
           // sofort schlank zurückschreiben (behebt die 500-Fehler / Aufblähung).
-          const bloated = raw.some(c => (c?.kommunikation?.events || []).some(e => e && (e.text != null || e.html != null)))
+          // Aufgebläht ist nur, was slimForCloud auch wirklich entfernt: jedes HTML,
+          // und Text bei wiederbeschaffbaren Mails. Bewusst behaltener Text bei
+          // nicht wiederbeschaffbaren Nachrichten zählt NICHT – sonst würde bei
+          // jedem Laden ohne Not zurückgeschrieben.
+          const bloated = raw.some(c => (c?.kommunikation?.events || []).some(e =>
+            e && (e.html != null || (e.text != null && istWiederbeschaffbar(e)))
+          ))
           if (bloated) cloudSaveNow(STORAGE_KEY, slim).catch(() => {})
         }
         setClients(Array.isArray(raw) ? raw.map(migrateClient).filter(Boolean) : [])
