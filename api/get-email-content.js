@@ -28,7 +28,7 @@ const ATTACHMENT_INLINE_LIMIT = 4 * 1024 * 1024
 
 // Bei ?debug=1 mitgeliefert – so ist erkennbar, ob ein Deploy schon live ist.
 // Bei inhaltlichen Änderungen an der Suchlogik hochzählen.
-const REV = 3
+const REV = 4
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*')
@@ -69,6 +69,8 @@ export default async function handler(req, res) {
     .trim()
   // Nur die nackte Mailadresse (ohne "Name <...>") – sonst matcht IMAP FROM schlecht.
   const fromAddr = (String(from || '').match(/[\w.+-]+@[\w.-]+/) || [''])[0].toLowerCase()
+  const dateObj  = date ? new Date(date) : null
+  const dateOk   = dateObj && !isNaN(dateObj.getTime())
   const canSearchSubject = subjCore.length >= 4
 
   const trace = []                       // Diagnose – landet im Response nur bei ?debug=1
@@ -133,11 +135,19 @@ export default async function handler(req, res) {
       trace.push({ label: 'folders', count: allPaths.length })
     }
 
+    // Datumsfenster (±7 Tage) – grenzt die Betreff-Suche ein, ohne an
+    // Zeitzonen- oder Ablageverschiebungen zu scheitern.
+    let sinceD = null, beforeD = null
+    if (dateOk) {
+      sinceD  = new Date(dateObj.getTime() - 7 * 864e5)
+      beforeD = new Date(dateObj.getTime() + 7 * 864e5)
+    }
+
     // 2) Ordnerübergreifend suchen, pro Ordner in absteigender Präzision:
     //    a) Message-ID (global eindeutig – trifft nie die falsche Mail)
     //    b) Betreff + Absender + Datumsfenster
-    //    c) Betreff + Datumsfenster  (Absender im Header anders geschrieben)
-    //    d) Betreff                  (Datum in der Ablage verschoben)
+    //    c) Betreff + Absender       (Datum in der Ablage verschoben)
+    //    d) Betreff                  (Absender im Header anders geschrieben)
     //
     //    Wichtig: `subject:` = IMAP SUBJECT und sucht im dekodierten Envelope.
     //    Das frühere `header: { subject }` = HEADER SUBJECT sucht im rohen,
@@ -151,13 +161,18 @@ export default async function handler(req, res) {
 
         if (wantedMsgId) await tryFetch({ header: { 'message-id': wantedMsgId } }, 'message-id', p)
         if (!rawBuffer && canSearchSubject) {
-          // Bewusst OHNE Datumsfenster. Weder `since`/`before` noch
-          // `sentSince`/`sentBefore` haben hier Treffer geliefert (im Trace jeweils
-          // 0 Treffer, während dieselbe Suche ohne Datum die Mail fand). Ein Filter,
-          // der die gesuchte Mail wegwirft, ist schlimmer als gar kein Filter –
-          // Betreff + Absender grenzen bereits gut genug ein, und die Message-ID
-          // oben ist ohnehin der exakte Weg.
-          if (fromAddr) await tryFetch({ subject: subjCore, from: fromAddr }, 'subject+from', p)
+          // Datumsfenster MUSS über sentSince/sentBefore laufen, nicht über
+          // since/before: Letztere schreibt imapflow still auf YOUNGER/OLDER um,
+          // sobald der Server die WITHIN-Extension kann, und rechnet dabei relativ
+          // zu "jetzt". Ein Fensterende in der Zukunft – bei frischen Mails immer –
+          // wird auf 0 geklemmt → `OLDER 0` → null Treffer.
+          // sentSince/sentBefore gehen direkt als SENTSINCE/SENTBEFORE raus und
+          // filtern über den Date:-Header, der zu unserem gesendetAm passt.
+          const base = { subject: subjCore }
+          if (sinceD)  base.sentSince  = sinceD
+          if (beforeD) base.sentBefore = beforeD
+          if (fromAddr && sinceD) await tryFetch({ ...base, from: fromAddr }, 'subject+from+date', p)
+          if (fromAddr)           await tryFetch({ subject: subjCore, from: fromAddr }, 'subject+from', p)
           await tryFetch({ subject: subjCore }, 'subject', p)
         }
       }
