@@ -28,7 +28,7 @@ const ATTACHMENT_INLINE_LIMIT = 4 * 1024 * 1024
 
 // Bei ?debug=1 mitgeliefert – so ist erkennbar, ob ein Deploy schon live ist.
 // Bei inhaltlichen Änderungen an der Suchlogik hochzählen.
-const REV = 4
+const REV = 5
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*')
@@ -40,7 +40,7 @@ export default async function handler(req, res) {
 
   const {
     uid, account = 'hostinger', folder = 'INBOX', messageId = '',
-    subject = '', from = '', date = '', debug = '',
+    subject = '', from = '', date = '', hint = '', debug = '',
   } = req.query
   if (!uid && !messageId && !subject) {
     return res.status(400).json({ error: 'Parameter uid, messageId oder subject fehlt' })
@@ -72,6 +72,15 @@ export default async function handler(req, res) {
   const dateObj  = date ? new Date(date) : null
   const dateOk   = dateObj && !isNaN(dateObj.getTime())
   const canSearchSubject = subjCore.length >= 4
+
+  // Mandantenname als Ordner-Hinweis. Rechtsformen und kurze Füllwörter raus,
+  // damit „Mobile Gate Security A/S" auf den Ordner „…Mandanten.Mobile Gate
+  // Security AS" zeigt. Wird nur zum Sortieren benutzt, filtert nichts weg.
+  const hintTokens = String(hint || '')
+    .toLowerCase()
+    .replace(/[^\wäöüß\s-]+/g, ' ')
+    .split(/[\s-]+/)
+    .filter(t => t.length >= 4 && !/^(gmbh|ugmbh|haftungsbeschr|mbh|kgaa|gbr|ohne|und|der|die|das)$/.test(t))
 
   const trace = []                       // Diagnose – landet im Response nur bei ?debug=1
   const t0 = Date.now()
@@ -115,24 +124,36 @@ export default async function handler(req, res) {
     }
 
     // Ordnerliste (inkl. Gesendet/Papierkorb/Archiv/Unterordner) in sinnvoller Reihenfolge:
-    // Herkunftsordner → INBOX → Sent/Trash → normale Mandantenordner → Archiv → Junk.
+    // Herkunftsordner → INBOX → Ordner mit Mandantennamen → Sent/Trash → Rest → Archiv → Junk.
+    //
+    // Die Reihenfolge ist entscheidend, nicht kosmetisch: das Strato-Konto hat 232
+    // Ordner. Ein Blindscan läuft ins Zeitbudget, bevor er den Mandantenordner
+    // erreicht. Mit dem Namenshinweis wird derselbe Fund aus ~48s Timeout zu ~5s.
     let allPaths = []
     if (!rawBuffer && (wantedMsgId || canSearchSubject)) {
       let boxes = []
       try { boxes = await client.list() } catch (e) { trace.push({ label: 'list', error: e.message }) }
+      // Wie viele Wörter des Mandantennamens stecken im Ordnerpfad?
+      const hintScore = (p) => {
+        if (!hintTokens.length) return 0
+        const lower = p.toLowerCase()
+        return hintTokens.filter(t => lower.includes(t)).length
+      }
       const rank = (p) => {
         if (p === folder)                                    return 0
         if (/^inbox$/i.test(p))                              return 1
-        if (/sent|gesend|papierkorb|trash|deleted/i.test(p)) return 2
+        if (hintScore(p) > 0)                                return 2
+        if (/sent|gesend|papierkorb|trash|deleted/i.test(p)) return 3
         if (/archiv/i.test(p))                               return 5
         if (/junk|spam/i.test(p))                            return 6
-        return 3
+        return 4
       }
       allPaths = boxes
         .filter(b => b.path && !(b.flags && typeof b.flags.has === 'function' && b.flags.has('\\Noselect')))
         .map(b => b.path)
-        .sort((a, b) => rank(a) - rank(b) || a.localeCompare(b))
-      trace.push({ label: 'folders', count: allPaths.length })
+        // innerhalb gleicher Stufe: mehr Namenstreffer zuerst
+        .sort((a, b) => rank(a) - rank(b) || hintScore(b) - hintScore(a) || a.localeCompare(b))
+      trace.push({ label: 'folders', count: allPaths.length, hint: hintTokens.join(' ') || null })
     }
 
     // Datumsfenster (±7 Tage) – grenzt die Betreff-Suche ein, ohne an
@@ -181,7 +202,11 @@ export default async function handler(req, res) {
     if (!rawBuffer) {
       await client.logout()
       return res.status(404).json({
-        error:   'E-Mail in keinem Ordner gefunden (evtl. endgültig gelöscht)',
+        // Timeout und "nicht da" sind zwei verschiedene Dinge – vorher stand in
+        // beiden Fällen "evtl. endgültig gelöscht", was in die Irre führt.
+        error: outOfTime()
+          ? `Zeitlimit erreicht – ${allPaths.length} Ordner konnten nicht alle durchsucht werden. Die Mail ist vermutlich noch da, nur weiter hinten.`
+          : 'E-Mail in keinem Ordner gefunden (evtl. endgültig gelöscht)',
         gesucht: { uid: uid || null, folder, account, messageId: wantedMsgId || null, subject: subjCore || null, from: fromAddr || null },
         timeout: outOfTime(),
         ...(debug ? { rev: REV, trace, ms: Date.now() - t0 } : {}),

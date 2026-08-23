@@ -874,6 +874,10 @@ export default function KommunikationTab({ client, onUpdate, emailVorlagen = [],
     if (abs) p.set('from', abs)
     const dt = entry.gesendetAm || entry.erstelltAm || entry.datum || ''
     if (dt) p.set('date', dt)
+    // Mandantenname als Ordner-Hinweis: Bei Altenträgen ohne sourceFolder muss der
+    // Server sonst blind alle Ordner durchsuchen (Strato: 232) und läuft ins
+    // Zeitlimit, bevor er beim Mandantenordner ankommt.
+    if (client.name) p.set('hint', client.name)
     return p.toString()
   }
 
