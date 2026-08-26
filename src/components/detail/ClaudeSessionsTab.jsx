@@ -37,6 +37,8 @@ function typVon(s) {
 }
 
 // Sprung in die Desktop-App.
+// Auch vom Mandanten-Kopf genutzt (Direkt-Sprung-Knopf neben dem Namen).
+export function claudeAppUrl(s) { return appUrl(s) }
 function appUrl(s) {
   return typVon(s) === 'cloud'
     ? 'claude://code/' + encodeURIComponent(s.sessionId)

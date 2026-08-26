@@ -9,7 +9,7 @@ import AuftraegeTab, { AUFTRAGS_TYP_CFG } from './AuftraegeTab.jsx'
 import ImmobilienTab        from './ImmobilienTab.jsx'
 import HonorareTab          from './HonorareTab.jsx'
 import DokumenteTab         from './DokumenteTab.jsx'
-import ClaudeSessionsTab from './ClaudeSessionsTab.jsx'
+import ClaudeSessionsTab, { claudeAppUrl } from './ClaudeSessionsTab.jsx'
 import VorlagenTab        from './VorlagenTab.jsx'
 import TermineSection       from './TermineSection.jsx'
 import NewClientModal       from '../NewClientModal.jsx'
@@ -132,6 +132,15 @@ export default function DetailView({
   const allNrs = [client.mandantennummer, client.mandantennummer2, client.mandantennummer3]
     .filter(Boolean)
 
+  // Direkt-Sprung neben dem Namen: zuletzt geöffnete Claude-Sitzung, sonst die erste.
+  const claudeSprung = (() => {
+    const list = Array.isArray(client.claudeSessions) ? client.claudeSessions.filter(Boolean) : []
+    if (!list.length) return null
+    const sortiert = [...list].sort((a, b) =>
+      new Date(b.zuletztGeoeffnet || 0) - new Date(a.zuletztGeoeffnet || 0))
+    return sortiert[0]
+  })()
+
   // Leistungen (Aufträge) nach Typ gruppieren – für das rechte Band (aufklappbar).
   const leistungsGruppen = (() => {
     const g = {}
@@ -151,7 +160,25 @@ export default function DetailView({
       <div className="detail-header">
         <div className="detail-header-top">
           <div className="detail-header-info">
-            <div className="detail-header-name">{client.name}</div>
+            <div className="detail-header-name" style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+              {client.name}
+              {claudeSprung && (
+                <a
+                  href={claudeAppUrl(claudeSprung)}
+                  onClick={() => onUpdate({ claudeSessions: (client.claudeSessions || []).map(x => x.id === claudeSprung.id ? { ...x, zuletztGeoeffnet: new Date().toISOString() } : x) })}
+                  title={`Claude-Chat öffnen: ${claudeSprung.label || claudeSprung.sessionId}`}
+                  style={{
+                    display: "inline-flex", alignItems: "center", gap: "5px",
+                    padding: "4px 11px", borderRadius: "999px", textDecoration: "none",
+                    fontSize: "12px", fontWeight: 700, whiteSpace: "nowrap",
+                    background: "rgba(124,58,237,0.1)", color: "#7c3aed",
+                    border: "1px solid rgba(124,58,237,0.3)",
+                  }}
+                >
+                  ✨ Claude-Chat
+                </a>
+              )}
+            </div>
             <div className="detail-header-meta">
               <span className="badge badge-blue">{client.rechtsform}</span>
               <span className="badge badge-muted">{client.gewinnermittlung}</span>
