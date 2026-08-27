@@ -112,7 +112,7 @@ export default function ErstkontaktBogen({ bogen, onChange, onClose, onMandantAn
       betreff: `Meine Kontaktdaten – ${VISITENKARTE.firma}`,
       text: `Hallo${f.ansprechpartner ? ' ' + f.ansprechpartner : ''},\n\n`
         + `anbei meine Kontaktdaten als Visitenkarte zum Speichern.\n\n`
-        + `${VISITENKARTE.name} · ${VISITENKARTE.titel}\n${VISITENKARTE.firma} – ${VISITENKARTE.claim}\n`
+        + `${VISITENKARTE.name}\n${VISITENKARTE.firma} – ${VISITENKARTE.claim}\n`
         + `${VISITENKARTE.strasse}, ${VISITENKARTE.plz} ${VISITENKARTE.ort}\n`
         + `Telefon ${VISITENKARTE.telefon}\n${VISITENKARTE.email}\n${VISITENKARTE.web}\n\n`
         + `Viele Grüße\n${VISITENKARTE.vorname}`,
@@ -128,7 +128,7 @@ export default function ErstkontaktBogen({ bogen, onChange, onClose, onMandantAn
         + `vielen Dank für das Gespräch. Damit wir zügig starten können, brauche ich von Ihnen:\n\n${punkte}\n\n`
         + (f.naechsterSchritt ? `Nächster Schritt: ${f.naechsterSchritt}${f.bisWann ? ` (bis ${f.bisWann})` : ''}\n\n` : '')
         + `Meine Kontaktdaten hängen als Visitenkarte an.\n\nViele Grüße\n${VISITENKARTE.vorname}\n\n`
-        + `${VISITENKARTE.name} · ${VISITENKARTE.titel}\n${VISITENKARTE.firma}\n${VISITENKARTE.telefon} · ${VISITENKARTE.email}`,
+        + `${VISITENKARTE.name}\n${VISITENKARTE.firma}\n${VISITENKARTE.telefon} · ${VISITENKARTE.email}`,
     })
   }
 
@@ -309,7 +309,7 @@ export default function ErstkontaktBogen({ bogen, onChange, onClose, onMandantAn
           <div style={{ display: 'flex', gap: '13px', alignItems: 'center', padding: '13px', border: `1px solid ${MF_LINE}`, borderRadius: R_SM, background: MF_SOFT }}>
             <div style={{ width: '52px', height: '52px', borderRadius: '13px', background: MF, color: '#fff', fontSize: '19px', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>JT</div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: 800, color: 'var(--text)' }}>{VISITENKARTE.name} · {VISITENKARTE.titel}</div>
+              <div style={{ fontWeight: 800, color: 'var(--text)' }}>{VISITENKARTE.name}</div>
               <div style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: 1.5 }}>
                 {VISITENKARTE.firma} – {VISITENKARTE.claim}<br />
                 {VISITENKARTE.strasse}, {VISITENKARTE.plz} {VISITENKARTE.ort}<br />
@@ -401,7 +401,7 @@ export default function ErstkontaktBogen({ bogen, onChange, onClose, onMandantAn
           <img src={qrBild} alt="QR-Code mit den Kontaktdaten"
             style={{ width: 'min(70vh, 88vw)', height: 'auto', borderRadius: '18px', border: '14px solid #fff', background: '#fff', imageRendering: 'pixelated' }} />
           <div style={{ color: '#fff', textAlign: 'center', lineHeight: 1.6 }}>
-            <div style={{ fontSize: '19px', fontWeight: 800 }}>{VISITENKARTE.name} · {VISITENKARTE.titel}</div>
+            <div style={{ fontSize: '19px', fontWeight: 800 }}>{VISITENKARTE.name}</div>
             <div style={{ fontSize: '14px', opacity: 0.85 }}>{VISITENKARTE.firma} · {VISITENKARTE.telefon}</div>
             <div style={{ fontSize: '12.5px', opacity: 0.7, marginTop: '8px' }}>Mit der Handy-Kamera scannen · tippen zum Schließen</div>
           </div>
