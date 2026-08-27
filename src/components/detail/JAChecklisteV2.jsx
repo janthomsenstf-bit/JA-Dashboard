@@ -893,6 +893,7 @@ function KontoListe({ p, L, mutate }) {
       {arr.map((r, i) => {
         const rr = Array.isArray(r.rueck) ? r.rueck : []; const offRR = rr.filter(x => !x.ok).length
         const vm = Array.isArray(r.vermerke) ? r.vermerke : []
+        const ps = Array.isArray(r.posten) ? r.posten : []
         const done = r.fertig || r.ok
         return (
           <div className="posrow2" key={i}>
@@ -929,7 +930,21 @@ function KontoListe({ p, L, mutate }) {
                 {L.rowFertig && <label className={'rowfertig' + (r.fertig ? ' on' : '')}><input type="checkbox" checked={!!r.fertig} onChange={e => row(i)(x => { x.fertig = e.target.checked })} /><span>erledigt / geklärt</span></label>}
                 <button className="rueckadd" onClick={() => row(i)(x => { (x.rueck || (x.rueck = [])).push({ t: '', ok: false }) })}>＋ Rückfrage{offRR ? <span className="rrbadge">{offRR}</span> : null}</button>
                 {L.rowVermerke && <button className="vermerkadd" onClick={() => row(i)(x => { (x.vermerke || (x.vermerke = [])).push({ t: '' }) })}>＋ Vermerk{vm.length ? <span className="rrbadge">{vm.length}</span> : null}</button>}
+                {L.rowPosten && <button className="vermerkadd" onClick={() => row(i)(x => { (x.posten || (x.posten = [])).push({ art: L.rowPosten.arten[0][0], bez: '', betrag: '' }) })}>＋ {L.rowPosten.label}{ps.length ? <span className="rrbadge">{ps.length}</span> : null}</button>}
                 {r.notiz == null && <button className="hinweisadd" onClick={() => row(i)(x => { x.notiz = '' })}>＋ Hinweis (intern)</button>}
+                {L.rowPosten && ps.length > 0 && (
+                  <div className="rowposten">{ps.map((q, pi) => (
+                    <div className="psitem" key={pi}>
+                      <select className="psart" value={q.art || ''} onChange={e => row(i)(x => { x.posten[pi].art = e.target.value })}>
+                        {L.rowPosten.arten.map(o => <option key={o[0]} value={o[0]}>{o[1]}</option>)}</select>
+                      <input className="pstext" value={q.bez || ''} placeholder={L.rowPosten.platzhalter || 'Wirtschaftsgut …'}
+                        onChange={e => row(i)(x => { x.posten[pi].bez = e.target.value })} />
+                      <input className="psbetr num" value={q.betrag || ''} placeholder="Betrag"
+                        onChange={e => row(i)(x => { x.posten[pi].betrag = e.target.value })} />
+                      <button className="del" title="Position löschen" onClick={() => row(i)(x => { x.posten.splice(pi, 1) })}>×</button>
+                    </div>
+                  ))}</div>
+                )}
                 {L.rowVermerke && vm.length > 0 && (
                   <div className="rowvermerke">{vm.map((q, vi) => (
                     <div className="vmitem" key={vi}>

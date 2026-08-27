@@ -8,6 +8,8 @@
 import { SE_JAHRE, SE_JAHRE_LISTE, SE_KONTEN, SE_ALTERSSTAFFEL, seFaktor } from './pauschbetraege.js'
 import { LOHN_LISTEN, LOHN_GRUPPEN, LOHN_LEIT, lohnZielListe, lohnGruppe } from './lohnkonten.js'
 import { UST_A_GRUPPEN, UST_A_LEIT, ustAGruppe, istUstAKonto , ustZeitraeume, ustLetzterZeitraum } from './ustkonten.js'
+import { GEWST_VZ_TERMINE, gewStGruppe, istGewStKonto } from './gewstkonten.js'
+import { istAvKonto, avZielListe, avPosten } from './avkonten.js'
 export { UST_A_GRUPPEN, UST_A_LEIT, ustAGruppe, istUstAKonto }
 export { LOHN_LISTEN, LOHN_GRUPPEN, LOHN_LEIT, lohnZielListe, lohnGruppe }
 export { SE_JAHRE, SE_KONTEN, SE_ALTERSSTAFFEL }
@@ -1546,8 +1548,44 @@ export const MODULE = {
       return { ergebnisse: erg, total: { l: 'Summe der Abgrenzungskonten', v: gesamt }, hinweise, buchungen }
     } },
   gewerbesteuer: { name: 'Gewerbesteuer (Abstimmung & Berechnung)', bereich: 'steuern', typ: 'C', kontoListe: true,
-    listen: [{ key: 'konten', label: 'Gewerbesteuer-Konten (Vorauszahlungen, Rückstellung …)', rowNotes: true, felder: [
-      { k: 'konto', l: 'Konto', t: 'text' }, { k: 'bez', l: 'Bezeichnung', t: 'text' }, { k: 'saldo', l: 'Saldo', t: 'num' }, { k: 'vj', l: 'Vorjahr', t: 'num' }, { k: 'ok', l: 'geprüft', t: 'check' } ] }],
+    stand: '08/2026', konten: GEWST_KONTEN,
+    quellen: ['§ 19 GewStG (Vorauszahlungen: 15.02., 15.05., 15.08., 15.11.; nachträgliche VZ Abs. 3 S. 3)',
+              '§ 11 GewStG (Messzahl 3,5 %, Freibetrag 24.500 € nur natürliche Personen und PersG)',
+              '§ 16 Abs. 4 S. 2 GewStG (Mindesthebesatz 200 %), §§ 28–34 GewStG (Zerlegung)',
+              '§ 4 Abs. 5b EStG (nicht abziehbar), § 35 EStG (4-facher Messbetrag, nur Einzel/PersG)',
+              'DATEV Dok. 5305414 (Konten), 5305413 (Buchungsbeispiele, Stand 05.08.2026)',
+              'DATEV Dok. 5360464 (Rückstellung), 5361450 (Auflösung), 5360250 (Forderung), 5361443 (Vorjahre)',
+              'Konten und Buchungssätze sind Vorschläge und vom Bearbeiter zu prüfen'],
+    rechenweg: [
+      ['Gewerbeertrag', 'Gewinn aus Gewerbebetrieb zuzüglich Hinzurechnungen (§ 8) abzüglich Kürzungen (§ 9)'],
+      ['Abrundung', 'auf volle 100 € abgerundet, danach der Freibetrag (§ 11 Abs. 1 S. 3 Nr. 1 GewStG)'],
+      ['Messbetrag', 'Gewerbeertrag nach Freibetrag × 3,5 % (§ 11 Abs. 2 GewStG)'],
+      ['Steuer', 'Messbetrag × Hebesatz der Gemeinde (§ 16 GewStG)'],
+      ['Vorauszahlungen', 'je Termin festgesetzt und gezahlt; wer erst im Folgejahr zahlt, grenzt zum 31.12. ab'],
+      ['Rückstellung', 'Steuer abzüglich der Vorauszahlungen des Jahres; außerbilanziell wieder hinzurechnen'],
+      ['Vorjahr', 'gebildete Rückstellung gegen den Bescheid: Verbrauch, Auflösung oder Nachzahlung'],
+    ],
+    erkennt: (konto, bez, skr) => istGewStKonto(konto, skr === '04' ? '04' : '03'),
+    listen: [
+      { key: 'konten', label: 'Gewerbesteuer-Konten (Rückstellung, Aufwand, Forderung …)', rowNotes: true, rowVermerke: true, felder: [
+        { k: 'konto', l: 'Konto', t: 'text' }, { k: 'bez', l: 'Bezeichnung', t: 'text' },
+        { k: 'saldo', l: 'Saldo 31.12.', t: 'num' }, { k: 'vj', l: 'Vorjahr', t: 'num' },
+        { k: 'ok', l: 'geprüft', t: 'check' } ] },
+      { key: 'vz', label: 'Vorauszahlungen des Jahres (§ 19 GewStG)', rowNotes: true, rowVermerke: true,
+        seedKey: 'termin',
+        seed: () => ({ label: '4 Vorauszahlungstermine anlegen',
+          rows: GEWST_VZ_TERMINE.map(t => ({ termin: t })) }),
+        felder: [
+          { k: 'termin', l: 'Termin', t: 'text' },
+          { k: 'festgesetzt', l: 'Festgesetzt lt. Bescheid', t: 'num' },
+          { k: 'gezahlt', l: 'Gezahlt (auch im Folgejahr)', t: 'num' },
+          { k: 'gezahltAm', l: 'am', t: 'date' },
+          { k: 'diff', l: 'Differenz', t: 'calc',
+            hilfe: 'Festgesetzter Betrag abzüglich der Zahlung. Null heißt: der Termin ist ausgeglichen – gleich ob im laufenden Jahr oder im Folgejahr gezahlt.',
+            calc: x => Math.round((num(x.festgesetzt) - num(x.gezahlt)) * 100) / 100,
+            warnWenn: x => Math.abs(num(x.festgesetzt) - num(x.gezahlt)) > 0.005 },
+          { k: 'ok', l: 'geprüft', t: 'check' } ] },
+    ],
     flags: [
       { k: 'fBescheid', label: 'GewSt-Vorauszahlungsbescheid liegt vor' },
       { k: 'fAbgestimmt', label: 'Vorauszahlungen mit Buchung abgestimmt' },
@@ -1555,21 +1593,29 @@ export const MODULE = {
       { k: 'fRueckstellung', label: 'GewSt-Rückstellung gebildet / geprüft' },
       { k: 'f35', label: 'Messbetrag in ESt-Erklärung übertragen (§ 35 EStG)' },
       { k: 'fZerlegung', label: 'Zerlegung auf mehrere Gemeinden geprüft' } ],
-    felder: [
-      { k: 'skr', l: 'Kontenrahmen', t: 'select', def: '03', opt: [['03', 'SKR 03'], ['04', 'SKR 04']] },
-      { k: 'rechtsformKlasse', l: 'Rechtsform (§ 35 / KapGes)', t: 'select', opt: [['', '(aus Stammdaten)'], ['pers', 'Einzel / Personengesellschaft'], ['kap', 'Kapitalgesellschaft']] },
-      { k: 'gewinn', l: 'Gewinn aus Gewerbebetrieb', t: 'num' },
-      { k: 'hinzu', l: '+ Hinzurechnungen (§ 8 GewStG)', t: 'num' },
-      { k: 'kuerz', l: '− Kürzungen (§ 9 GewStG)', t: 'num' },
-      { k: 'freibetrag', l: 'Freibetrag (24.500 € nur Einzel/PersG)', t: 'num', def: '24500' },
-      { k: 'hebesatz', l: 'Hebesatz %', t: 'num' },
-      { k: 'vzFestgesetzt', l: 'Vorauszahlungen lt. Bescheid (Gewerbeamt)', t: 'num' },
-      { k: 'vzGebucht', l: 'Vorauszahlungen lt. Buchung', t: 'num' },
-      { k: 'vzNachtraeglich', l: 'fällige, noch nicht gezahlte VZ (zum 31.12.)', t: 'num' },
-      { k: 'rueckVorjahr', l: 'GewSt-Rückstellung Vorjahr (Bilanz)', t: 'num' },
-      { k: 'gewStBescheid', l: 'tatsächliche GewSt Vorjahr lt. Bescheid', t: 'num' },
-      { k: 'vorjahrKorrektur', l: 'Erstattung(+)/Nachzahlung(−) Vorjahre aus BP/geänd. Bescheid', t: 'num' },
-      { k: 'notiz', l: 'Notiz / Bescheiddaten (Datum, Aktenzeichen, Gemeinde)', t: 'area' } ],
+    felder: (ctx, w) => {
+      const hatVz = !!(w && (w.vz || []).some(x => x && (x.festgesetzt || x.gezahlt)))
+      const f = [
+        { k: 'skr', l: 'Kontenrahmen', t: 'select', def: '03', opt: [['03', 'SKR 03'], ['04', 'SKR 04']] },
+        { k: 'rechtsformKlasse', l: 'Rechtsform (§ 35 / KapGes)', t: 'select', opt: [['', '(aus Stammdaten)'], ['pers', 'Einzel / Personengesellschaft'], ['kap', 'Kapitalgesellschaft']] },
+        { k: 'gewinn', l: 'Gewinn aus Gewerbebetrieb', t: 'num' },
+        { k: 'hinzu', l: '+ Hinzurechnungen (§ 8 GewStG)', t: 'num' },
+        { k: 'kuerz', l: '− Kürzungen (§ 9 GewStG)', t: 'num' },
+        { k: 'freibetrag', l: 'Freibetrag (24.500 € nur Einzel/PersG)', t: 'num', def: '24500' },
+        { k: 'hebesatz', l: 'Hebesatz %', t: 'num' }]
+      // Die drei Sammelfelder sind der Weg ohne Terminliste. Sobald die Liste
+      // gefuellt ist, verschwinden sie - aber nur, wenn nichts darin steht.
+      if (!hatVz || w.vzFestgesetzt) f.push({ k: 'vzFestgesetzt', l: 'Vorauszahlungen lt. Bescheid (Gewerbeamt)', t: 'num' })
+      if (!hatVz || w.vzGebucht) f.push({ k: 'vzGebucht', l: 'Vorauszahlungen lt. Buchung', t: 'num' })
+      if (!hatVz || w.vzNachtraeglich) f.push({ k: 'vzNachtraeglich', l: 'fällige, noch nicht gezahlte VZ (zum 31.12.)', t: 'num' })
+      f.push(
+        { k: 'rueckVorjahr', l: 'GewSt-Rückstellung Vorjahr (Bilanz)', t: 'num' },
+        { k: 'gewStBescheid', l: 'tatsächliche GewSt Vorjahr lt. Bescheid', t: 'num' },
+        { k: 'fordVorjahr', l: 'GewSt-Forderung Vorjahr aktiviert (Bilanz)', t: 'num' },
+        { k: 'erstattungBescheid', l: 'tatsächliche Erstattung Vorjahr lt. Bescheid', t: 'num' },
+        { k: 'vorjahrKorrektur', l: 'Erstattung(+)/Nachzahlung(−) Vorjahre aus BP/geänd. Bescheid', t: 'num' },
+        { k: 'notiz', l: 'Notiz / Bescheiddaten (Datum, Aktenzeichen, Gemeinde)', t: 'area', full: true })
+      return f },
     rechnen: (w, ctx) => { const r2 = x => Math.round(x * 100) / 100
       const skr = w.skr === '04' ? '04' : '03'; const K = GEWST_KONTEN[skr]
       // Rechtsform-Klasse: Modulfeld, sonst heuristisch aus den Stammdaten (ctx.rechtsform)
@@ -1583,7 +1629,21 @@ export const MODULE = {
       const ertragAbg = Math.floor(Math.max(0, ertrag) / 100) * 100
       const fb = rf === 'kap' ? 0 : num(w.freibetrag); const nachFB = Math.max(0, ertragAbg - fb)
       const messbetrag = r2(nachFB * 0.035); const hebe = num(w.hebesatz); const gewSt = r2(messbetrag * hebe / 100)
-      const vzGeb = num(w.vzGebucht), vzFest = num(w.vzFestgesetzt), vzNach = num(w.vzNachtraeglich)
+      // ── Vorauszahlungen je Termin (§ 19 Abs. 1 S. 1 GewStG) ──
+      // Fuer den Stichtag zaehlt das Zahlungsdatum, nicht die Zahlung: eine erst
+      // im Folgejahr geflossene Vorauszahlung ist zum 31.12. eine Verbindlichkeit.
+      const vzListe = (w.vz || []).filter(x => x && (x.termin || x.festgesetzt || x.gezahlt))
+      const wjJahr = parseInt((ctx && ctx.wj) || '', 10)
+      const spaetX = x => { const d = String(x.gezahltAm || ''); if (!d || !wjJahr) return false
+        const y = parseInt(d.slice(0, 4), 10); return !!y && y > wjJahr }
+      const vzSumFest = r2(vzListe.reduce((t, x) => t + num(x.festgesetzt), 0))
+      const vzSumGez = r2(vzListe.reduce((t, x) => t + num(x.gezahlt), 0))
+      const vzImJahr = r2(vzListe.reduce((t, x) => t + (spaetX(x) ? 0 : num(x.gezahlt)), 0))
+      const vzOffen = r2(vzSumFest - vzImJahr)
+
+      const vzGeb = vzListe.length ? vzImJahr : num(w.vzGebucht)
+      const vzFest = vzListe.length ? vzSumFest : num(w.vzFestgesetzt)
+      const vzNach = vzListe.length ? vzOffen : num(w.vzNachtraeglich)
       const vzGesamt = vzGeb + vzNach; const rueck = r2(gewSt - vzGesamt); const erstattung = rueck < 0
       const anr35 = r2(Math.min(messbetrag * 4, gewSt))
       const erg = [
@@ -1594,23 +1654,91 @@ export const MODULE = {
         { l: 'Steuermessbetrag (× 3,5 %)', v: messbetrag, stark: 1 },
         { l: 'Gewerbesteuer (Messbetrag × Hebesatz ' + (hebe || 0) + ' %)', v: gewSt },
         { l: '− Vorauszahlungen (gebucht' + (vzNach ? ' + fällige' : '') + ')', v: -vzGesamt } ]
-      const total = { l: erstattung ? 'GewSt-Erstattungsanspruch' : 'GewSt-Rückstellung / Nachzahlung', v: Math.abs(rueck) }
+      // Die Steuer gilt erst als berechnet, wenn Hebesatz und eine Bemessungs-
+      // grundlage stehen. Vorher waeren Rueckstellung und Forderung nur die
+      // umgedrehten Vorauszahlungen - ein Vorschlag, der in die Irre fuehrt.
+      const berechnet = hebe > 0 && !!(num(w.gewinn) || num(w.hinzu) || num(w.kuerz))
+      const total = berechnet ? { l: erstattung ? 'GewSt-Erstattungsanspruch' : 'GewSt-Rückstellung / Nachzahlung', v: Math.abs(rueck) } : null
       const hinweise = [], buchungen = []
 
+      // ── Terminliste: Zeilen, Hinweise, Abgrenzung ──
+      if (vzListe.length) {
+        erg.push({ l: 'Vorauszahlungen festgesetzt (' + vzListe.length + ' Termine)', v: vzSumFest })
+        erg.push({ l: 'davon gezahlt', v: vzSumGez })
+        if (Math.abs(vzOffen) > 0.005) erg.push({ l: 'Offen zum 31.12. (nicht oder erst im Folgejahr gezahlt)', v: vzOffen, stark: 1 })
+
+        const fehlend = GEWST_VZ_TERMINE.filter(t => !vzListe.some(x => String(x.termin || '').trim() === t))
+        if (fehlend.length) hinweise.push('Es fehlen noch ' + fehlend.length + ' der vier Vorauszahlungstermine: '
+          + fehlend.join(', ') + '. Über „4 Vorauszahlungstermine anlegen" ergänzen – angelegt wird nur, was fehlt. '
+          + 'Eine nachträgliche Vorauszahlung nach § 19 Abs. 3 S. 3 GewStG als zusätzliche Zeile erfassen.')
+
+        const spaet = vzListe.filter(x => spaetX(x) && Math.abs(num(x.gezahlt)) > 0.005)
+        if (spaet.length) hinweise.push('Erst im Folgejahr gezahlt: ' + spaet.map(x => (x.termin || '?') + ' ' + eur(r2(num(x.gezahlt)))).join(' · ')
+          + '. Diese Vorauszahlungen gehören wirtschaftlich ins abzuschließende Jahr und stehen zum 31.12. als Verbindlichkeit.')
+
+        const restVz = vzListe.filter(x => Math.abs(num(x.festgesetzt) - num(x.gezahlt)) > 0.005)
+        if (restVz.length) hinweise.push('Nicht ausgeglichen: ' + restVz.map(x => (x.termin || '?') + ' ' + eur(r2(num(x.festgesetzt) - num(x.gezahlt)))).join(' · ')
+          + '. Prüfen, ob gezahlt, verrechnet, gestundet oder herabgesetzt wurde (§ 19 Abs. 3 GewStG).')
+
+        const ohneDatum = vzListe.filter(x => Math.abs(num(x.gezahlt)) > 0.005 && !String(x.gezahltAm || '').trim())
+        if (ohneDatum.length && wjJahr) hinweise.push('Ohne Zahlungsdatum wird die Zahlung dem laufenden Jahr zugerechnet ('
+          + ohneDatum.map(x => x.termin || '?').join(', ') + '). Beim letzten Termin entscheidet das Datum darüber, ob zum 31.12. abzugrenzen ist.')
+
+        // Die alten Sammelfelder duerfen nicht still uebergangen werden.
+        if (num(w.vzGebucht) && Math.abs(num(w.vzGebucht) - vzImJahr) > 0.005)
+          hinweise.push('Gerechnet wird mit der Terminliste (' + eur(vzImJahr) + '). Im Feld „Vorauszahlungen lt. Buchung" steht abweichend '
+            + eur(num(w.vzGebucht)) + ' – bitte das eine oder das andere bereinigen.')
+        if (num(w.vzFestgesetzt) && Math.abs(num(w.vzFestgesetzt) - vzSumFest) > 0.005)
+          hinweise.push('Gerechnet wird mit der Terminliste (' + eur(vzSumFest) + '). Im Feld „Vorauszahlungen lt. Bescheid" steht abweichend '
+            + eur(num(w.vzFestgesetzt)) + '.')
+      }
+
       // Vorauszahlungs-Abstimmung
-      if ((vzGeb || vzFest) && Math.abs(vzGeb - vzFest) >= 0.01) hinweise.push('Vorauszahlungen lt. Buchung (' + eur(vzGeb) + ') weichen vom Bescheid des Gewerbeamts (' + eur(vzFest) + ') ab – Differenz ' + eur(vzGeb - vzFest) + ' klären / nachbuchen.')
-      else if (vzFest && vzGeb) hinweise.push('Vorauszahlungen stimmen mit dem Bescheid überein.')
+      if (!vzListe.length && (vzGeb || vzFest) && Math.abs(vzGeb - vzFest) >= 0.01) hinweise.push('Vorauszahlungen lt. Buchung (' + eur(vzGeb) + ') weichen vom Bescheid des Gewerbeamts (' + eur(vzFest) + ') ab – Differenz ' + eur(vzGeb - vzFest) + ' klären / nachbuchen.')
+      else if (!vzListe.length && vzFest && vzGeb) hinweise.push('Vorauszahlungen stimmen mit dem Bescheid überein.')
       // Fällige, noch nicht gezahlte VZ zum 31.12. → Verbindlichkeit (DATEV Fall 1)
       if (vzNach > 0) { hinweise.push('Fällige, aber zum 31.12. noch nicht gezahlte Vorauszahlung ' + eur(vzNach) + ' als Verbindlichkeit einbuchen (' + K.gewst + ' an ' + K.verb + ').')
         buchungen.push({ s: K.gewst, st: 'Gewerbesteuer', h: K.verb, ht: 'Verbindlichkeit Steuern (RLZ ≤ 1 J.)', betr: r2(vzNach), text: 'GewSt-VZ fällig, noch nicht gezahlt' }) }
 
       // Laufendes Jahr: Rückstellung (GewSt > VZ) bzw. Forderung (VZ > GewSt)
-      if (rueck > 0.01) {
+      if (!berechnet && (vzFest || vzGeb)) hinweise.push('Die Gewerbesteuer des Jahres ist noch nicht berechnet – es fehlen '
+        + [hebe > 0 ? null : 'der Hebesatz', (num(w.gewinn) || num(w.hinzu) || num(w.kuerz)) ? null : 'der Gewinn aus Gewerbebetrieb'].filter(Boolean).join(' und ')
+        + '. Solange schlägt das Modul weder eine Rückstellung noch eine Forderung vor; die Vorauszahlungen allein sagen darüber nichts aus.')
+      if (berechnet && rueck > 0.01) {
         hinweise.push('Gewerbesteuer ist nicht abziehbare Betriebsausgabe (§ 4 Abs. 5b EStG) – die Rückstellung außerbilanziell dem Gewinn wieder hinzurechnen.')
         buchungen.push({ s: K.gewst, st: 'Gewerbesteuer', h: K.rueck, ht: 'GewSt-Rückstellung § 4 Abs. 5b', betr: rueck, text: 'GewSt-Rückstellung ' + getStichtag().getFullYear() })
-      } else if (erstattung && Math.abs(rueck) >= 0.01) {
+      } else if (berechnet && erstattung && Math.abs(rueck) >= 0.01) {
         hinweise.push('Überzahlung ' + eur(Math.abs(rueck)) + ' – Erstattungsanspruch aktivieren (' + K.forderung + ' an ' + K.gewst + ').')
         buchungen.push({ s: K.forderung, st: 'Forderung GewSt-Überzahlung', h: K.gewst, ht: 'Gewerbesteuer', betr: r2(Math.abs(rueck)), text: 'GewSt-Erstattungsanspruch ' + getStichtag().getFullYear() })
+      }
+
+      // ── Rückstellungsspiegel aus den importierten Konten ──
+      // Die SuSa liefert Anfangs- und Endbestand der Rückstellung sowie den
+      // erfolgswirksam aufgelösten Teil. Was dazwischen liegt, ist Verbrauch –
+      // meist die Zahlung auf den Vorjahresbescheid.
+      const kkG = (w.konten || []).filter(x => x && x.konto)
+      const rolleZeile = rolle => { const t = kkG.find(x => { const g = gewStGruppe(x.konto, skr); return g && g.rolle === rolle })
+        return t ? { s: num(t.saldo), v: num(t.vj), konto: String(t.konto).trim() } : null }
+      const rst = rolleZeile('rueckstellung'), auf = rolleZeile('aufloesung'), afw = rolleZeile('aufwand')
+      // Wird weiter unten gebraucht: was die Buecher schon zeigen.
+      let spiegelDa = false, spiegelVerbrauch = 0, spiegelAufl = 0, spiegelEnd = 0
+      if (rst && (Math.abs(rst.s) > 0.005 || Math.abs(rst.v) > 0.005)) {
+        const anf = Math.abs(rst.v), end = Math.abs(rst.s)
+        const aufl = auf ? Math.abs(auf.s) : 0
+        const verbrauch = r2(anf - end - aufl)
+        spiegelDa = true; spiegelVerbrauch = verbrauch; spiegelAufl = aufl; spiegelEnd = end
+        erg.push({ l: 'Rückstellung ' + rst.konto + ': Anfangsbestand', v: anf })
+        if (aufl) erg.push({ l: 'davon erfolgswirksam aufgelöst', v: -aufl })
+        if (Math.abs(verbrauch) > 0.005) erg.push({ l: 'davon verbraucht (Zahlung auf den Vorjahresbescheid)', v: -verbrauch })
+        erg.push({ l: 'Rückstellung ' + rst.konto + ': Endbestand lt. SuSa', v: end })
+        if (verbrauch < -0.005) hinweise.push('Die Rückstellung ' + rst.konto + ' ist im Jahr um ' + eur(Math.abs(verbrauch))
+          + ' gestiegen, ohne dass eine Zuführung erkennbar wäre. Bewegung prüfen.')
+        if (afw && Math.abs(afw.s) < 0.005 && end > 0.005)
+          hinweise.push('Auf dem Aufwandskonto ' + afw.konto + ' steht für das laufende Jahr kein Betrag, die Rückstellung '
+            + rst.konto + ' weist aber noch ' + eur(end) + ' aus. Häufig wurden die Vorauszahlungen direkt gegen die Rückstellung gebucht; '
+            + 'dann ist der Restbestand daraufhin zu prüfen, ob er noch zum Vorjahr gehört oder bereits das laufende Jahr betrifft.')
+        if (!num(w.rueckVorjahr) && anf > 0.005)
+          hinweise.push('Der Anfangsbestand der Rückstellung (' + eur(anf) + ') steht in der SuSa. Für die Abstimmung gegen den Bescheid bitte in „GewSt-Rückstellung Vorjahr" übernehmen.')
       }
 
       // Vorjahres-Rückstellung abstimmen (DATEV Fall 4/5)
@@ -1621,13 +1749,49 @@ export const MODULE = {
         if (Math.abs(diff) < 0.01) hinweise.push('Vorjahres-Rückstellung entspricht dem Bescheid – Verbrauch ' + eur(gbesch) + ' (' + K.rueck + ' an ' + K.bank + '), keine Auflösung/Nachzahlung.')
         else if (diff > 0) {
           hinweise.push('Vorjahres-Rückstellung (' + eur(rvj) + ') über dem Bescheid (' + eur(gbesch) + ') → Verbrauch ' + eur(gbesch) + ', Auflösung ' + eur(diff) + ' als Ertrag.')
-          if (gbesch > 0) buchungen.push({ s: K.rueck, st: 'GewSt-Rückstellung § 4 Abs. 5b', h: K.bank, ht: 'Bank', betr: r2(gbesch), text: 'GewSt Vorjahr (Verbrauch Rückstellung)' })
-          buchungen.push({ s: K.rueck, st: 'GewSt-Rückstellung § 4 Abs. 5b', h: K.aufloesung, ht: 'Ertrag Auflösung GewSt-Rückstellung § 4 Abs. 5b', betr: diff, text: 'Auflösung GewSt-Rückstellung Vorjahr' })
+          if (gbesch > 0 && !spiegelDa) buchungen.push({ s: K.rueck, st: 'GewSt-Rückstellung § 4 Abs. 5b', h: K.bank, ht: 'Bank', betr: r2(gbesch), text: 'GewSt Vorjahr (Verbrauch Rückstellung)' })
+          if (!spiegelDa || spiegelAufl < 0.005) buchungen.push({ s: K.rueck, st: 'GewSt-Rückstellung § 4 Abs. 5b', h: K.aufloesung, ht: 'Ertrag Auflösung GewSt-Rückstellung § 4 Abs. 5b', betr: diff, text: 'Auflösung GewSt-Rückstellung Vorjahr' })
+          hinweise.push('Der Saldo von ' + K.aufloesung + ' geht automatisch in die Körperschaftsteuer-Erklärung; der Ertrag wird außerbilanziell wieder herausgerechnet (Dok. 5361450).')
         } else {
           hinweise.push('Vorjahres-Rückstellung (' + eur(rvj) + ') unter dem Bescheid (' + eur(gbesch) + ') → Verbrauch ' + eur(rvj) + ', Nachzahlung ' + eur(-diff) + ' über ' + K.vorjahr + '.')
-          if (rvj > 0) buchungen.push({ s: K.rueck, st: 'GewSt-Rückstellung § 4 Abs. 5b', h: K.bank, ht: 'Bank', betr: r2(rvj), text: 'GewSt Vorjahr (Verbrauch Rückstellung)' })
+          if (rvj > 0 && !spiegelDa) buchungen.push({ s: K.rueck, st: 'GewSt-Rückstellung § 4 Abs. 5b', h: K.bank, ht: 'Bank', betr: r2(rvj), text: 'GewSt Vorjahr (Verbrauch Rückstellung)' })
           buchungen.push({ s: K.vorjahr, st: 'GewSt-Nachzahlung Vorjahre § 4 Abs. 5b', h: K.bank, ht: 'Bank', betr: r2(-diff), text: 'GewSt-Nachzahlung Vorjahr' })
         }
+      }
+
+      // ── Vorjahr: aktivierte Forderung gegen den Bescheid (Dok. 5305413, 5.2) ──
+      // Anders als bei der Rückstellung laeuft die Differenz hier NICHT ueber das
+      // Aufloesungskonto, sondern ueber die Vorjahre (2281/7641).
+      const fvj = num(w.fordVorjahr), erst = num(w.erstattungBescheid)
+      if (fvj > 0 || erst > 0) {
+        const dF = r2(fvj - erst)
+        erg.push({ l: 'Vorjahr: aktivierte Forderung', v: fvj }, { l: 'Vorjahr: Erstattung lt. Bescheid', v: erst })
+        if (erst > 0) buchungen.push({ s: K.bank, st: 'Bank', h: K.forderung, ht: 'Forderungen aus Gewerbesteuerüberzahlungen', betr: r2(erst), text: 'Ausgleich GewSt-Forderung Vorjahr' })
+        if (Math.abs(dF) < 0.01) hinweise.push('Die aktivierte GewSt-Forderung entspricht der Erstattung lt. Bescheid – Ausgleich ' + eur(erst) + ' (' + K.bank + ' an ' + K.forderung + '), nichts auszubuchen.')
+        else if (dF > 0) {
+          hinweise.push('Die Forderung wurde mit ' + eur(fvj) + ' zu hoch aktiviert; erstattet wurden ' + eur(erst) + '. Die Differenz ' + eur(dF)
+            + ' ueber ' + K.vorjahr + ' ausbuchen – nicht ueber ' + K.aufloesung + ', das gilt nur für Rückstellungen (Dok. 5305413, 5.2.2).')
+          buchungen.push({ s: K.vorjahr, st: 'GewSt-Nachzahlungen/-Erstattungen Vorjahre § 4 Abs. 5b', h: K.forderung, ht: 'Forderungen aus Gewerbesteuerüberzahlungen', betr: dF, text: 'Ausbuchung der zu hoch aktivierten GewSt-Forderung' })
+        } else {
+          hinweise.push('Erstattet wurden ' + eur(erst) + ', aktiviert waren nur ' + eur(fvj) + '. Der Mehrbetrag ' + eur(-dF)
+            + ' ist ein Ertrag des laufenden Jahres und ueber ' + K.vorjahr + ' zu erfassen (außerbilanziell zu neutralisieren, § 4 Abs. 5b EStG).')
+          buchungen.push({ s: K.bank, st: 'Bank', h: K.vorjahr, ht: 'GewSt-Nachzahlungen/-Erstattungen Vorjahre § 4 Abs. 5b', betr: r2(-dF), text: 'Mehrerstattung GewSt Vorjahr' })
+        }
+      }
+
+      // Die Buchungen des Vorjahres stehen schon in der SuSa - dann wird nicht
+      // noch einmal vorgeschlagen, sondern der Restbestand erklaert.
+      if (spiegelDa && (rvj > 0 || gbesch > 0)) {
+        const gezahltVj = r2(spiegelVerbrauch)
+        const offenVj = r2(gbesch - gezahltVj)
+        if (Math.abs(offenVj) > 0.005 && gbesch > 0) {
+          erg.push({ l: 'Vorjahr: davon bereits gezahlt lt. SuSa', v: gezahltVj })
+          erg.push({ l: 'Vorjahr: danach noch offen', v: offenVj, stark: 1 })
+          hinweise.push('Verbrauch und Auflösung der Vorjahres-Rückstellung stehen bereits in den Büchern (' + eur(gezahltVj)
+            + ' gezahlt, ' + eur(spiegelAufl) + ' aufgelöst) – sie werden deshalb nicht noch einmal vorgeschlagen. '
+            + 'Vom Bescheid über ' + eur(gbesch) + ' sind damit noch ' + eur(offenVj) + ' offen; auf ' + rst.konto + ' stehen ' + eur(spiegelEnd)
+            + '. Beide Zahlen sollten zusammenpassen – sonst gehört ein Teil des Restbestands bereits ins laufende Jahr.')
+        } else hinweise.push('Verbrauch und Auflösung der Vorjahres-Rückstellung stehen bereits in den Büchern – sie werden nicht noch einmal vorgeschlagen.')
       }
 
       // Vorjahres-Korrektur aus Betriebsprüfung / geändertem Bescheid (DATEV Fall 2/3)
@@ -1640,6 +1804,10 @@ export const MODULE = {
         buchungen.push({ s: K.vorjahr, st: 'GewSt-Nachzahlung Vorjahre § 4 Abs. 5b', h: K.bank, ht: 'Bank', betr: r2(-vk), text: 'GewSt-Nachzahlung Vorjahre (BP)' })
       }
 
+      if (hebe && hebe < 200) hinweise.push('Der Hebesatz liegt mit ' + hebe + ' % unter dem Mindesthebesatz von 200 % (§ 16 Abs. 4 S. 2 GewStG) – bitte prüfen.')
+      if (rf === 'kap' && num(w.freibetrag) > 0) hinweise.push('Der Freibetrag von ' + eur(num(w.freibetrag))
+        + ' ist eingetragen, gilt aber nur für natürliche Personen und Personengesellschaften (§ 11 Abs. 1 S. 3 Nr. 1 GewStG). Für die Kapitalgesellschaft wird mit 0 € gerechnet.')
+
       // Rechtsform-Weiche: § 35 EStG vs. Kapitalgesellschaft
       if (messbetrag > 0) {
         if (rf === 'kap') hinweise.push('Kapitalgesellschaft: Gewerbesteuer ist nicht abziehbar (§ 4 Abs. 5b EStG) und wird außerbilanziell hinzugerechnet (Programmverbindung Jahresabschluss → KSt/GewSt). Keine Anrechnung nach § 35 EStG; kein Freibetrag von 24.500 €.')
@@ -1649,16 +1817,133 @@ export const MODULE = {
       if (rf !== 'kap' && rf !== 'pers') hinweise.push('Buchungskonten SKR' + skr + ': Aufwand ' + K.gewst + ', Rückstellung ' + K.rueck + ', Auflösung ' + K.aufloesung + ', Vorjahre ' + K.vorjahr + ', Forderung ' + K.forderung + ', Verbindlichkeit ' + K.verb + '.')
       return { ergebnisse: erg, total, hinweise, buchungen } } },
   /* ── Aktiva (Bilanz) ── */
-  anlagevermoegen: { name: 'Anlagevermögen', bereich: 'aktiva', typ: 'C',
+  anlagevermoegen: { name: 'Anlagevermögen', bereich: 'aktiva', typ: 'C', kontoListe: true,
+    stand: '08/2026',
+    quellen: ['§ 266 Abs. 2 A. HGB (Gliederung), § 284 Abs. 3 HGB (Anlagespiegel)',
+              '§ 253 Abs. 3 HGB / § 7 EStG (planmäßige und außerplanmäßige Abschreibung)',
+              'DATEV Dok. 5300884 (Anlagevermögen), 5300879 (Anlagespiegel), 5301997 (Aufbau)',
+              'DATEV Dok. 5301952 (Abschreibung nach Handels- und Steuerrecht)',
+              'Die Höhe der AfA und die Anschaffungskosten werden hier NICHT ermittelt –',
+              'das bleibt in der Anlagenbuchhaltung. Dieses Modul prüft die Plausibilität.'],
+    rechenweg: [
+      ['Bestand', 'die Anlagekonten kommen beim SuSa-Import automatisch hierher, mit dem Buchwert zum 31.12.'],
+      ['Wirtschaftsgüter', 'je Konto über ＋ erfassen, was zugegangen oder abgegangen ist und worum es sich handelt'],
+      ['Abschreibung', 'die AfA-Konten stehen im zweiten Block, ebenfalls mit Vorjahresvergleich'],
+      ['Probe', 'Anfangsbestand + Zugänge − Abgänge − Abschreibung = Endbestand'],
+      ['Differenz', 'was übrig bleibt, ist noch nicht erklärt – Zu-/Abgang fehlt oder die AfA passt nicht'],
+    ],
     flags: [
-      { k: 'fZugang', label: 'Zugänge im Wirtschaftsjahr' },
-      { k: 'fAbgang', label: 'Abgänge / Veräußerungen' },
-      { k: 'fIab', label: 'Investitionsabzugsbetrag (§ 7g) beachten' },
-      { k: 'fRuecklage', label: 'Rücklage R 6.6 EStR / § 6b EStG prüfen' },
-      { k: 'fAbgestimmt', label: 'Mit Mandant abgestimmt (Vollständigkeit, Schäden)' }],
+      { k: 'fInventar', label: 'Inventarverzeichnis an den Mandanten zur Prüfung (alles noch vorhanden?)' },
+      { k: 'fNutzung', label: 'Nutzungsänderungen im AV geprüft' },
+      { k: 'fEmpfaenger', label: 'Richtiger Rechnungsempfänger bei den Zugängen' },
+      { k: 'fAbgestimmt', label: 'Anlagenbuchhaltung und Fibu stimmen überein' },
+      { k: 'fAusserplan', label: 'Außerplanmäßige Abschreibung geprüft (§ 253 Abs. 3 S. 3/5 HGB)' },
+      { k: 'fUstAbgang', label: 'Bei Abgängen: Umsatzsteuer und Entnahme ins Privatvermögen geprüft' },
+    ],
+    felder: [
+      { k: 'skr', l: 'Kontenrahmen', t: 'select', def: '03', opt: [['03', 'SKR 03'], ['04', 'SKR 04']] },
+      { k: 'bwAnfang', l: 'Buchwert Anlagevermögen zum 01.01. (für die Probe)', t: 'num' },
+      { k: 'afaAnlagenbuch', l: 'Abschreibung lt. Anlagenbuchhaltung (falls abweichend)', t: 'num' },
+      { k: 'notiz', l: 'Notiz / Erläuterungen zum Anlagevermögen', t: 'area', full: true },
+    ],
     listen: [
-      { key: 'zugaenge', label: 'Zugänge – neue Wirtschaftsgüter', rowNotes: true, rowFertig: true, felder: [{ k: 'buchungskonto', l: 'Buchungskonto', t: 'text' }, { k: 'bez', l: 'Bezeichnung Wirtschaftsgut', t: 'text' }, { k: 'betrOk', l: 'Betriebl. Nutzung unbedenklich', t: 'check' }, { k: 'pruef', l: 'Prüfung: betrieblich veranlasst? (→ Rückfrage)', t: 'check', warn: true }] },
-      { key: 'abgaenge', label: 'Anlagenabgänge', rowNotes: true, rowFertig: true, felder: [{ k: 'buchungskonto', l: 'Buchungskonto', t: 'text' }, { k: 'bez', l: 'Bezeichnung Wirtschaftsgut', t: 'text' }] }] },
+      { key: 'bestand', label: 'Anlagevermögen – Bestandskonten', rowNotes: true, rowVermerke: true,
+        rowPosten: { label: 'Wirtschaftsgut', platzhalter: 'Was für ein Wirtschaftsgut ist das?',
+          arten: [['zugang', 'Zugang'], ['abgang', 'Abgang'], ['bestand', 'Bestand']] },
+        felder: [
+          { k: 'konto', l: 'Konto', t: 'text' }, { k: 'bez', l: 'Bezeichnung', t: 'text' },
+          { k: 'saldo', l: 'Buchwert 31.12.', t: 'num' },
+          { k: 'ok', l: 'geprüft', t: 'check' }] },
+      { key: 'afa', label: 'Abschreibung – Aufwandskonten', rowNotes: true, rowVermerke: true, felder: [
+        { k: 'konto', l: 'Konto', t: 'text' }, { k: 'bez', l: 'Bezeichnung', t: 'text' },
+        { k: 'saldo', l: 'Betrag', t: 'num' }, { k: 'vj', l: 'Vorjahr', t: 'num' },
+        { k: 'delta', l: 'Veränderung', t: 'calc',
+          hilfe: 'Abschreibung des Jahres gegenüber dem Vorjahr.',
+          calc: x => Math.round((num(x.saldo) - num(x.vj)) * 100) / 100 },
+        { k: 'ok', l: 'geprüft', t: 'check' }] },
+    ],
+    // Beim SuSa-Import sollen die Anlagekonten hier landen statt im Sammeltopf.
+    erkennt: (konto, bez, skr) => istAvKonto(konto, skr === '04' ? '04' : '03'),
+    kontoZiel: (konto, w) => avZielListe(konto, (w && w.skr) === '04' ? '04' : '03') || 'bestand',
+    rechnen: (w, ctx) => {
+      const r2 = x => Math.round(x * 100) / 100
+      const skr = w.skr === '04' ? '04' : '03'
+      const erg = [], hinweise = [], buchungen = []
+      const best = (w.bestand || []).filter(x => x && (x.konto || x.saldo || x.vj))
+      const afaZ = (w.afa || []).filter(x => x && (x.konto || x.saldo || x.vj))
+
+      if (!best.length && !afaZ.length) {
+        hinweise.push('Noch keine Konten übernommen. Über „SuSa / Kontenabstimmliste importieren" werden die Anlage- und Abschreibungskonten automatisch hierher gestellt.')
+        return { ergebnisse: erg, total: null, hinweise, buchungen }
+      }
+
+      // ── Bestand ──
+      const endB = r2(best.reduce((t, x) => t + num(x.saldo), 0))
+      // Je Konto steht kein Vorjahreswert mehr - die Probe braucht aber einen
+      // Anfangsbestand. Vorrang hat das Feld; sonst der Wert, den der
+      // SuSa-Import mitgebracht hat. Beides wird offen ausgewiesen.
+      const anfSusa = r2(best.reduce((t, x) => t + num(x.vj), 0))
+      const anfFeld = num(w.bwAnfang)
+      const anfB = anfFeld || anfSusa
+      if (best.length) {
+        erg.push({ l: 'Buchwert 31.12. (' + best.length + (best.length === 1 ? ' Konto' : ' Konten') + ')', v: endB })
+        if (anfB) erg.push({ l: 'Buchwert 01.01.' + (anfFeld ? '' : ' (aus dem SuSa-Import)'), v: anfB })
+      }
+
+      // ── Erfasste Wirtschaftsgüter ──
+      const alle = []
+      best.forEach(x => (Array.isArray(x.posten) ? x.posten : []).forEach(q => { if (q && (q.bez || q.betrag)) alle.push({ ...q, konto: String(x.konto).trim() }) }))
+      const zug = r2(alle.filter(q => q.art === 'zugang').reduce((t, q) => t + num(q.betrag), 0))
+      const abg = r2(alle.filter(q => q.art === 'abgang').reduce((t, q) => t + num(q.betrag), 0))
+      if (alle.length) {
+        erg.push({ l: 'Zugänge lt. erfassten Wirtschaftsgütern', v: zug })
+        if (abg) erg.push({ l: 'Abgänge lt. erfassten Wirtschaftsgütern', v: abg })
+      }
+
+      // ── Abschreibung ──
+      const afaSusa = r2(afaZ.reduce((t, x) => t + num(x.saldo), 0))
+      const afaBuch = num(w.afaAnlagenbuch)
+      const afa = afaBuch || afaSusa
+      if (afaZ.length) erg.push({ l: 'Abschreibung lt. SuSa (' + afaZ.length + (afaZ.length === 1 ? ' Konto' : ' Konten') + ')', v: afaSusa })
+      if (afaBuch) {
+        erg.push({ l: 'Abschreibung lt. Anlagenbuchhaltung', v: afaBuch })
+        const d = r2(afaSusa - afaBuch)
+        if (Math.abs(d) > 0.005) hinweise.push('Die Abschreibung in der Buchhaltung (' + eur(afaSusa) + ') weicht um ' + eur(d)
+          + ' von der Anlagenbuchhaltung (' + eur(afaBuch) + ') ab. Solange das offen ist, stimmt auch die Probe unten nicht.')
+      }
+
+      // ── Probe ──
+      // Anfangsbestand + Zugaenge - Abgaenge - Abschreibung = Endbestand.
+      // Bleibt etwas uebrig, fehlt ein Zu- oder Abgang oder die AfA passt nicht.
+      let total = null
+      if (best.length && (afa || alle.length)) {
+        const soll = r2(anfB + zug - abg - afa)
+        const diff = r2(endB - soll)
+        erg.push({ l: 'rechnerischer Buchwert 31.12. (01.01. + Zugänge − Abgänge − Abschreibung)', v: soll })
+        erg.push({ l: 'Differenz zum Buchwert lt. SuSa', v: diff, stark: 1 })
+        total = { l: Math.abs(diff) < 0.005 ? 'Anlagevermögen ist plausibel' : 'noch nicht erklärt', v: Math.abs(diff) }
+        if (Math.abs(diff) < 0.005) hinweise.push('✅ Die Bewegung des Anlagevermögens geht auf: 01.01. ' + eur(anfB) + ' + Zugänge ' + eur(zug)
+          + (abg ? ' − Abgänge ' + eur(abg) : '') + ' − Abschreibung ' + eur(afa) + ' = ' + eur(endB) + '.')
+        else hinweise.push('Es bleiben ' + eur(diff) + ' unerklärt. ' + (diff > 0
+          ? 'Der Buchwert ist höher als gerechnet – vermutlich fehlt ein Zugang, oder ein Abgang wurde zu hoch erfasst.'
+          : 'Der Buchwert ist niedriger als gerechnet – vermutlich fehlt ein Abgang, oder die Abschreibung ist nicht vollständig erfasst.')
+          + ' Über das ＋ am jeweiligen Konto lässt sich ergänzen, worum es sich handelt.')
+      } else if (best.length && !anfB) {
+        hinweise.push('Für die Probe fehlt der Buchwert zum 01.01. Trage ihn oben ein, dann wird gerechnet: 01.01. + Zugänge − Abgänge − Abschreibung = 31.12.')
+      } else if (best.length) {
+        hinweise.push('Für die Probe fehlen noch die Abschreibungskonten oder die erfassten Wirtschaftsgüter.')
+      }
+
+      // ── Konten ohne jeden Bestand ──
+      const leer = best.filter(x => Math.abs(num(x.saldo)) < 0.005)
+      if (leer.length) hinweise.push(leer.length + ' Anlagekonten stehen auf null ('
+        + leer.map(x => String(x.konto).trim()).join(', ') + '). Sie stören die Probe nicht und lassen sich abhaken.')
+
+      if (!w.fInventar) hinweise.push('Das Inventarverzeichnis sollte dem Mandanten zur Prüfung vorliegen: Ist alles noch vorhanden, wird alles noch betrieblich genutzt? Das ist die Grundlage für Abgänge und Nutzungsänderungen.')
+      if (afaZ.length && !afaZ.some(x => /gebäude|gebaeude/i.test(x.bez || '')) && best.some(x => /gebäude|gebaeude|bauten/i.test(x.bez || '')))
+        hinweise.push('Im Bestand stehen Gebäude oder Bauten, unter den Abschreibungen findet sich aber kein Gebäudekonto. Prüfen, ob die Gebäude-AfA erfasst ist (§ 7 Abs. 4 EStG).')
+
+      return { ergebnisse: erg, total, hinweise, buchungen } } },
   warenbestand: { name: 'Warenbestand / Vorräte (Inventur)', bereich: 'aktiva', typ: 'C',
     flags: [
       { k: 'fInventur', label: 'Inventur durchgeführt / Inventurliste vorhanden' },
@@ -2042,7 +2327,9 @@ export function klassifiziereKonto(konto, bez) { const n = +konto; const b = (be
   if (/umsatzsteuer|vorsteuer/.test(b.split(/[\s.,;/()-]+/).slice(0, 2).join(' '))) return 'ustModul'
   if (n >= 1 && n <= 999) {
     if (/rückstell|rueckstell/.test(b) || (n >= 950 && n <= 989)) return 'konRueckst'
-    if (/darlehen|kredit|kreditinstitut|hypothek/.test(b) || (n >= 630 && n <= 699)) return 'konVerbindl'
+    // 0700-0799 sind Verbindlichkeiten (verbundene Unternehmen, Gesellschafter)
+    // und gehoerten bisher faelschlich zum Anlagevermoegen.
+    if (/darlehen|kredit|kreditinstitut|hypothek/.test(b) || (n >= 630 && n <= 799)) return 'konVerbindl'
     if (/kapital|eigenkapital|privat|rücklage|gewinnvortrag|einlage|entnahme/.test(b) || (n >= 800 && n <= 899)) return 'konKapital'
     return 'konAnlage' }
   if (n >= 1000 && n <= 1999) {

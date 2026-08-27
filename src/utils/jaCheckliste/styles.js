@@ -322,6 +322,15 @@ export const JAC2_CSS = `
   padding:3px 9px;font:inherit;font-size:11.5px;cursor:pointer}
 .jac2 .vermerkadd:hover{border-color:var(--accent);color:var(--accent);border-style:solid}
 .jac2 .rowvermerke{display:flex;flex-direction:column;gap:5px;margin-top:7px;width:100%}
+.jac2 .rowposten{display:flex;flex-direction:column;gap:5px;margin-top:7px;width:100%}
+.jac2 .psitem{display:flex;align-items:center;gap:7px}
+.jac2 .psart{flex:none;width:118px;padding:5px 7px;border:1px solid var(--line2);border-radius:7px;
+  background:var(--surface);font-size:12.5px;color:var(--ink)}
+.jac2 .pstext{flex:1;padding:5px 9px;border:1px solid var(--line2);border-radius:7px;background:var(--surface);
+  font-size:12.5px;color:var(--ink)}
+.jac2 .psbetr{flex:none;width:120px;padding:5px 9px;border:1px solid var(--line2);border-radius:7px;
+  background:var(--surface);font-size:12.5px;color:var(--ink);text-align:right}
+.jac2 .pstext:focus,.jac2 .psbetr:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:var(--accent)}
 .jac2 .vmitem{display:flex;align-items:center;gap:7px}
 .jac2 .vmnr{flex:none;width:19px;height:19px;border-radius:50%;background:var(--surface2);border:1px solid var(--line2);
   font-size:10.5px;font-weight:700;color:var(--ink2);display:flex;align-items:center;justify-content:center}
