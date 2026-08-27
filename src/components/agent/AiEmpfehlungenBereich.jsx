@@ -175,12 +175,9 @@ export default function AiEmpfehlungenBereich({ clients = [], dispatcher, onOeff
           nach deinem Klick etwas an; außenwirksame Schritte (z. B. Mail senden) bleiben deiner Freigabe vorbehalten.
         </div>
 
-
         <SchnellMeldung clients={clients} onGemeldet={ladeMcp} />
 
         <PosteingangKnopf />
-
-        )}
 
         {dokKarten.length > 0 && (
           <div style={{ marginBottom: '18px' }}>
