@@ -6,6 +6,21 @@
  * Bewusst ohne React – damit Formular, Mailversand und KI dieselbe Quelle nutzen.
  */
 
+import qrcode from 'qrcode-generator'
+
+/**
+ * QR-Code der Visitenkarte als Bild-Datenadresse.
+ * Der Gegenüber scannt ihn mit der Kamera und hat den Kontakt sofort im Handy –
+ * ohne seine E-Mail-Adresse herausgeben zu müssen. Funktioniert ohne Netz.
+ */
+export function visitenkarteQr(zellgroesse = 6, rand = 2) {
+  qrcode.stringToBytes = qrcode.stringToBytesFuncs['UTF-8']   // Umlaute (Hauptstraße) korrekt
+  const q = qrcode(0, 'M')      // Version automatisch, mittlere Fehlerkorrektur
+  q.addData(vCardText())
+  q.make()
+  return q.createDataURL(zellgroesse, rand)
+}
+
 // ── Visitenkarte: Stammdaten aus dem Impressum von moin-fibu.de ───────────────
 export const VISITENKARTE = {
   vorname:  'Jan',

@@ -10,10 +10,11 @@
  */
 import { useMemo, useState } from 'react'
 import { callAI, hasAiKey } from '../../utils/aiClient.js'
+import Skizzenfeld from './Skizzenfeld.jsx'
 import {
   VISITENKARTE, vCardText, toBase64,
   EINKUNFTSARTEN, BETRIEB_MERKMALE, UST_MERKMALE, VORGESCHICHTE, LEISTUNGEN,
-  hinweise, unterlagenListe, bogenAlsText,
+  hinweise, unterlagenListe, bogenAlsText, visitenkarteQr,
 } from '../../utils/erstkontakt.js'
 
 // Akzent aus der Moin-Fibu-Palette (hsl(215 40% …)) – trägt auf hellem und dunklem Grund.
@@ -91,6 +92,7 @@ export default function ErstkontaktBogen({ bogen, onChange, onClose, onMandantAn
   const [mail, setMail]   = useState(null)      // { betreff, text, art }
   const [nummer, setNummer] = useState('')
   const [zeigeMandant, setZeigeMandant] = useState(false)
+  const [qrGross, setQrGross] = useState(false)
 
   const f = bogen.felder ?? {}
   const h = bogen.haken ?? {}
@@ -99,6 +101,7 @@ export default function ErstkontaktBogen({ bogen, onChange, onClose, onMandantAn
   const setHaken = (k)    => onChange({ ...bogen, haken: { ...h, [k]: !h[k] }, geaendertAm: new Date().toISOString() })
 
   const tipps = useMemo(() => hinweise(h), [h])
+  const qrBild = useMemo(() => { try { return visitenkarteQr(5, 2) } catch { return null } }, [])
   const unterlagen = useMemo(() => unterlagenListe(bogen), [bogen])
 
   // ── Mail vorbereiten (nichts geht ohne deinen Klick raus) ───────────────────
@@ -276,6 +279,16 @@ export default function ErstkontaktBogen({ bogen, onChange, onClose, onMandantAn
         <Abschnitt nr="8" titel="Besonderheiten" hinweis="frei schreiben" offen={offen.has(8)} onToggle={() => toggleAbschnitt(8)}>
           <Feld label="Notizen aus dem Gespräch" breit mehrzeilig wert={f.notizen} onChange={v => setFeld('notizen', v)}
             platzhalter="Beteiligungen, Besonderheiten, Wünsche des Mandanten …" />
+          <div style={{ marginTop: '14px' }}>
+            <div style={{ fontSize: '11.5px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '6px' }}>
+              Skizze (Stift)
+            </div>
+            <Skizzenfeld
+              wert={bogen.skizze || null}
+              akzent={MF}
+              onChange={(daten) => onChange({ ...bogen, skizze: daten, geaendertAm: new Date().toISOString() })}
+            />
+          </div>
         </Abschnitt>
 
         <Abschnitt nr="9" titel="Nächster Schritt" hinweis="wird Aufgabe" offen={offen.has(9)} onToggle={() => toggleAbschnitt(9)}>
@@ -303,6 +316,15 @@ export default function ErstkontaktBogen({ bogen, onChange, onClose, onMandantAn
                 {VISITENKARTE.telefon} · {VISITENKARTE.email}
               </div>
             </div>
+            <img src={qrBild} alt="QR-Code mit meinen Kontaktdaten" width="88" height="88"
+              style={{ width: '88px', height: '88px', flexShrink: 0, borderRadius: '10px', border: '3px solid #fff', background: '#fff', imageRendering: 'pixelated' }} />
+          </div>
+          <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '8px', lineHeight: 1.55 }}>
+            📷 <strong>Scannen lassen:</strong> Der Gegenüber richtet die Handy-Kamera auf den QR-Code und hat deinen
+            Kontakt sofort gespeichert – ohne dass er seine E-Mail-Adresse herausgeben muss. Funktioniert auch ohne Netz.
+            <button onClick={() => setQrGross(true)} style={{ background: 'none', border: 'none', padding: 0, marginLeft: '6px', color: MF, fontSize: '12px', fontWeight: 700, cursor: 'pointer' }}>
+              groß anzeigen
+            </button>
           </div>
           <div style={{ display: 'flex', gap: '9px', flexWrap: 'wrap', marginTop: '12px' }}>
             <button onClick={visitenkarteVorbereiten} style={knopf()}>📇 Visitenkarte vorbereiten</button>
@@ -371,6 +393,20 @@ export default function ErstkontaktBogen({ bogen, onChange, onClose, onMandantAn
           {bogen.clientId && <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--green)' }}>✓ als Mandant angelegt</span>}
         </div>
       </div>
+
+      {/* QR groß – Tablet dem Gegenüber hinhalten */}
+      {qrGross && qrBild && (
+        <div onClick={() => setQrGross(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 1950, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '18px', padding: '24px', cursor: 'pointer' }}>
+          <img src={qrBild} alt="QR-Code mit den Kontaktdaten"
+            style={{ width: 'min(70vh, 88vw)', height: 'auto', borderRadius: '18px', border: '14px solid #fff', background: '#fff', imageRendering: 'pixelated' }} />
+          <div style={{ color: '#fff', textAlign: 'center', lineHeight: 1.6 }}>
+            <div style={{ fontSize: '19px', fontWeight: 800 }}>{VISITENKARTE.name} · {VISITENKARTE.titel}</div>
+            <div style={{ fontSize: '14px', opacity: 0.85 }}>{VISITENKARTE.firma} · {VISITENKARTE.telefon}</div>
+            <div style={{ fontSize: '12.5px', opacity: 0.7, marginTop: '8px' }}>Mit der Handy-Kamera scannen · tippen zum Schließen</div>
+          </div>
+        </div>
+      )}
 
       {/* Mandanten-Anlage */}
       {zeigeMandant && (
