@@ -254,6 +254,7 @@ function ZonenTitel({ children }) {
 export default function StartseiteHome({
   clients, aufgaben = [], termine = [], onSelectClient, onSelectClientAtKomm, onUpdateClient, onRefresh, onOeffneEingang,
   unbekannteEmails = [], onAssignEmail, onDismissUnbekannt, emailVorlagen = [], onNeuerMandantAusMail, onAddAuftragAusMail,
+  interessenten = [], onNeuerErstkontakt, onOeffneBogen,
 }) {
   const activeClients = useMemo(() => clients.filter(c => !c.archiviert), [clients])
   const [botKarten, setBotKarten] = useState([])   // bot_inbox: Handy-Meldungen + Beleg-Freigaben
@@ -381,6 +382,8 @@ export default function StartseiteHome({
     setAktualisiert('ok'); setTimeout(() => setAktualisiert(''), 1800)
   }
 
+  const offeneInteressenten = useMemo(() => (interessenten || []).filter(b => b && !b.clientId && b.status !== 'verloren'), [interessenten])
+
   const jetzt = new Date()
   const dranGesamt = ueberfaellig.length + faelligHeute.length
   const brennt = ueberfaellig.length + neueMails
@@ -409,6 +412,12 @@ export default function StartseiteHome({
           <h2 style={{ margin: '4px 0 2px', fontSize: '25px', fontWeight: 800, letterSpacing: '-0.01em' }}>🏠 Cockpit</h2>
           <div style={{ fontSize: '14.5px', color: 'var(--text-secondary)' }}>{lagebild}</div>
         </div>
+        {onNeuerErstkontakt && (
+          <button onClick={onNeuerErstkontakt} title="Erstgespräch mit einem Interessenten aufnehmen"
+            style={{ ...feld, background: 'var(--accent)', color: '#fff', borderColor: 'var(--accent)', fontWeight: 700 }}>
+            ＋ Erstkontakt
+          </button>
+        )}
         <button onClick={aktualisieren} disabled={aktualisiert === 'laeuft'}
           style={{ ...feld, color: aktualisiert === 'ok' ? 'var(--green)' : 'var(--text-secondary)', opacity: aktualisiert === 'laeuft' ? 0.7 : 1 }}>
           {aktualisiert === 'laeuft' ? '⏳ lädt …' : aktualisiert === 'ok' ? '✓ aktualisiert' : '↻ Aktualisieren'}
@@ -577,6 +586,35 @@ export default function StartseiteHome({
                 </div>
               )
             })}
+          </div>
+        </div>
+      )}
+
+      {/* ── Interessenten aus dem Erstkontaktbogen ── */}
+      {offeneInteressenten.length > 0 && (
+        <div>
+          <SekEyebrow note="aus dem Erstgespräch">Interessenten</SekEyebrow>
+          <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow)', overflow: 'hidden' }}>
+            {offeneInteressenten.slice(0, 5).map((b, i) => (
+              <div key={b.id} onClick={() => onOeffneBogen?.(b.id)}
+                style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 15px', cursor: 'pointer',
+                  borderBottom: i < Math.min(offeneInteressenten.length, 5) - 1 ? '1px solid var(--border)' : 'none' }}>
+                <span aria-hidden="true">🤝</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: '13.5px', fontWeight: 650, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {b.felder?.name?.trim() || 'Neuer Erstkontakt'}
+                  </div>
+                  {b.felder?.naechsterSchritt && (
+                    <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      → {b.felder.naechsterSchritt}
+                    </div>
+                  )}
+                </div>
+                <span style={{ fontSize: '11px', fontWeight: 700, padding: '3px 9px', borderRadius: '20px', background: 'var(--surface2)', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                  {b.status || 'offen'}
+                </span>
+              </div>
+            ))}
           </div>
         </div>
       )}

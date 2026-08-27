@@ -16,6 +16,8 @@ import GlobalTodoView  from './components/GlobalTodoView.jsx'
 import PosteingangUngeklaert from './components/PosteingangUngeklaert.jsx'
 import GlobalSearch          from './components/search/GlobalSearch.jsx'
 import StartseiteHome        from './components/dashboard/StartseiteHome.jsx'
+import ErstkontaktBogen     from './components/erstkontakt/ErstkontaktBogen.jsx'
+import { leererBogen, LEISTUNGEN } from './utils/erstkontakt.js'
 import CommandPalette        from './components/CommandPalette.jsx'
 import { supabase } from './utils/supabaseClient.js'
 import { cloudLoadAll, cloudSave, cloudSaveNow, cloudSnapshot, migrateLocalStorageToCloud } from './utils/cloudStorage.js'
@@ -406,6 +408,11 @@ export default function App() {
   const [hauptbereich, setHauptbereich] = useState('personen')
   // Cockpit-Startseite vs. Mandantenliste – beide leben im Bereich „personen".
   const [zeigeStartseite, setZeigeStartseite] = useState(true)
+  // Erstkontakt-Bögen (Interessenten) – eigene Liste, getrennt von den Mandanten.
+  const [interessenten, setInteressenten] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('interessenten-v1') || '[]') } catch { return [] }
+  })
+  const [aktiverBogenId, setAktiverBogenId] = useState(null)
   const wechselBereich = (key) => {
     setHauptbereich(key)
     try { localStorage.setItem('spielbuch-hauptbereich', key) } catch {}
@@ -534,6 +541,7 @@ export default function App() {
         if (Array.isArray(cloudData['leistungskatalog-v1'])) setLeistungskatalog(cloudData['leistungskatalog-v1'])
         if (cloudData['onedrive-tokens-v1'])                 setOnedriveTokens(cloudData['onedrive-tokens-v1'])
         if (Array.isArray(cloudData['form-vorlagen-v1']))    setFormVorlagen(cloudData['form-vorlagen-v1'])
+        if (Array.isArray(cloudData['interessenten-v1']))    setInteressenten(cloudData['interessenten-v1'])
         if (cloudData['claude-api-key-v1']) {
           setClaudeApiKey(cloudData['claude-api-key-v1'])
           localStorage.setItem('sda-claude-api-key', cloudData['claude-api-key-v1'])
@@ -659,6 +667,12 @@ export default function App() {
     if (!authUser || dataLoading) return
     cloudSave('leistungskatalog-v1', leistungskatalog)
   }, [leistungskatalog])
+  // Erstkontakt-Bögen: immer sofort lokal sichern (Gespräch ohne Netz!) und dann in die Cloud.
+  useEffect(() => {
+    try { localStorage.setItem('interessenten-v1', JSON.stringify(interessenten)) } catch { /* voll */ }
+    if (!authUser || dataLoading) return
+    cloudSave('interessenten-v1', interessenten)
+  }, [interessenten])
   useEffect(() => {
     if (!authUser || dataLoading || !onedriveTokens) return
     cloudSaveNow('onedrive-tokens-v1', onedriveTokens).catch(() => {})
@@ -1134,6 +1148,66 @@ export default function App() {
     }
     setClients(prev => prev.filter(c => c.id !== id))
     if (selectedId === id) setSelectedId(null)
+  }
+
+  // ── Erstkontakt (Interessenten) ─────────────────────────────────────────────
+  function neuerErstkontakt() {
+    const b = leererBogen()
+    setInteressenten(prev => [b, ...prev])
+    setAktiverBogenId(b.id)
+  }
+  function updateBogen(next) {
+    setInteressenten(prev => prev.map(b => b.id === next.id ? next : b))
+  }
+  // Aus dem Bogen eine globale Aufgabe machen (ohne Mandant, bis er angelegt ist).
+  function aufgabeAusBogen(titel, bisWann, mandantId) {
+    // Datum kann als TT.MM.JJJJ oder JJJJ-MM-TT eingetippt sein.
+    const t = String(bisWann || "").trim()
+    let iso = null
+    if (t.indexOf(".") > 0) {
+      const teile = t.split(".")
+      if (teile.length === 3 && teile[2].length === 4) {
+        iso = teile[2] + "-" + teile[1].padStart(2, "0") + "-" + teile[0].padStart(2, "0") + "T12:00:00"
+      }
+    } else if (t.length === 10 && t.charAt(4) === "-") {
+      iso = t + "T12:00:00"
+    }
+    addAufgabe({ typ: 'einmal', titel, mandantId: mandantId ?? null, faellig: iso, erledigt: false })
+  }
+  // Interessent → Mandant: Angaben übernehmen, Aufträge aus den gewählten Leistungen.
+  function mandantAusBogen(bogen, mandantennummer) {
+    const f = bogen.felder ?? {}
+    const h = bogen.haken ?? {}
+    const jahr = new Date().getFullYear()
+    const auftraege = LEISTUNGEN.filter(l => h[l.key]).map((l, i) => ({
+      id: 'a' + Date.now().toString(36) + i,
+      typ: l.auftragsTyp,
+      bezeichnung: l.label,
+      jahr,
+      status: 'offen',
+      verknuepfungen: [],
+      erstelltAm: new Date().toISOString(),
+    }))
+    const notizTeile = [f.notizen, f.rueckstaende ? 'Rückstände: ' + f.rueckstaende : '', f.honorar ? 'Honorar: ' + f.honorar : '']
+    const id = addClient({
+      mandantennummer,
+      name: f.name || 'Neuer Mandant',
+      rechtsform: f.rechtsform || '',
+      gewinnermittlung: f.gewinnermittlung === 'noch offen' ? '' : (f.gewinnermittlung || ''),
+      unternehmensgegenstand: f.taetigkeit || '',
+      kontaktEmail: f.email || '',
+      steuernummer: f.steuernummer || '',
+      notizen: notizTeile.filter(Boolean).join("\n"),
+      kontakte: (f.email || f.ansprechpartner)
+        ? [{ id: 'p' + Date.now().toString(36), name: f.ansprechpartner || '', rolle: '', email: f.email || '', telefon: f.telefon || '' }]
+        : [],
+      auftraege,
+    }, { oeffnen: false })
+    if (!id) return
+    setInteressenten(prev => prev.map(b => b.id === bogen.id ? { ...b, clientId: id, status: 'gewonnen' } : b))
+    if (f.naechsterSchritt) aufgabeAusBogen(f.naechsterSchritt, f.bisWann, id)
+    setAktiverBogenId(null)
+    setDetailInitialTab(0); setSelectedId(id); wechselBereich('personen')
   }
 
   // Zwei Mandanten verlustfrei zusammenführen: dropId → keepId.
@@ -1905,6 +1979,9 @@ export default function App() {
                   onUpdateClient={updateClient}
                   onRefresh={pollEmails}
                   onOeffneEingang={() => wechselBereich('ki_empfehlungen')}
+                  interessenten={interessenten}
+                  onNeuerErstkontakt={neuerErstkontakt}
+                  onOeffneBogen={setAktiverBogenId}
                   unbekannteEmails={unbekannteEmails}
                   onAssignEmail={(uid, account, clientId, auftragId, saveContact) => assignEmail(uid, account, clientId, !!saveContact, auftragId)}
                   onDismissUnbekannt={(uid, account) => setUnbekannteEmails(prev => prev.filter(e => !(e.uid === uid && e.account === account)))}
@@ -2260,6 +2337,22 @@ export default function App() {
           onNewClient={() => { setShowNewModal(true); setCmdPaletteOpen(false) }}
         />
       )}
+
+      {aktiverBogenId && (() => {
+        const b = interessenten.find(x => x.id === aktiverBogenId)
+        if (!b) return null
+        return (
+          <div style={{ position: 'fixed', inset: 0, zIndex: 1850, background: 'var(--bg)', overflowY: 'auto' }}>
+            <ErstkontaktBogen
+              bogen={b}
+              onChange={updateBogen}
+              onClose={() => setAktiverBogenId(null)}
+              onAufgabe={(titel, bis) => aufgabeAusBogen(titel, bis, b.clientId)}
+              onMandantAnlegen={mandantAusBogen}
+            />
+          </div>
+        )
+      })()}
 
       {showNewModal && (
         <NewClientModal
