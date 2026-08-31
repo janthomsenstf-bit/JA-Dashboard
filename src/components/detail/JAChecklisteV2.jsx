@@ -95,7 +95,7 @@ export default function JAChecklisteV2({ au, client, onUpdate }) {
   const doExport = async () => {
     const sheets = buildExportSheets(data, { mandant: client?.name, gw, wj: au?.jahr || '', checkliste: au?.titel })
     const { exportSheets } = await import('../../utils/jaCheckliste/exportExcel.js')
-    exportSheets(sheets, 'Arbeitspapier_' + (client?.name || 'Mandant') + '_' + (au?.titel || 'JA'))
+    await exportSheets(sheets, 'Arbeitspapier_' + (client?.name || 'Mandant') + '_' + (au?.titel || 'JA'))
   }
 
   const shownPunkte = (activeView === 'abstimmung' || activeView === 'stammdaten') ? [] : ((data.kategorien.find(k => (k.bereich || '_') === activeView) || {}).punkte || [])

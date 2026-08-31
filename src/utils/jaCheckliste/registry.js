@@ -2443,95 +2443,335 @@ export function aufbereitenText(cl, mandantName, wj) {
   return s.trim()
 }
 
-// ── Excel-Export: Tabellenblätter aufbauen (Arrays von Zeilen) ─────────────────
+// ── Excel-Export: Tabellenblaetter aufbauen ───────────────────────────────────
+// Liefert strukturierte Zeilen ({t, c}) statt roher Arrays, damit exportExcel.js
+// formatieren kann. Zeilentypen: head | row | sub | kv | total | hint | kpi | spacer
+const XL_KURZ = {
+  erloeseStpfl: 'Erlöse 19 %', erloeseErmaessigt: 'Erlöse 7 %', erloeseSteuerfrei: 'Erlöse steuerfrei',
+  erloeseAusfuhr: 'Erlöse Ausfuhr / ig. Lief.', erloese13b: 'Erlöse § 13b', erloeseSonst: 'Sonstige Erträge',
+  erloesschmaelerung: 'Erlösschmälerungen', igLieferung: 'Ig. Lieferungen',
+  sachentnahme: 'Sachentnahmen', eigenverbrauch: 'Unentgeltl. Wertabgaben',
+  kleinunternehmer: 'Kleinunternehmer', ustVerprobung: 'USt-Verprobung',
+  liebhaberei: 'Liebhaberei', betriebsaufgabe: 'Betriebsaufgabe',
+  wareneinkauf: 'Wareneinkauf', geschenke: 'Geschenke', reisekosten: 'Reisekosten',
+  verpflegung: 'Verpflegungsmehraufwand', arbeitszimmer: 'Arbeitszimmer',
+  kfzKosten: 'Kfz-Kosten', kfz1prozent: 'Kfz-Privatnutzung', kfzArbeitnehmer: 'Dienstwagen AN',
+  kfzLadestrom: 'Ladestrom E-Dienstwagen', telefon: 'Telefon privat',
+  beschraenktBA: 'Beschränkt abzb. BA', vorsteuer: 'Vorsteuer', igErwerb: 'Ig. Erwerbe',
+  durchlaufend: 'Durchlaufende Posten', ustZahllast: 'USt-Verbindlichkeit',
+  lohn: 'Lohnverprobung', ustAbgrenzung: 'USt-Abgrenzung', ustModul: 'USt-Abstimmung',
+  gewerbesteuer: 'Gewerbesteuer', anlagevermoegen: 'Anlagevermögen',
+  warenbestand: 'Warenbestand', forderungen: 'Forderungen L&L',
+  immVg: 'Immaterielle VG', finanzanlagen: 'Finanzanlagen', sonstVg: 'Sonstige VG',
+  rap: 'RAP aktiv', rapAktiv: 'ARAP-Spiegel', rapPassiv: 'PRAP',
+  rueckstellungen: 'Rückstellungsspiegel', verbindlichkeiten: 'Verb. Restlaufzeiten',
+  kapital: 'Eigenkapital', ruecklage6b: 'Rücklage § 6b', steuerrueck: 'Steuerrückstellungen',
+  darlehenKonto: 'Darlehen (Konto)', sonstVerb: 'Sonstige Verb.', ergebnisverwendung: 'Ergebnisverwendung',
+  konAnlage: 'Anlagekonten', konUmlauf: 'Umlaufvermögen', konKapital: 'Eigenkapital / Privat',
+  konVerbindl: 'Verbindlichkeiten', konRueckst: 'Rückstellungen (Konten)', konMaterial: 'Wareneinkauf (Konten)',
+  konAufwand: 'Betriebsausgaben', konNeutral: 'Neutrale Konten', konUnklar: 'Nicht zugeordnet',
+  darlehen: 'Darlehen', bewirtung: 'Bewirtung', spenden: 'Spenden', fahrtenbuch: 'Fahrtenbuch',
+  kasse: 'Kasse', bank: 'Bank',
+}
+// Blattname: erst Kurzname, sonst am Wort kuerzen statt hart bei 31 Zeichen abschneiden.
+function xlKurz(modKey, name) {
+  if (XL_KURZ[modKey]) return XL_KURZ[modKey]
+  let n = String(name || 'Blatt').replace(/\s*\([^)]*\)\s*$/, '').trim()
+  if (n.length <= 31) return n
+  n = n.split(/\s*[–—]\s*/)[0].trim()
+  if (n.length <= 31) return n
+  let out = ''
+  n.split(/\s+/).forEach(w => { if ((out + ' ' + w).trim().length <= 31) out = (out + ' ' + w).trim() })
+  return out || n.slice(0, 31)
+}
+const XL_STATUS_TONE = { ok: 'ok', offen: 'offen', arbeit: 'arbeit', rueck: 'rueck', korr: 'korr' }
+const xlStatus = st => ({ v: (STATUS[st] || STATUS.offen)[1], tone: XL_STATUS_TONE[st] || 'offen' })
+const xlJa = v => (v ? 'ja' : '—')
+const xlTxt = v => (v == null || v === '' ? '—' : v)
+
+// Spaltenbreiten/-formate aus den Feldtypen einer Liste ableiten
+function xlSpalten(felder, zusatz) {
+  const cols = (felder || []).map(f => {
+    if (f.t === 'num' || f.t === 'calc') {
+      const l = String(f.l || '')
+      if (/%|prozent|anteil/i.test(l)) return { w: 12, fmt: 'pct', align: 'right' }
+      if (/monat|anzahl|tage|\bkm\b|stück|stueck|jahr|g\/km/i.test(l)) return { w: 13, fmt: 'int', align: 'right' }
+      return { w: 15, fmt: 'eur', align: 'right' }
+    }
+    if (f.t === 'check') return { w: 12, align: 'center' }
+    const lang = /bezeichnung|zweck|text|vermerk|beschreib|erläuter/i.test(f.l || '')
+    return { w: lang ? 34 : Math.min(26, Math.max(11, String(f.l || '').length + 3)), wrap: lang }
+  })
+  ;(zusatz || []).forEach(() => cols.push({ w: 34, wrap: true }))
+  return cols
+}
+
 export function buildExportSheets(cl, meta) {
-  meta = meta || {}; const bl = []
-  const done = alleP(cl).filter(p => p.status === 'ok').length
-  bl.push({ name: 'Übersicht', rows: [['Mandant', meta.mandant || ''], ['Rechtsform', meta.rf || ''],
-    ['Gewinnermittlung', (cl.gw || meta.gw) === 'bilanz' ? 'Bilanz' : 'EÜR'], ['Wirtschaftsjahr', meta.wj || ''], ['Checkliste', meta.checkliste || ''], [],
-    ['Prüfpunkte gesamt', alleP(cl).length], ['davon erledigt', done],
-    ['Rückfragen', alleP(cl).filter(p => p.status === 'rueck').length], ['Korrekturbedarf', alleP(cl).filter(p => p.status === 'korr').length]] })
+  meta = meta || {}
   const sd = cl.stammdaten || {}
-  const sdRows = [['Stammdaten & Auftrag'], []]
-  STAMMDATEN_FELDER.forEach(grp => { sdRows.push([grp.gruppe])
+  const gw = (cl.gw || meta.gw) === 'bilanz' ? 'Bilanz' : 'EÜR'
+  const alle = alleP(cl)
+  const zaehl = st => alle.filter(p => p.status === st).length
+  const kopf = [meta.mandant || sd.name || '', sd.mandantennr ? 'Mandant ' + sd.mandantennr : '',
+    meta.wj ? 'Wirtschaftsjahr ' + meta.wj : '', gw].filter(Boolean).join('  ·  ')
+  const bl = []
+  const namen = {}
+  // Excel verbietet \ / ? * : [ ] im Blattnamen; Apostrophe brechen die Verlinkung.
+  const sauber = n => (String(n == null || n === '' ? 'Blatt' : n).replace(/[\\/?*:[\]']/g, '-').slice(0, 31).trim() || 'Blatt')
+  const eindeutig = n => { n = sauber(n); let x = n, i = 2
+    while (namen[x.toLowerCase()]) { x = sauber(n.slice(0, 27) + ' ' + i); i++ }
+    namen[x.toLowerCase()] = 1; return x }
+  const verzeichnis = []
+  const anmelden = (blatt, inhalt, status) => {
+    blatt.name = eindeutig(blatt.name)
+    verzeichnis.push({ blatt: blatt.name, inhalt, status })
+    bl.push(blatt)
+  }
+
+  // ── Stammdaten ──────────────────────────────────────────────────────────────
+  // Stammdaten stehen als Label/Wert-Block auf dem Deckblatt, nicht auf einem
+  // eigenen Blatt - sonst blaettert man beim Arbeiten staendig hin und her.
+  const sdRows = []
+  STAMMDATEN_FELDER.forEach(grp => {
+    sdRows.push({ t: 'sub', c: [grp.gruppe] })
     grp.felder.forEach(f => {
       let v = (sd[f.k] != null && sd[f.k] !== '') ? sd[f.k]
         : (f.k === 'name' ? (meta.mandant || '') : (f.k === 'gewinnermittlung' ? (cl.gw === 'bilanz' ? 'bilanz' : 'euer') : (f.k === 'rechtsform' ? (meta.rf || '') : '')))
       if (f.t === 'select' && f.opt) { const o = f.opt.find(o => o[0] === v); if (o) v = o[1] }
-      sdRows.push([f.l, v]) })
-    sdRows.push([]) })
-  bl.push({ name: 'Stammdaten', rows: sdRows })
-  const check = [['Kategorie', 'Typ', 'Prüfpunkt', 'Konto', 'Status', 'Saldo', 'Vorjahr', 'Abweichung', 'Notiz']]
-  ;(cl.kategorien || []).forEach(k => (k.punkte || []).forEach(p => { const w = p.werte; const s = num(w.saldo), v = num(w.vj)
-    check.push([k.name, p.typ, p.titel, (w.konto || (p.konten || [])[0] || ''), (STATUS[p.status] || STATUS.offen)[1],
-      p.typ === 'B' ? s : (w.betrag ? num(w.betrag) : ''), p.typ === 'B' ? v : '', p.typ === 'B' ? s - v : '', w.notiz || '']) }))
-  bl.push({ name: 'Checkliste', rows: check, num: [5, 6, 7] })
-  alleP(cl).forEach(p => { const mod = MODULE[p.modul]; if (!mod) return
-    if (mod.custom === 'darlehen') { const dl = p.werte.darlehen || []; const fr = { kurz: 'kurzfristig', lang: 'langfristig', gemischt: 'teils/teils' }
-      const rows = [['Darlehen – ' + (meta.mandant || '')], [], ['Anzahl', dl.length], ['Restschuld gesamt', dl.reduce((s, d) => s + num(d.restschuld), 0)],
-        ['Zinsaufwand gesamt', dl.reduce((s, d) => s + num(d.zinsaufwand), 0)], ['Tilgung WJ gesamt', dl.reduce((s, d) => s + num(d.tilgungWj), 0)]]
-      dl.forEach((d, idx) => { rows.push([], ['Darlehen ' + (idx + 1), d.geber || ''], ['Verwendungszweck', d.zweck || ''], ['Vertragsnummer', d.vertragsnr || ''],
-        ['Vertragsdatum', d.vertragsdatum || ''], ['Auszahlungsdatum', d.auszahlung || ''], ['Laufzeit bis', d.laufzeitBis || ''], ['Zinssatz %', d.zinssatz || ''],
-        ['Ursprungsbetrag', d.betrag || ''], ['Restschuld 31.12.', d.restschuld || ''], ['Tilgung im WJ', d.tilgungWj || ''], ['Zinsaufwand', d.zinsaufwand || ''],
-        ['Sondertilgungen', d.sondertilgung || ''], ['Fristigkeit', fr[d.art] || ''],
-        ['Unterlagen', [d.dVertrag ? 'Vertrag' : '', d.dTilgplan ? 'Tilgungsplan' : '', d.dSalden ? 'Saldenbestätigung' : ''].filter(Boolean).join(', ') || '—'],
-        ['Prüfungen erledigt', [d.pSaldo ? 'Saldo' : '', d.pTilgung ? 'Tilgung' : '', d.pZinsen ? 'Zinsen' : '', d.pRestschuld ? 'Restschuld' : '', d.pFrist ? 'Fristigkeit' : '', d.pBesonder ? 'Besonderheiten' : ''].filter(Boolean).join(', ') || '—'],
-        ['Status', (STATUS[d.status || 'offen'])[1]], ['Notiz', d.notiz || '']);
-        (d.offen || []).forEach((o, oi) => rows.push([oi === 0 ? 'Offene Punkte' : '', o])) })
-      bl.push({ name: 'Darlehen', rows }); return }
+      sdRows.push({ t: 'kv', c: [f.l, xlTxt(v)] })
+    })
+    sdRows.push({ t: 'spacer' })
+  })
+
+  // ── Checkliste ──────────────────────────────────────────────────────────────
+  const chkRows = [{ t: 'head', c: ['Kategorie', 'Prüfpunkt', 'Konto', 'Status', 'Saldo', 'Vorjahr', 'Abweichung', 'Notiz'] }]
+  let sS = 0, sV = 0
+  ;(cl.kategorien || []).forEach(k => (k.punkte || []).forEach(p => {
+    const w = p.werte || {}, s = num(w.saldo), v = num(w.vj)
+    const istB = p.typ === 'B'
+    if (istB) { sS += s; sV += v }
+    chkRows.push({ t: 'row', c: [k.name, p.titel, xlTxt(w.konto || (p.konten || [])[0] || ''), xlStatus(p.status),
+      istB ? s : (w.betrag ? num(w.betrag) : null), istB ? v : null,
+      istB ? { v: s - v, fmt: 'eurS' } : null, w.notiz || ''] })
+  }))
+  chkRows.push({ t: 'total', c: ['Summe der Bestandskonten', '', '', '', sS, sV, { v: sS - sV, fmt: 'eurS' }, ''] })
+  const chkBlatt = { name: 'Checkliste', title: 'Prüfpunkte im Überblick', sub: kopf, landscape: true,
+    freeze: true, filter: true,
+    cols: [{ w: 24, wrap: true }, { w: 40, wrap: true }, { w: 10, align: 'center' }, { w: 17 },
+      { w: 15, fmt: 'eur' }, { w: 15, fmt: 'eur' }, { w: 16, fmt: 'eurS' }, { w: 44, wrap: true }],
+    rows: chkRows }
+
+  anmelden(chkBlatt, alle.length + ' Prüfpunkte', null)
+
+  // ── Modulblaetter ───────────────────────────────────────────────────────────
+  alle.forEach(p => {
+    const mod = MODULE[p.modul]; if (!mod) return
+    const w = p.werte || {}
+
+    if (mod.custom === 'darlehen') {
+      const dl = w.darlehen || []
+      const fr = { kurz: 'kurzfristig', lang: 'langfristig', gemischt: 'teils/teils' }
+      const rows = [{ t: 'sub', c: ['Überblick'] },
+        { t: 'kv', c: ['Anzahl Darlehen', dl.length] },
+        { t: 'kv', c: ['Restschuld gesamt', { v: dl.reduce((s, d) => s + num(d.restschuld), 0), fmt: 'eur' }] },
+        { t: 'kv', c: ['Zinsaufwand gesamt', { v: dl.reduce((s, d) => s + num(d.zinsaufwand), 0), fmt: 'eur' }] },
+        { t: 'total', c: ['Tilgung im WJ gesamt', { v: dl.reduce((s, d) => s + num(d.tilgungWj), 0), fmt: 'eur' }] },
+        { t: 'spacer' },
+        { t: 'head', c: ['Nr.', 'Darlehensgeber', 'Verwendungszweck', 'Vertrags-Nr.', 'Laufzeit bis', 'Zins %',
+          'Ursprungsbetrag', 'Restschuld 31.12.', 'Tilgung WJ', 'Zinsaufwand', 'Fristigkeit', 'Status', 'Unterlagen', 'Offene Punkte / Notiz'] }]
+      dl.forEach((d, i) => {
+        const unterlagen = [d.dVertrag ? 'Vertrag' : '', d.dTilgplan ? 'Tilgungsplan' : '', d.dSalden ? 'Saldenbestätigung' : ''].filter(Boolean).join(', ') || '—'
+        const offen = (d.offen || []).filter(Boolean)
+        rows.push({ t: 'row', c: [i + 1, xlTxt(d.geber), xlTxt(d.zweck), xlTxt(d.vertragsnr), xlTxt(d.laufzeitBis),
+          d.zinssatz ? num(d.zinssatz) : null, num(d.betrag), num(d.restschuld), num(d.tilgungWj), num(d.zinsaufwand),
+          fr[d.art] || '—', xlStatus(d.status || 'offen'), unterlagen,
+          [d.notiz || '', offen.join(' · ')].filter(Boolean).join(' — ') || '—'] })
+      })
+      const b = { name: xlKurz('darlehen'), title: 'Darlehen – Verwaltung & Prüfung', sub: kopf, landscape: true,
+        freeze: true, filter: true,
+        cols: [{ w: 6, align: 'center' }, { w: 26, wrap: true }, { w: 28, wrap: true }, { w: 16 }, { w: 13, align: 'center' },
+          { w: 9, fmt: 'pct', align: 'right' }, { w: 16, fmt: 'eur' }, { w: 16, fmt: 'eur' }, { w: 14, fmt: 'eur' },
+          { w: 14, fmt: 'eur' }, { w: 13, align: 'center' }, { w: 17 }, { w: 26, wrap: true }, { w: 40, wrap: true }],
+        rows }
+      anmelden(b, dl.length + ' Darlehen', p.status); return
+    }
+
     if (mod.custom === 'ust') {
-      const w = p.werte; const a = ustAbstimmung(w)
+      const a = ustAbstimmung(w)
       const bt = { soll: 'Sollversteuerung', ist: 'Istversteuerung', euer: 'EÜR (§ 4 Abs. 3)' }
       const vaL = { monat: 'monatlich', quartal: 'vierteljährlich', jahr: 'nur Jahreserklärung', keine: 'keine' }
-      const rows = [['Umsatzsteuer-Abstimmung – ' + (meta.mandant || '')], [],
-        ['Besteuerungsart', bt[w.besteuerung] || 'Sollversteuerung'],
-        ['Voranmeldung', vaL[w.voranmeldung] || 'monatlich'],
-        ['Dauerfristverlängerung', w.dauerfrist ? 'ja' : '—'],
-        ['Sondervorauszahlung 1/11', w.sondervz ? num(w.sondervzBetrag) : '—'],
-        ['Datenquelle', a.quelle === 'protokolle' ? 'UStVA-Übermittlungsprotokolle' : 'Steuerkonto'], [],
-        ['Gemeldet ans Finanzamt', a.gemeldet], ['Erfasst lt. Buchhaltung', a.gebucht], ['Differenz (gemeldet − gebucht)', a.differenz],
-        ['Status', (STATUS[p.status] || STATUS.offen)[1]], []]
+      const rows = [{ t: 'sub', c: ['Rahmen'] },
+        { t: 'kv', c: ['Besteuerungsart', bt[w.besteuerung] || 'Sollversteuerung'] },
+        { t: 'kv', c: ['Voranmeldung', vaL[w.voranmeldung] || 'monatlich'] },
+        { t: 'kv', c: ['Dauerfristverlängerung', xlJa(w.dauerfrist)] },
+        { t: 'kv', c: ['Sondervorauszahlung 1/11', w.sondervz ? { v: num(w.sondervzBetrag), fmt: 'eur' } : '—'] },
+        { t: 'kv', c: ['Datenquelle', a.quelle === 'protokolle' ? 'UStVA-Übermittlungsprotokolle' : 'Steuerkonto'] },
+        { t: 'spacer' }, { t: 'sub', c: ['Abstimmung'] },
+        { t: 'kv', c: ['Gemeldet ans Finanzamt', { v: a.gemeldet, fmt: 'eur' }] },
+        { t: 'kv', c: ['Erfasst lt. Buchhaltung', { v: a.gebucht, fmt: 'eur' }] },
+        { t: 'total', c: ['Differenz (gemeldet − gebucht)', { v: a.differenz, fmt: 'eurS' }] },
+        { t: 'kv', c: ['Status', xlStatus(p.status)] }, { t: 'spacer' }]
       const rr = (mod.rechnen(w, { gw: cl.gw || meta.gw }).buchungen) || []
-      if (rr.length) { rows.push(['Buchungsvorschläge', 'Soll', 'Haben', 'Betrag', 'Text']); rr.forEach(b => rows.push(['', b.s, b.h || '', b.betr, b.text])); rows.push([]) }
+      if (rr.length) {
+        rows.push({ t: 'sub', c: ['Buchungsvorschläge'] }, { t: 'head', c: ['Soll', 'Haben', 'Betrag', 'Text'] })
+        rr.forEach(b => rows.push({ t: 'row', c: [b.s, b.h || '', num(b.betr), b.text] }))
+        rows.push({ t: 'spacer' })
+      }
       const hist = w.buchhistorie || []
-      if (hist.length) { rows.push(['Buchungs-Historie', 'Datum', 'Soll', 'Haben', 'Betrag', 'Text', 'Vermerk']); hist.forEach(h => rows.push(['', h.datum || '', h.soll || '', h.haben || '', num(h.betrag), h.text || '', h.vermerk || ''])); rows.push([]) }
+      if (hist.length) {
+        rows.push({ t: 'sub', c: ['Buchungs-Historie'] }, { t: 'head', c: ['Datum', 'Soll', 'Haben', 'Betrag', 'Text', 'Vermerk'] })
+        hist.forEach(h => rows.push({ t: 'row', c: [h.datum || '', h.soll || '', h.haben || '', num(h.betrag), h.text || '', h.vermerk || ''] }))
+        rows.push({ t: 'spacer' })
+      }
       if (w.besteuerung === 'euer' && (w.euerPos || []).length) {
         const jahr = getStichtag().getFullYear()
         const Ke = UST_KONTEN[w.skr === '04' ? '04' : '03']
         const zL = { dez: 'Dezember', q4: 'Q4', nov: 'November', sonst: 'sonstiger' }
-        rows.push(['§ 11 · USt-Zahlungen Jahreswechsel', 'Zeitraum', 'Zahlungsdatum', 'SEPA', 'Betrag', 'Fälligkeit', 'Zuordnung', 'Buchungsvorschlag'])
+        rows.push({ t: 'sub', c: ['§ 11 · USt-Zahlungen rund um den Jahreswechsel'] },
+          { t: 'head', c: ['Zeitraum', 'Zahlungsdatum', 'SEPA', 'Betrag', 'Fälligkeit', 'Zuordnung', 'Buchungsvorschlag'] })
         w.euerPos.forEach(r => { if (!r) return; const t = ust10Tage(r, jahr, w.dauerfrist, Ke)
-          rows.push(['', zL[r.zeitraum] || r.zeitraum || '', r.zahldatum || '', r.sepa ? 'ja' : '—', num(r.betrag), t.faelligTxt, t.zuordnung === 'wirtschaft' ? 'wirtsch. Jahr ' + t.jahr : t.zuordnung === 'zahlung' ? 'Jahr der Zahlung ' + t.jahrZahlung : 'unklar', t.buchungTxt || '']) })
-        rows.push([])
+          rows.push({ t: 'row', c: [zL[r.zeitraum] || r.zeitraum || '', r.zahldatum || '', xlJa(r.sepa), num(r.betrag), t.faelligTxt,
+            t.zuordnung === 'wirtschaft' ? 'wirtsch. Jahr ' + t.jahr : t.zuordnung === 'zahlung' ? 'Jahr der Zahlung ' + t.jahrZahlung : 'unklar',
+            t.buchungTxt || ''] }) })
+        rows.push({ t: 'spacer' })
       }
-      if (w.notiz) rows.push([], ['Notiz', w.notiz])
-      bl.push({ name: 'USt-Abstimmung', rows }); return }
+      if (w.notiz) rows.push({ t: 'sub', c: ['Notiz'] }, { t: 'hint', c: [w.notiz] })
+      const b = { name: xlKurz(p.modul, mod.name), title: mod.name, sub: kopf, landscape: true,
+        cols: [{ w: 34, wrap: true }, { w: 20 }, { w: 12, align: 'center' }, { w: 15, fmt: 'eur' }, { w: 18 }, { w: 26, wrap: true }, { w: 40, wrap: true }],
+        rows }
+      anmelden(b, 'Differenz ' + eur(a.differenz), p.status); return
+    }
+
     const struktur = mod.flags || mod.felder || mod.positionen || mod.listen
-    if (!mod.rechnen && !struktur) return; const ctx = { gw: cl.gw || meta.gw, rechtsform: (cl.stammdaten && cl.stammdaten.rechtsform) || meta.rf || '' }
-    const rows = [[p.titel], []]
-    if (mod.flags) { mod.flags.forEach(fl => rows.push([fl.label, p.werte[fl.k] ? 'ja' : '—'])); rows.push([]) }
-    if (mod.felder) { const felder = typeof mod.felder === 'function' ? mod.felder(ctx, p.werte) : mod.felder
-      felder.forEach(f => rows.push([f.l, f.t === 'num' ? num(p.werte[f.k]) : (p.werte[f.k] || '')])); rows.push([]) }
-    modLists(mod).forEach(L => { rows.push([L.label || ''])
-      // Bei Listen mit Zeilenvermerk wandern Vermerk und Rueckfragen als eigene
-      // Spalten ins Arbeitspapier - sonst waere die Begruendung nur am Bildschirm.
-      const zusatz = (L.rowVermerke ? ['Vermerke je Buchung'] : []).concat(L.rowNotes ? ['Vermerk', 'Rueckfragen'] : [])
-      rows.push((L.felder || []).map(f => f.l).concat(zusatz))
-      ;(p.werte[L.key] || []).forEach(x => {
-        const basis = (L.felder || []).map(f => f.t === 'num' ? num(x[f.k])
+    if (!mod.rechnen && !struktur) return
+    const ctx = { gw: cl.gw || meta.gw, rechtsform: sd.rechtsform || meta.rf || '' }
+    const rows = []
+    let maxSp = 2, inhalt = ''
+
+    if (mod.flags) {
+      rows.push({ t: 'sub', c: ['Prüfschritte'] })
+      mod.flags.forEach(fl => rows.push({ t: 'kv', c: [fl.label, xlJa(w[fl.k])] }))
+      rows.push({ t: 'spacer' })
+    }
+    if (mod.felder) {
+      const felder = typeof mod.felder === 'function' ? mod.felder(ctx, w) : mod.felder
+      rows.push({ t: 'sub', c: ['Angaben'] })
+      felder.forEach(f => rows.push({ t: 'kv', c: [f.l, f.t === 'num' ? { v: num(w[f.k]), fmt: 'eur' } : xlTxt(w[f.k])] }))
+      rows.push({ t: 'spacer' })
+    }
+
+    let listCols = null
+    modLists(mod).forEach(L => {
+      const daten = w[L.key] || []
+      const zusatz = (L.rowVermerke ? ['Vermerke je Buchung'] : []).concat(L.rowNotes ? ['Vermerk', 'Rückfragen'] : [])
+      const felder = (L.felder || []).slice()
+      // Bei Kontenlisten wandern Abweichung und Prozent als eigene Spalten in die
+      // Tabelle - vorher standen sie nur im Berechnungsblock unter der Tabelle.
+      // Abweichungsspalten ueberall dort, wo eine Liste Saldo UND Vorjahr fuehrt.
+      const kontenListe = felder.some(f => f.k === 'saldo') && felder.some(f => f.k === 'vj')
+      let kopfZ = felder.map(f => f.l).concat(kontenListe ? ['Abw. Vorjahr', 'Abw. %'] : []).concat(zusatz)
+      const zeilen = daten.map(x => {
+        const basis = felder.map(f => f.t === 'num' ? num(x[f.k])
           : f.t === 'calc' ? (typeof f.calc === 'function' ? f.calc(x) : '')
-          : (x[f.k] || ''))
+          : f.t === 'check' ? xlJa(x[f.k])
+          : xlTxt(x[f.k]))
+        if (kontenListe) { const a = vjAbweichung(x.saldo, x.vj)
+          basis.push({ v: a.betrag, fmt: 'eurS' }, a.prozent == null ? '—' : { v: a.prozent, fmt: 'pct' }) }
         if (L.rowVermerke) basis.push((Array.isArray(x.vermerke) ? x.vermerke : [])
-          .filter(v => (v.t || '').trim()).map((v, i) => (i + 1) + ') ' + v.t).join('  '))
-        if (L.rowNotes) basis.push(x.notiz || '',
-          (Array.isArray(x.rueck) ? x.rueck.filter(q => (q.t || '').trim()).map(q => q.t).join(' | ') : ''))
-        rows.push(basis) })
-      rows.push([]) })
-    if (mod.rechnen) { const r = mod.rechnen(p.werte, ctx); rows.push(['Berechnung', '']); r.ergebnisse.forEach(e => rows.push([e.l, e.v]))
-      if (r.total) rows.push([r.total.l, r.total.v]); (r.hinweise || []).forEach(h => rows.push(['Hinweis', h])) }
-    bl.push({ name: mod.name.slice(0, 28), rows }) })
-  if ((cl.buchungen || []).length) { const b = [['Herkunft', 'Soll', 'Bezeichnung', 'Haben', 'Betrag', 'Text']]
-    cl.buchungen.forEach(x => b.push([x.quelle, x.s, x.st, x.h || '', x.betr, x.text])); bl.push({ name: 'Buchungsstapel', rows: b }) }
+          .filter(v => (v.t || '').trim()).map((v, i) => (i + 1) + ') ' + v.t).join('  ') || '—')
+        if (L.rowNotes) basis.push(xlTxt(x.notiz),
+          (Array.isArray(x.rueck) ? x.rueck.filter(q => (q.t || '').trim()).map(q => q.t).join(' | ') : '') || '—')
+        return basis
+      })
+      let cols = xlSpalten(felder, kopfZ.slice(felder.length))
+      if (kontenListe) { cols[felder.length] = { w: 16, fmt: 'eurS', align: 'right' }; cols[felder.length + 1] = { w: 10, fmt: 'pct', align: 'right' } }
+      // Breite Tabellen (Kfz & Co.): durchgaengig leere Zahlenspalten weglassen.
+      if (kopfZ.length > 8 && zeilen.length) {
+        const leer = kopfZ.map((_, i) => i > 0 && zeilen.every(z => { const v = z[i] && typeof z[i] === 'object' ? z[i].v : z[i]
+          return v === '' || v === '—' || v == null || v === 0 }))
+        kopfZ = kopfZ.filter((_, i) => !leer[i]); cols = cols.filter((_, i) => !leer[i])
+        zeilen.forEach((z, j) => { zeilen[j] = z.filter((_, i) => !leer[i]) })
+      }
+      rows.push({ t: 'sub', c: [L.label || 'Positionen'] }, { t: 'head', c: kopfZ })
+      if (!zeilen.length) rows.push({ t: 'hint', c: ['Keine Positionen erfasst.'] })
+      zeilen.forEach(z => rows.push({ t: 'row', c: z }))
+      rows.push({ t: 'spacer' })
+      if (kopfZ.length > maxSp) { maxSp = kopfZ.length; listCols = cols }
+      if (!inhalt && daten.length) inhalt = (L.label || 'Positionen') + ': ' + daten.length
+    })
+
+    if (mod.rechnen) {
+      const r = mod.rechnen(w, ctx)
+      // Nur KONTO_RECHNEN gibt je Konto eine eigene Ergebniszeile aus; die stehen
+      // schon in der Tabelle darueber. Andere Module (Lohn, USt-Abgrenzung) haben
+      // hier echte Zwischensummen - die duerfen nicht wegfallen.
+      const erg = mod.rechnen === KONTO_RECHNEN ? (r.ergebnisse || []).slice(-2) : (r.ergebnisse || [])
+      rows.push({ t: 'sub', c: ['Berechnung'] })
+      erg.forEach(e => rows.push({ t: 'kv', c: [e.l, typeof e.v === 'number' ? { v: e.v, fmt: 'eur', bold: !!e.stark } : e.v] }))
+      const letzte = erg[erg.length - 1]
+      const doppelt = r.total && letzte && typeof r.total.v === 'number' && typeof letzte.v === 'number'
+        && Math.abs(r.total.v - letzte.v) < 0.005 && r.total.l.replace(/\s*\(.*\)\s*$/, '') === letzte.l.replace(/\s*\(.*\)\s*$/, '')
+      if (r.total && !doppelt) rows.push({ t: 'total', c: [r.total.l, typeof r.total.v === 'number' ? { v: r.total.v, fmt: 'eurS' } : r.total.v] })
+      if ((r.hinweise || []).length) {
+        rows.push({ t: 'spacer' }, { t: 'sub', c: ['Hinweise'] })
+        r.hinweise.forEach(h => rows.push({ t: 'hint', c: [h] }))
+      }
+      if (!inhalt && r.total && typeof r.total.v === 'number') inhalt = r.total.l + ': ' + eur(r.total.v)
+    }
+
+    const cols = listCols || [{ w: 52, wrap: true }, { w: 22, fmt: 'eur' }]
+    const b = { name: xlKurz(p.modul, mod.name), title: p.titel || mod.name,
+      sub: (BEREICH[mod.bereich] ? BEREICH[mod.bereich] + '  ·  ' : '') + kopf,
+      landscape: maxSp > 6, freeze: maxSp > 6, cols, rows }
+    anmelden(b, inhalt || mod.name, p.status)
+  })
+
+  // ── Buchungsstapel ──────────────────────────────────────────────────────────
+  if ((cl.buchungen || []).length) {
+    const rows = [{ t: 'head', c: ['Herkunft', 'Soll', 'Bezeichnung', 'Haben', 'Betrag', 'Text'] }]
+    let summe = 0
+    cl.buchungen.forEach(x => { summe += num(x.betr)
+      rows.push({ t: 'row', c: [x.quelle, x.s, x.st, x.h || '', num(x.betr), x.text] }) })
+    rows.push({ t: 'total', c: ['', '', '', 'Summe', summe, ''] })
+    const b = { name: 'Buchungsstapel', title: 'Buchungsstapel', sub: kopf, landscape: true, freeze: true, filter: true,
+      cols: [{ w: 22 }, { w: 10, align: 'center' }, { w: 34, wrap: true }, { w: 10, align: 'center' }, { w: 15, fmt: 'eur' }, { w: 48, wrap: true }],
+      rows }
+    anmelden(b, cl.buchungen.length + ' Buchungen', null)
+  }
+
+  // ── Deckblatt (zuletzt gebaut, damit die Blattnamen feststehen) ──────────────
+  const heute = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
+  const dRows = [
+    { t: 'kpi', c: [
+      { l: 'Prüfpunkte', v: alle.length, tone: 'neutral' },
+      { l: 'Erledigt', v: zaehl('ok'), tone: 'ok' },
+      { l: 'Offen / in Arbeit', v: zaehl('offen') + zaehl('arbeit'), tone: 'offen' },
+      { l: 'Rückfragen', v: zaehl('rueck'), tone: 'rueck' },
+      { l: 'Korrekturbedarf', v: zaehl('korr'), tone: 'korr' },
+    ] },
+    { t: 'spacer' },
+    { t: 'sub', c: ['Auftrag'] },
+    { t: 'kv', c: ['Wirtschaftsjahr', xlTxt(meta.wj)] },
+    { t: 'kv', c: ['Checkliste', xlTxt(meta.checkliste)] },
+    { t: 'kv', c: ['Erstellt am', heute] },
+    { t: 'spacer' },
+  ].concat(sdRows, [
+    { t: 'sub', c: ['Blattverzeichnis'] },
+    { t: 'head', c: ['Blatt', 'Inhalt', 'Status'] },
+  ])
+  verzeichnis.forEach(v => dRows.push({ t: 'row', c: [
+    { v: v.blatt, link: "#'" + v.blatt.replace(/'/g, "''") + "'!A1" },
+    v.inhalt || '', v.status ? xlStatus(v.status) : '—'] }))
+  dRows.push({ t: 'spacer' }, { t: 'sub', c: ['Bearbeitung'] },
+    { t: 'kv', c: ['Erstellt von / am', '__________________________'] },
+    { t: 'kv', c: ['Geprüft von / am', '__________________________'] },
+    { t: 'hint', c: ['Arbeitspapier zum Jahresabschluss. Die Blattnamen im Verzeichnis sind verlinkt.'] })
+
+  bl.unshift({ name: 'Deckblatt', title: 'Arbeitspapier Jahresabschluss', sub: kopf,
+    cols: [{ w: 34, wrap: true }, { w: 30 }, { w: 22 }, { w: 16 }, { w: 14 }, { w: 14 }, { w: 14 }, { w: 14 }, { w: 14 }, { w: 14 }],
+    rows: dRows })
+
+  bl._meta = { mandant: meta.mandant || sd.name || '', mandantennr: sd.mandantennr || '', wj: meta.wj || '' }
   return bl
 }
 

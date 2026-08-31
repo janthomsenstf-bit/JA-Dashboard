@@ -1,5 +1,4 @@
 import { useState, useRef, useEffect } from 'react'
-import * as XLSX from 'xlsx'
 import KontoRechnerModal from './KontoRechnerModal.jsx'
 
 const MAX_CLIENT_FILE_BYTES = 5 * 1024 * 1024  // 5 MB
@@ -267,27 +266,41 @@ export default function ChecklisteTab({
   }
 
   // ── Excel-Export ───────────────────────────────────────────────────────────
-  function exportExcel() {
+  // Nutzt denselben Formatierer wie das JA-Arbeitspapier (exportExcel.js), damit
+  // beide Checklisten-Exporte gleich aussehen: Kopfzeile fixiert, Abschnitte als
+  // Balken, Haekchen als ja/—, Druck quer auf Seitenbreite.
+  async function exportExcel() {
     if (!selectedTyp) return
-    const rows = [['Nr.', 'Buchungskonto', 'Prüfpunkt', 'Notiz', 'Geprüft', 'Ja', 'Nein', 'N/R', 'Anfordern', 'Erledigt']]
-    let nr = 0
+    const heute = new Date()
+    const stempel = heute.toISOString().slice(0, 10)
+    const kopf = [client.name, client.mandantennummer ? 'Mandant ' + client.mandantennummer : '', selectedTyp.name]
+      .filter(Boolean).join('  ·  ')
+    const rows = [{ t: 'head', c: ['Nr.', 'Buchungskonto', 'Prüfpunkt', 'Notiz', 'Geprüft', 'Ja', 'Nein', 'N/R', 'Anfordern', 'Erledigt'] }]
+    const ja = v => (v ? 'ja' : '—')
+    let nr = 0, geprueft = 0, erledigt = 0, offen = 0
     for (const raw of buildCombinedItems()) {
       const it = safeItem(raw)
-      if (it.type === 'section') {
-        rows.push([`── ${it.text} ──`, '', '', '', '', '', '', '', '', ''])
-      } else {
-        nr++
-        const s = getState(it.id)
-        rows.push([nr, s.kontonummer || '–', it.text, s.notiz || '–',
-          s.geprueft ? '✓' : '', s.ja ? '✓' : '', s.nein ? '✓' : '',
-          s.nicht_relevant ? '✓' : '', s.anfordern ? '✓' : '', s.erledigt ? '✓' : ''])
-      }
+      if (it.type === 'section') { rows.push({ t: 'sub', c: [it.text] }); continue }
+      nr++
+      const s = getState(it.id)
+      if (s.geprueft) geprueft++
+      if (s.erledigt) erledigt++; else offen++
+      rows.push({ t: 'row', c: [nr, s.kontonummer || '—', it.text, s.notiz || '—',
+        { v: ja(s.geprueft), tone: s.geprueft ? 'ok' : 'offen' }, ja(s.ja), ja(s.nein),
+        ja(s.nicht_relevant), { v: ja(s.anfordern), tone: s.anfordern ? 'rueck' : null },
+        { v: ja(s.erledigt), tone: s.erledigt ? 'ok' : 'offen' }] })
     }
-    const wb = XLSX.utils.book_new()
-    const ws = XLSX.utils.aoa_to_sheet(rows)
-    ws['!cols'] = [{ wch:5 },{ wch:14 },{ wch:40 },{ wch:28 },{ wch:8 },{ wch:6 },{ wch:6 },{ wch:6 },{ wch:10 },{ wch:9 }]
-    XLSX.utils.book_append_sheet(wb, ws, 'Checkliste')
-    XLSX.writeFile(wb, `Checkliste_${client.name}_${selectedTyp.name}_${new Date().toISOString().slice(0,10)}.xlsx`)
+    rows.push({ t: 'total', c: [`${nr} Prüfpunkte`, '', `davon ${geprueft} geprüft, ${erledigt} erledigt, ${offen} offen`,
+      '', '', '', '', '', '', ''] })
+    const sheet = { name: 'Checkliste', title: selectedTyp.name, sub: kopf,
+      landscape: true, freeze: true,
+      cols: [{ w: 6, align: 'center' }, { w: 15, align: 'center' }, { w: 52, wrap: true }, { w: 36, wrap: true },
+        { w: 10, align: 'center' }, { w: 7, align: 'center' }, { w: 7, align: 'center' }, { w: 7, align: 'center' },
+        { w: 12, align: 'center' }, { w: 10, align: 'center' }],
+      rows }
+    const { exportSheets } = await import('../../utils/jaCheckliste/exportExcel.js')
+    await exportSheets([sheet], `Checkliste_${client.name}_${selectedTyp.name}_${stempel}`,
+      { mandant: client.name, mandantennr: client.mandantennummer || '' })
   }
 
   // ── Build combined items (template + per-client extras) ───────────────────

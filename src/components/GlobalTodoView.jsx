@@ -1720,7 +1720,7 @@ export default function GlobalTodoView({ clients, aufgabenListe = [], onUpdateAu
       ['Zeilen', (sheets[0].rows.length - 1)],
     ]})
 
-    exportSheets(sheets, `Auftragsuebersicht_${stempel}`)
+    await exportSheets(sheets, `Auftragsuebersicht_${stempel}`)
   }
 
   // ── Footer-Info ───────────────────────────────────────────────────────────
