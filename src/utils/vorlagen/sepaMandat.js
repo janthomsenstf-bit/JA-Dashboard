@@ -63,11 +63,13 @@ export const sepaMandat = {
 
     // ── Bankverbindung ──────────────────────────────────────────────────────
     { key: 'iban', label: 'IBAN', typ: 'text', pflicht: true, breit: true, merken: true,
-      quelle: 'Stammdaten: IBANs/Konten', stammdaten: 'iban',
+      quelle: 'Stammdaten: Bankverbindung', stammdaten: 'iban',
       hinweis: 'Bitte kein Sparkonto angeben. Leerzeichen dürfen mit eingegeben werden.' },
     { key: 'bic',  label: 'BIC', typ: 'text', merken: true,
+      quelle: 'Stammdaten: Bankverbindung', stammdaten: 'bic',
       hinweis: 'Nur erforderlich für Banken außerhalb des Europäischen Wirtschaftsraums (EWR).' },
-    { key: 'bank', label: 'Name der Bank', typ: 'text', breit: true, merken: true, quelle: 'Stammdaten: IBANs/Konten' },
+    { key: 'bank', label: 'Name der Bank', typ: 'text', breit: true, merken: true,
+      quelle: 'Stammdaten: Bankverbindung', stammdaten: 'bankName' },
 
     // ── Unterschrift Kontoinhaber ───────────────────────────────────────────
     { key: 'unterschriftOrt',    label: 'Ort (Unterschrift)',    typ: 'text', quelle: 'Stammdaten: Anschrift' },
@@ -122,7 +124,7 @@ export const sepaMandat = {
       land:    'Deutschland',
 
       iban: basis.iban,
-      bic:  '',
+      bic:  basis.bic,
       bank: basis.bankName,
 
       unterschriftOrt:   basis.ort,

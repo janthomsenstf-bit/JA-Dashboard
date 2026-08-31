@@ -73,8 +73,10 @@ export function stammdatenBasis(client) {
 
   const rechtsform = txt(c.rechtsform)
 
-  // Bankverbindung: erste gepflegte IBAN am Mandanten (Feld „IBANs / Konten")
-  const ibanEintrag = (Array.isArray(c.ibans) ? c.ibans : []).find(x => txt(x?.iban))
+  // Bankverbindung (Stammdaten-Block „Bankverbindung"): das mit ★ markierte
+  // Konto, sonst das erste gepflegte.
+  const kontenListe = (Array.isArray(c.ibans) ? c.ibans : []).filter(x => txt(x?.iban))
+  const ibanEintrag = kontenListe.find(x => x.sepa === true) ?? kontenListe[0]
 
   return {
     id:               c.id,
@@ -100,6 +102,7 @@ export function stammdatenBasis(client) {
 
     // Bankverbindung
     iban:             txt(ibanEintrag?.iban),
+    bic:              txt(ibanEintrag?.bic),
     bankName:         txt(ibanEintrag?.bez),
 
     // Zuständiges Finanzamt
@@ -169,11 +172,16 @@ const ZIEL_LABEL = {
   finanzamtStrasse: 'Finanzamt – Straße',
   finanzamtPlzOrt:  'Finanzamt – PLZ/Ort',
   anschrift:        'Anschrift (Straße/PLZ/Ort)',
-  iban:             'IBAN (IBANs/Konten)',
+  iban:             'Bankverbindung – IBAN',
+  bic:              'Bankverbindung – BIC',
+  bankName:         'Bankverbindung – Name der Bank',
   'gf.name':          'Geschäftsführer – Name',
   'gf.geburtsdatum':  'Geschäftsführer – Geburtsdatum',
   'gf.anschrift':     'Geschäftsführer – Anschrift',
 }
+
+// Ziele, die auf einen Eintrag in client.ibans schreiben → dessen Feldname
+const BANK_FELD = { iban: 'iban', bic: 'bic', bankName: 'bez' }
 
 /**
  * Vergleicht die Formularwerte mit den Stammdaten und liefert die
@@ -194,6 +202,8 @@ export function stammdatenAbweichungen(vorlage, werte, client) {
     finanzamtPlzOrt:  basis.finanzamtPlzOrt,
     anschrift:        basis.anschrift,
     iban:             basis.iban,
+    bic:              basis.bic,
+    bankName:         basis.bankName,
     'gf.name':          txt(gf1.name),
     'gf.geburtsdatum':  txt(gf1.geburtsdatum),
     'gf.anschrift':     txt(gf1.anschrift),
@@ -201,7 +211,7 @@ export function stammdatenAbweichungen(vorlage, werte, client) {
 
   // Nur für den Vergleich: eine bloß anders gruppierte IBAN ist keine Änderung.
   const vergleichbar = (ziel, wert) =>
-    ziel === 'iban' ? txt(wert).replace(/\s+/g, '').toUpperCase() : txt(wert)
+    (ziel === 'iban' || ziel === 'bic') ? txt(wert).replace(/\s+/g, '').toUpperCase() : txt(wert)
 
   return (vorlage.felder || [])
     .filter(f => f.stammdaten && ZIEL_LABEL[f.stammdaten])
@@ -218,6 +228,7 @@ export function stammdatenPatch(abweichungen, client) {
   const patch = {}
   const gfListe = Array.isArray(client?.geschaeftsfuehrer) ? [...client.geschaeftsfuehrer] : []
   let gfGeaendert = false
+  const bank = {}
 
   const setzeGF = (feld, wert) => {
     const erster = gfListe[0] ?? { id: 'gf' + Date.now().toString(36), name: '' }
@@ -239,22 +250,24 @@ export function stammdatenPatch(abweichungen, client) {
       patch.anschriften = anschriften
       return
     }
-    if (a.ziel === 'iban') {
-      // Bestehenden Eintrag aktualisieren, sonst einen neuen anhängen – die
-      // übrigen Konten des Mandanten bleiben unangetastet.
-      const norm = s => txt(s).replace(/\s+/g, '').toUpperCase()
-      const liste = Array.isArray(client?.ibans) ? [...client.ibans] : []
-      const idx = liste.findIndex(x => norm(x?.iban) === norm(a.alt) && norm(a.alt))
-      if (idx >= 0) liste[idx] = { ...liste[idx], iban: a.neu }
-      else liste.push({ id: 'ib' + Date.now().toString(36), iban: a.neu, bez: '' })
-      patch.ibans = liste
-      return
-    }
+    if (BANK_FELD[a.ziel]) { bank[BANK_FELD[a.ziel]] = a.neu; return }
     if (a.ziel.startsWith('gf.')) { setzeGF(a.ziel.slice(3), a.neu); return }
     patch[a.ziel] = a.neu
   })
 
   if (gfGeaendert) patch.geschaeftsfuehrer = gfListe
+
+  // Bankfelder gehören zu EINEM Konto – deshalb gesammelt und in einem Zug auf
+  // den Eintrag geschrieben, aus dem die Vordrucke lesen (★, sonst der erste).
+  if (Object.keys(bank).length) {
+    const liste = Array.isArray(client?.ibans) ? client.ibans.map(x => ({ ...x })) : []
+    const belegt = liste.filter(x => txt(x.iban))
+    const ziel = belegt.find(x => x.sepa === true) ?? belegt[0]
+    if (ziel) Object.assign(ziel, bank)
+    else liste.push({ id: 'ib' + Date.now().toString(36), iban: '', bic: '', bez: '', sepa: true, ...bank })
+    patch.ibans = liste
+  }
+
   return patch
 }
 

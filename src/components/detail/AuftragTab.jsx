@@ -362,6 +362,43 @@ function StammdatenErweitertSection({ client, onUpdate, onedriveTokens, onUpdate
           placeholder="PLZ Ort" style={{ ...inputStyle, width: '160px' }} />
       </SetupRow>
 
+      {/* ── Bankverbindung ────────────────────────────────────────────────
+          Speicher ist weiterhin client.ibans (wird auch von der Belegerkennung
+          gelesen). Zusaetzlich zur IBAN gehoeren BIC und Bankname dazu, weil
+          das SEPA-Lastschriftmandat sie als eigene Felder braucht. Bei mehreren
+          Konten legt das Sternchen fest, welches die Vordrucke ziehen. */}
+      <div style={{ padding: '7px 0', borderBottom: '1px solid var(--border)' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', minWidth: '130px', textTransform: 'uppercase', letterSpacing: '0.05em', paddingTop: '4px' }}>🏦 Bankverbindung</span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', flex: 1 }}>
+            {ibans.map(x => {
+              const istStandard = ibans.length === 1 || x.sepa === true
+              return (
+                <div key={x.id} style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                  <button
+                    onClick={() => onUpdate({ ibans: ibans.map(y => ({ ...y, sepa: y.id === x.id })) })}
+                    title={istStandard ? 'Wird in den Vordrucken verwendet' : 'Für Vordrucke verwenden'}
+                    style={{
+                      background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', lineHeight: 1,
+                      fontSize: '14px', color: istStandard ? '#ca8a04' : 'var(--border2)',
+                    }}
+                  >{istStandard ? '★' : '☆'}</button>
+                  <input className="input" value={x.iban ?? ''} onChange={e => updIn('ibans', ibans, x.id, { iban: e.target.value })} placeholder="IBAN" style={{ ...inputStyle, width: '250px', fontFamily: 'var(--font-mono)' }} />
+                  <input className="input" value={x.bic ?? ''} onChange={e => updIn('ibans', ibans, x.id, { bic: e.target.value })} placeholder="BIC (nur außerhalb EWR)" style={{ ...inputStyle, width: '150px', fontFamily: 'var(--font-mono)' }} />
+                  <input className="input" value={x.bez ?? ''} onChange={e => updIn('ibans', ibans, x.id, { bez: e.target.value })} placeholder="Name der Bank" style={{ ...inputStyle, width: '170px' }} />
+                  <button onClick={() => delIn('ibans', ibans, x.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: '16px', padding: '0 2px', lineHeight: 1 }}>✕</button>
+                </div>
+              )
+            })}
+            <button className="btn btn-ghost btn-sm" onClick={() => addTo('ibans', ibans, { iban: '', bic: '', bez: '', sepa: ibans.length === 0 })} style={{ fontSize: '11px', alignSelf: 'flex-start', marginTop: ibans.length > 0 ? '2px' : '0' }}>➕ Konto</button>
+            <div style={{ fontSize: '10.5px', color: 'var(--text-muted)', lineHeight: 1.45 }}>
+              Speist die Vorlage <strong>SEPA-Lastschriftmandat</strong> (Reiter „Vorlagen"). Bei mehreren Konten
+              zieht der Vordruck das mit ★ markierte. Die IBANs werden außerdem zur Zuordnung eingehender Belege genutzt.
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Korrespondenzsprache */}
       <SetupRow label="Korrespondenzsprache">
         <select value={client.korrespondenzsprache ?? 'de'} onChange={e => onUpdate({ korrespondenzsprache: e.target.value })}
@@ -370,23 +407,6 @@ function StammdatenErweitertSection({ client, onUpdate, onedriveTokens, onUpdate
           <option value="da">Dänisch</option>
         </select>
       </SetupRow>
-
-      {/* IBANs / Konten */}
-      <div style={{ padding: '7px 0', borderBottom: '1px solid var(--border)' }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', minWidth: '130px', textTransform: 'uppercase', letterSpacing: '0.05em', paddingTop: '4px' }}>IBANs / Konten</span>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', flex: 1 }}>
-            {ibans.map(x => (
-              <div key={x.id} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <input className="input" value={x.iban ?? ''} onChange={e => updIn('ibans', ibans, x.id, { iban: e.target.value })} placeholder="IBAN" style={{ ...inputStyle, width: '260px', fontFamily: 'var(--font-mono)' }} />
-                <input className="input" value={x.bez ?? ''} onChange={e => updIn('ibans', ibans, x.id, { bez: e.target.value })} placeholder="Bank / Zweck (optional)" style={{ ...inputStyle, width: '180px' }} />
-                <button onClick={() => delIn('ibans', ibans, x.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: '16px', padding: '0 2px', lineHeight: 1 }}>✕</button>
-              </div>
-            ))}
-            <button className="btn btn-ghost btn-sm" onClick={() => addTo('ibans', ibans, { iban: '', bez: '' })} style={{ fontSize: '11px', alignSelf: 'flex-start', marginTop: ibans.length > 0 ? '2px' : '0' }}>➕ IBAN</button>
-          </div>
-        </div>
-      </div>
 
       {/* Abweichende Anschriften */}
       <div style={{ padding: '7px 0', borderBottom: '1px solid var(--border)' }}>
