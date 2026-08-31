@@ -11,6 +11,7 @@
 import { einwilligung87aKoerperschaft } from './einwilligung87a.js'
 import { einwilligung87aNatuerlich }    from './einwilligung87aNatuerlich.js'
 import { empfangsvollmacht }            from './empfangsvollmacht.js'
+import { sepaMandat }                   from './sepaMandat.js'
 import { loadKanzlei } from '../ustRegPdf.js'
 import { txt } from './pdfKit.js'
 
@@ -18,6 +19,7 @@ export const VORLAGEN = [
   einwilligung87aKoerperschaft,
   einwilligung87aNatuerlich,
   empfangsvollmacht,
+  sepaMandat,
 ]
 
 export function vorlageNachId(id) {
@@ -71,6 +73,9 @@ export function stammdatenBasis(client) {
 
   const rechtsform = txt(c.rechtsform)
 
+  // Bankverbindung: erste gepflegte IBAN am Mandanten (Feld „IBANs / Konten")
+  const ibanEintrag = (Array.isArray(c.ibans) ? c.ibans : []).find(x => txt(x?.iban))
+
   return {
     id:               c.id,
     name:             txt(c.name),
@@ -92,6 +97,10 @@ export function stammdatenBasis(client) {
     handelsregister:  txt(c.handelsregister),
     unternehmensgegenstand: txt(c.unternehmensgegenstand),
     telefon:          txt(c.telefon) || txt(c.mobil) || txt(kontakte.find(k => txt(k.telefon))?.telefon),
+
+    // Bankverbindung
+    iban:             txt(ibanEintrag?.iban),
+    bankName:         txt(ibanEintrag?.bez),
 
     // Zuständiges Finanzamt
     finanzamt:        txt(c.finanzamt),
@@ -160,6 +169,7 @@ const ZIEL_LABEL = {
   finanzamtStrasse: 'Finanzamt – Straße',
   finanzamtPlzOrt:  'Finanzamt – PLZ/Ort',
   anschrift:        'Anschrift (Straße/PLZ/Ort)',
+  iban:             'IBAN (IBANs/Konten)',
   'gf.name':          'Geschäftsführer – Name',
   'gf.geburtsdatum':  'Geschäftsführer – Geburtsdatum',
   'gf.anschrift':     'Geschäftsführer – Anschrift',
@@ -183,15 +193,20 @@ export function stammdatenAbweichungen(vorlage, werte, client) {
     finanzamtStrasse: basis.finanzamtStrasse,
     finanzamtPlzOrt:  basis.finanzamtPlzOrt,
     anschrift:        basis.anschrift,
+    iban:             basis.iban,
     'gf.name':          txt(gf1.name),
     'gf.geburtsdatum':  txt(gf1.geburtsdatum),
     'gf.anschrift':     txt(gf1.anschrift),
   }
 
+  // Nur für den Vergleich: eine bloß anders gruppierte IBAN ist keine Änderung.
+  const vergleichbar = (ziel, wert) =>
+    ziel === 'iban' ? txt(wert).replace(/\s+/g, '').toUpperCase() : txt(wert)
+
   return (vorlage.felder || [])
     .filter(f => f.stammdaten && ZIEL_LABEL[f.stammdaten])
     .map(f => ({ ziel: f.stammdaten, label: ZIEL_LABEL[f.stammdaten], alt: aktuell[f.stammdaten] ?? '', neu: txt(werte[f.key]) }))
-    .filter(a => a.neu && a.neu !== a.alt)
+    .filter(a => a.neu && vergleichbar(a.ziel, a.neu) !== vergleichbar(a.ziel, a.alt))
 }
 
 /**
@@ -222,6 +237,17 @@ export function stammdatenPatch(abweichungen, client) {
       if (idx >= 0) anschriften[idx] = { ...anschriften[idx], text: a.neu }
       else anschriften.push({ id: 'an' + Date.now().toString(36), typ: 'post', text: a.neu })
       patch.anschriften = anschriften
+      return
+    }
+    if (a.ziel === 'iban') {
+      // Bestehenden Eintrag aktualisieren, sonst einen neuen anhängen – die
+      // übrigen Konten des Mandanten bleiben unangetastet.
+      const norm = s => txt(s).replace(/\s+/g, '').toUpperCase()
+      const liste = Array.isArray(client?.ibans) ? [...client.ibans] : []
+      const idx = liste.findIndex(x => norm(x?.iban) === norm(a.alt) && norm(a.alt))
+      if (idx >= 0) liste[idx] = { ...liste[idx], iban: a.neu }
+      else liste.push({ id: 'ib' + Date.now().toString(36), iban: a.neu, bez: '' })
+      patch.ibans = liste
       return
     }
     if (a.ziel.startsWith('gf.')) { setzeGF(a.ziel.slice(3), a.neu); return }
