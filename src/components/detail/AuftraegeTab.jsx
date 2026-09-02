@@ -1089,6 +1089,89 @@ const JA_STAMM_OPEN_KEY = 'ja-stammdaten-open'
 function loadStammOpen() { try { return localStorage.getItem(JA_STAMM_OPEN_KEY) === '1' } catch { return false } }
 function saveStammOpen(v) { try { localStorage.setItem(JA_STAMM_OPEN_KEY, v ? '1' : '0') } catch {} }
 
+// ── JA-Auftrag: Reiter „Cloud" ────────────────────────────────────────────────
+// Hinterlegt je Jahresabschluss den Link auf den Chat, in dem der Abschluss
+// bearbeitet wird. Bewusst nur ein Link: es geht um den einen Arbeitsfaden zum
+// Auftrag, nicht um eine Linksammlung.
+const cloudUrl = u => {
+  u = (u || '').trim()
+  if (!u) return ''
+  // Nur http(s) zulassen - ein eingefuegtes javascript:/data: darf nicht geoeffnet werden.
+  if (/^https?:\/\//i.test(u)) return u
+  if (/^[a-z][a-z0-9+.-]*:/i.test(u)) return ''
+  return 'https://' + u
+}
+
+function JACloudBlock({ au, onUpdate }) {
+  const roh  = au.cloudLink ?? ''
+  const url  = cloudUrl(roh)
+  const [kopiert, setKopiert] = useState(false)
+  const oeffnen = () => { if (url) window.open(url, '_blank', 'noopener') }
+  const kopieren = async () => {
+    if (!url) return
+    try { await navigator.clipboard.writeText(url); setKopiert(true); setTimeout(() => setKopiert(false), 1500) } catch { /* Zwischenablage gesperrt */ }
+  }
+
+  return (
+    <div style={{ marginBottom:'14px', padding:'12px 14px', background:'var(--surface2)', borderRadius:'10px', border:'1px solid var(--border-strong, var(--border))' }}>
+      <div style={{ display:'flex', alignItems:'center', gap:'8px', marginBottom:'12px' }}>
+        <span style={{ fontSize:'14px' }}>☁️</span>
+        <span style={{ fontSize:'12px', fontWeight:700, color:'var(--text)', textTransform:'uppercase', letterSpacing:'0.05em' }}>Cloud</span>
+        {url && (
+          <span style={{ fontSize:'10px', fontWeight:700, color:'#16a34a', background:'rgba(22,163,74,0.1)', border:'1px solid rgba(22,163,74,0.25)', borderRadius:'8px', padding:'1px 7px' }}>
+            Link hinterlegt
+          </span>
+        )}
+      </div>
+
+      <div style={{ marginBottom:'12px' }}>
+        <span style={{ ...labelStyle, display:'block', marginBottom:'5px' }}>Bezeichnung</span>
+        <input value={au.cloudTitel ?? ''} onChange={e => onUpdate({ cloudTitel: e.target.value })}
+          placeholder="z. B. Claude-Chat Jahresabschluss 2025" style={inputStyle} />
+      </div>
+
+      <div style={{ marginBottom:'12px' }}>
+        <span style={{ ...labelStyle, display:'block', marginBottom:'5px' }}>Link zum Chat</span>
+        <div style={{ display:'flex', gap:'8px', flexWrap:'wrap' }}>
+          <input value={roh} onChange={e => onUpdate({ cloudLink: e.target.value })}
+            onKeyDown={e => { if (e.key === 'Enter') oeffnen() }}
+            placeholder="https://…" spellCheck={false}
+            style={{ ...inputStyle, flex:1, minWidth:'220px', fontFamily:'ui-monospace, SFMono-Regular, Menlo, monospace' }} />
+          <button onClick={oeffnen} disabled={!url} title={url ? 'Chat in neuem Tab öffnen' : 'Erst einen Link eintragen'}
+            style={{ padding:'6px 14px', borderRadius:'6px', fontSize:'12px', fontWeight:700, whiteSpace:'nowrap',
+              cursor: url ? 'pointer' : 'not-allowed', opacity: url ? 1 : 0.45,
+              border:'1px solid #2563eb', background:'#2563eb', color:'#fff' }}>
+            ↗ Öffnen
+          </button>
+          <button onClick={kopieren} disabled={!url} title="Link in die Zwischenablage kopieren"
+            style={{ padding:'6px 12px', borderRadius:'6px', fontSize:'12px', fontWeight:700, whiteSpace:'nowrap',
+              cursor: url ? 'pointer' : 'not-allowed', opacity: url ? 1 : 0.45,
+              border:'1px solid var(--border)', background:'var(--surface)', color:'var(--text)' }}>
+            {kopiert ? '✓ Kopiert' : '⧉ Kopieren'}
+          </button>
+        </div>
+        {roh.trim() && !url && (
+          <div style={{ fontSize:'10px', color:'#ef4444', marginTop:'6px' }}>
+            Das ist keine Web-Adresse. Erlaubt sind nur Links, die mit http:// oder https:// beginnen.
+          </div>
+        )}
+        {url && url !== roh.trim() && (
+          <div style={{ fontSize:'10px', color:'var(--text-muted)', marginTop:'6px' }}>
+            Wird geöffnet als <span style={{ fontFamily:'ui-monospace, monospace' }}>{url}</span>
+          </div>
+        )}
+      </div>
+
+      <div>
+        <span style={{ ...labelStyle, display:'block', marginBottom:'5px' }}>Notiz</span>
+        <textarea value={au.cloudNotiz ?? ''} onChange={e => onUpdate({ cloudNotiz: e.target.value })} rows={2}
+          placeholder="Wo steht der Chat gerade, was ist dort offen…"
+          style={{ ...inputStyle, minHeight:'46px', resize:'vertical' }} />
+      </div>
+    </div>
+  )
+}
+
 function JAStammdatenBlock({ au, onUpdate }) {
   const einkArten = Array.isArray(au.einkunftsarten) ? au.einkunftsarten : []
   const kennz     = Array.isArray(au.kennzeichen)    ? au.kennzeichen    : JA_KENNZ_DEFAULT
@@ -3888,7 +3971,8 @@ function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete, client, onOpe
           {/* ── JA-Auftrag: Unter-Reiter Kommunikation | Checkliste ── */}
           {isJA && (
             <div style={{ display: 'flex', gap: '6px', borderBottom: '1px solid var(--border)', marginBottom: '14px' }}>
-              {[['stammdaten', '📇 Stammdaten'], ['kommunikation', '✉️ Kommunikation & Rückfragen'], ['checkliste', '📋 Checkliste']].map(([v, l]) => (
+              {[['stammdaten', '📇 Stammdaten'], ['cloud', '☁️ Cloud', !!cloudUrl(au.cloudLink)],
+                ['kommunikation', '✉️ Kommunikation & Rückfragen'], ['checkliste', '📋 Checkliste']].map(([v, l, punkt]) => (
                 <button key={v} onClick={() => setJaSubView(v)}
                   style={{
                     padding: '8px 16px', border: 'none', background: 'none', cursor: 'pointer',
@@ -3897,6 +3981,7 @@ function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete, client, onOpe
                     borderBottom: jaSubView === v ? '2px solid var(--accent)' : '2px solid transparent',
                   }}>
                   {l}
+                  {punkt && <span title="Link hinterlegt" style={{ color:'#16a34a', marginLeft:'5px', fontSize:'9px', verticalAlign:'middle' }}>●</span>}
                 </button>
               ))}
             </div>
@@ -3910,6 +3995,9 @@ function AuftragCard({ au, expanded, onExpand, onUpdate, onDelete, client, onOpe
           {/* ── JA: Stammdaten (Reiter Stammdaten) / Status + Telefon-Vorbereitung (Reiter Kommunikation) ── */}
           {isJA && jaSubView === 'stammdaten' && (
             <JAStammdatenBlock au={au} onUpdate={onUpdate} />
+          )}
+          {isJA && jaSubView === 'cloud' && (
+            <JACloudBlock au={au} onUpdate={onUpdate} />
           )}
           {isJA && jaSubView === 'kommunikation' && (<>
             <JAStatusSection au={au} onUpdate={onUpdate} />
