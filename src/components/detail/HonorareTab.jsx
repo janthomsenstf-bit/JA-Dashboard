@@ -409,6 +409,8 @@ function InaktiveSection({ honorare, onUpdate, onDelete, auftraege = [] }) {
 // ══ Zeiterfassung / Leistungen & Zeiten ════════════════════════════════════════════
 const DEFAULT_STUNDENSATZ = 90
 const ZEIT_ACCENT = '#0891b2'
+// Gutschriften (negative Pauschalen) heben sich farblich von normalen Posten ab.
+const GUTSCHRIFT_FARBE = '#b45309'
 
 const btnGhost   = { padding: '5px 12px', borderRadius: '6px', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-secondary)', fontSize: '11px', cursor: 'pointer' }
 const btnPrimary = { padding: '5px 14px', borderRadius: '6px', border: 'none', background: ZEIT_ACCENT, color: '#fff', fontSize: '11px', fontWeight: 700, cursor: 'pointer' }
@@ -458,10 +460,13 @@ function stripDauer(text) {
     .replace(/\b(und|ca\.?|circa|etwa|ungefähr|ungefaehr)\b/gi, ' ')
     .replace(/\s{2,}/g, ' ').trim().replace(/^[,\-–·\s]+/, '').trim()
 }
+// Wörter, die eine Pauschale zur Gutschrift machen (Betrag wird negativ).
+const RE_GUTSCHRIFT = /\b(gutschrift|gutgeschrieben|storno|storniert|nachlass|rabatt|minus|abzüglich|abzueglich)\b/i
 function parseDiktatLocal(text) {
-  if (/\bpauschal/i.test(text)) {
+  if (/\bpauschal/i.test(text) || RE_GUTSCHRIFT.test(text)) {
     const m = text.match(RE_EURO) || text.match(/pauschal\w*\s+(\d+(?:[.,]\d+)?)/i) || text.match(/(\d+(?:[.,]\d+)?)/)
-    const betrag = m ? parseFloat(String(m[1] || '0').replace(',', '.')) : 0
+    let betrag = m ? parseFloat(String(m[1] || '0').replace(',', '.')) : 0
+    if (RE_GUTSCHRIFT.test(text)) betrag = -Math.abs(betrag)
     return { datum: todayISO(), art: 'pauschale', pauschalBetrag: betrag, dauerMin: 0, beschreibung: stripPauschale(text) || (text || '').trim() }
   }
   return { datum: todayISO(), art: 'stunden', dauerMin: parseDauerMin(text), pauschalBetrag: 0, beschreibung: stripDauer(text) || (text || '').trim() }
@@ -469,11 +474,11 @@ function parseDiktatLocal(text) {
 async function parseDiktat(text) {
   if (hasAiKey()) {
     try {
-      const sys = `Du wandelst eine kurze deutsche Sprachnotiz eines Steuerberaters über eine erbrachte Leistung in einen strukturierten Eintrag um. Heutiges Datum: ${todayISO()}. Antworte ausschließlich mit JSON: {"art": "stunden" oder "pauschale", "dauerMin": <Minuten als Ganzzahl, 0 bei Pauschale>, "pauschalBetrag": <Euro-Betrag als Zahl, 0 bei Stunden>, "beschreibung": "<knappe sachliche Tätigkeit ohne Dauer-/Betragsangabe>", "datum": "YYYY-MM-DD"}. Kommt das Wort "pauschal" vor: art=pauschale und pauschalBetrag = der genannte Euro-Betrag. Sonst art=stunden mit dauerMin. Beispiele: "zwei Stunden Telefonat" -> {"art":"stunden","dauerMin":120,"beschreibung":"Telefonat"}; "einmal pauschal 100 Euro für die Anlage der Firma und der Mitarbeiter" -> {"art":"pauschale","pauschalBetrag":100,"beschreibung":"Anlage der Firma und der Mitarbeiter"}. Ohne Datumsangabe nimm das heutige Datum.`
+      const sys = `Du wandelst eine kurze deutsche Sprachnotiz eines Steuerberaters über eine erbrachte Leistung in einen strukturierten Eintrag um. Heutiges Datum: ${todayISO()}. Antworte ausschließlich mit JSON: {"art": "stunden" oder "pauschale", "dauerMin": <Minuten als Ganzzahl, 0 bei Pauschale>, "pauschalBetrag": <Euro-Betrag als Zahl, 0 bei Stunden>, "beschreibung": "<knappe sachliche Tätigkeit ohne Dauer-/Betragsangabe>", "datum": "YYYY-MM-DD"}. Kommt das Wort "pauschal" vor: art=pauschale und pauschalBetrag = der genannte Euro-Betrag. Ist von einer Gutschrift, einem Storno, einem Nachlass oder einem Minusbetrag die Rede, ist pauschalBetrag NEGATIV (z. B. -50). Sonst art=stunden mit dauerMin. Beispiele: "zwei Stunden Telefonat" -> {"art":"stunden","dauerMin":120,"beschreibung":"Telefonat"}; "einmal pauschal 100 Euro für die Anlage der Firma und der Mitarbeiter" -> {"art":"pauschale","pauschalBetrag":100,"beschreibung":"Anlage der Firma und der Mitarbeiter"}. Ohne Datumsangabe nimm das heutige Datum.`
       const r = await callAI(sys, text)
       const datum = /^\d{4}-\d{2}-\d{2}$/.test(r?.datum || '') ? r.datum : todayISO()
       if (r?.art === 'pauschale') {
-        let betrag = Math.max(0, Number(r?.pauschalBetrag) || 0)
+        let betrag = Number(r?.pauschalBetrag) || 0
         let beschreibung = String(r?.beschreibung || '').trim()
         if (!betrag) betrag = parseDiktatLocal(text).pauschalBetrag
         if (!beschreibung) beschreibung = stripPauschale(text)
@@ -561,8 +566,9 @@ function ZeitForm({ initial, onSave, onCancel, auftraege = [] }) {
   const [zuAuftrag, setZuAuftrag] = useState(initial.auftragId || '')
   const offeneAuftraege = (auftraege ?? []).filter(a => a && a.status !== 'erledigt')
   const dauerMin = Math.round((parseFloat(String(stdVal).replace(',', '.')) || 0) * 60)
-  const pauschalBetrag = Math.max(0, parseFloat(String(pausVal).replace(',', '.')) || 0)
-  const canSave = !!besch.trim() && (art === 'pauschale' ? pauschalBetrag > 0 : dauerMin > 0)
+  // Pauschalen dürfen negativ sein (Gutschrift/Storno); 0 bleibt unzulässig.
+  const pauschalBetrag = parseFloat(String(pausVal).replace(',', '.')) || 0
+  const canSave = !!besch.trim() && (art === 'pauschale' ? pauschalBetrag !== 0 : dauerMin > 0)
   return (
     <div style={{ border: `2px solid ${ZEIT_ACCENT}44`, borderRadius: '8px', padding: '12px', background: 'var(--surface)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
       <div>
@@ -577,7 +583,7 @@ function ZeitForm({ initial, onSave, onCancel, auftraege = [] }) {
       <div style={{ display: 'grid', gridTemplateColumns: '150px 130px', gap: '10px' }}>
         <div><FieldLabel>Datum</FieldLabel><input type="date" value={datum} onChange={e => setDatum(e.target.value)} style={inputBase} /></div>
         {art === 'pauschale'
-          ? <div><FieldLabel>Pauschalbetrag (€) *</FieldLabel><input type="text" inputMode="decimal" value={pausVal} onChange={e => setPausVal(e.target.value)} placeholder="z. B. 100" style={inputBase} /></div>
+          ? <div><FieldLabel>Pauschalbetrag (€) *</FieldLabel><input type="text" inputMode="decimal" value={pausVal} onChange={e => setPausVal(e.target.value)} placeholder="z. B. 100 oder -50" style={inputBase} /></div>
           : <div><FieldLabel>Dauer (Std.) *</FieldLabel><input type="text" inputMode="decimal" value={stdVal} onChange={e => setStdVal(e.target.value)} placeholder="z. B. 1,5" style={inputBase} /></div>}
       </div>
       <div><FieldLabel>Tätigkeit *</FieldLabel><input value={besch} onChange={e => setBesch(e.target.value)} placeholder="z. B. Anlage Firma und Mitarbeiter" style={inputBase} /></div>
@@ -593,7 +599,11 @@ function ZeitForm({ initial, onSave, onCancel, auftraege = [] }) {
         </div>
       )}
       {art === 'stunden' && dauerMin > 0 && <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>= {fmtStunden(dauerMin)} Std</div>}
-      {art === 'pauschale' && pauschalBetrag > 0 && <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>= {fmtEuro(pauschalBetrag, 2)} pauschal</div>}
+      {art === 'pauschale' && pauschalBetrag !== 0 && (
+        <div style={{ fontSize: '11px', color: pauschalBetrag < 0 ? GUTSCHRIFT_FARBE : 'var(--text-muted)' }}>
+          = {fmtEuro(pauschalBetrag, 2)} {pauschalBetrag < 0 ? 'Gutschrift (mindert die offene Summe)' : 'pauschal'}
+        </div>
+      )}
       <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
         <button onClick={onCancel} style={btnGhost}>Abbrechen</button>
         <button onClick={() => canSave && onSave({ datum, art, dauerMin: art === 'stunden' ? dauerMin : 0, pauschalBetrag: art === 'pauschale' ? pauschalBetrag : 0, beschreibung: besch.trim(), auftragId: zuAuftrag || null })} disabled={!canSave}
@@ -608,16 +618,17 @@ function ZeitRow({ z, satz, onEdit, onDelete, onStatus }) {
   const abger = z.status === 'abgerechnet'
   const isPaus = z.art === 'pauschale'
   const betrag = eintragBetrag(z, satz)
+  const istGutschrift = isPaus && betrag < 0
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: '7px', background: abger ? 'var(--surface2)' : 'var(--surface)', opacity: abger ? 0.7 : 1 }}>
       <div style={{ fontSize: '11px', color: 'var(--text-muted)', width: '62px', flexShrink: 0 }}>{deDateShort(z.datum)}</div>
       <div style={{ width: '66px', flexShrink: 0, whiteSpace: 'nowrap' }}>
         {isPaus
-          ? <span style={{ fontSize: '10px', fontWeight: 700, color: '#7c3aed', background: 'rgba(124,58,237,0.1)', padding: '2px 7px', borderRadius: '8px' }}>Pauschale</span>
+          ? <span style={{ fontSize: '10px', fontWeight: 700, color: istGutschrift ? GUTSCHRIFT_FARBE : '#7c3aed', background: istGutschrift ? 'rgba(180,83,9,0.12)' : 'rgba(124,58,237,0.1)', padding: '2px 7px', borderRadius: '8px' }}>{istGutschrift ? 'Gutschrift' : 'Pauschale'}</span>
           : <span style={{ fontSize: '12px', fontWeight: 700, color: ZEIT_ACCENT }}>{fmtStunden(z.dauerMin)} Std</span>}
       </div>
       <div style={{ flex: 1, minWidth: 0, fontSize: '12px', color: 'var(--text)' }}>{z.beschreibung}</div>
-      <div style={{ fontSize: '11px', color: 'var(--text-muted)', whiteSpace: 'nowrap', flexShrink: 0 }}>{fmtEuro(betrag, 2)}</div>
+      <div style={{ fontSize: '11px', color: istGutschrift ? GUTSCHRIFT_FARBE : 'var(--text-muted)', fontWeight: istGutschrift ? 700 : 400, whiteSpace: 'nowrap', flexShrink: 0 }}>{fmtEuro(betrag, 2)}</div>
       {abger
         ? <span style={{ fontSize: '10px', background: 'rgba(100,116,139,0.15)', color: '#64748b', padding: '2px 8px', borderRadius: '10px', fontWeight: 600, flexShrink: 0 }}>abgerechnet</span>
         : <span style={{ fontSize: '10px', background: 'rgba(8,145,178,0.12)', color: ZEIT_ACCENT, padding: '2px 8px', borderRadius: '10px', fontWeight: 600, flexShrink: 0 }}>offen</span>}

@@ -88,7 +88,7 @@ export function buildLeistungsnachweis(client, eintraege, { satz = 0 } = {}) {
     const txt = doc.splitTextToSize(String(e.beschreibung || ''), txtW)
     if (y > 270) { doc.addPage(); y = M }
     doc.text(deDate(e.datum), cDat, y)
-    doc.text(isP ? 'Pauschale' : 'Stunden', cArt, y)
+    doc.text(isP ? (betr < 0 ? 'Gutschrift' : 'Pauschale') : 'Stunden', cArt, y)
     doc.text(txt, cTxt, y)
     doc.text(isP ? '–' : std(e.dauerMin), xStd, y, { align: 'right' })
     doc.text(eur(betr), xBet, y, { align: 'right' })
@@ -171,7 +171,7 @@ export function buildZeitUebersicht(client, eintraege, { satz = 0 } = {}) {
     const txt = doc.splitTextToSize(String(e.beschreibung || ''), txtW)
     if (y > 270) { doc.addPage(); y = M }
     doc.text(deDate(e.datum), cDat, y)
-    doc.text(isP ? 'Pauschale' : 'Stunden', cArt, y)
+    doc.text(isP ? (betr < 0 ? 'Gutschrift' : 'Pauschale') : 'Stunden', cArt, y)
     doc.text(txt, cTxt, y)
     doc.text(isP ? '–' : std(e.dauerMin), xStd, y, { align: 'right' })
     doc.text(eur(betr), xBet, y, { align: 'right' })
